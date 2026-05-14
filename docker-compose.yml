@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: creator_platform_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: creator_platform
+      POSTGRES_USER: creator_platform
+      POSTGRES_PASSWORD: creator_platform_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - creator_platform_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  creator_platform_postgres_data:
