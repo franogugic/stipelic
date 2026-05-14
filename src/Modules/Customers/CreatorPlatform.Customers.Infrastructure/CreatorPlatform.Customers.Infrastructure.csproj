@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\CreatorPlatform.Customers.Application\CreatorPlatform.Customers.Application.csproj" />
+    <ProjectReference Include="..\CreatorPlatform.Customers.Domain\CreatorPlatform.Customers.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Infrastructure\CreatorPlatform.Shared.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
