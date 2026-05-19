@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.Middlewares;
 using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.MapControllers();
 
