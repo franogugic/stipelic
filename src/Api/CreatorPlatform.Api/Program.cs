@@ -5,8 +5,8 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddControllers();
 
-// das e ucita u runite da ga uhavti GetLoadedInfrastructureAssemblies() iz contexta
 builder.Services.AddAuthInfrastructure();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
@@ -24,5 +24,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.MapControllers();
 
 app.Run();

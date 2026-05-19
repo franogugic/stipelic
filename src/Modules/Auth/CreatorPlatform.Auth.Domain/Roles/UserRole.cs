@@ -1,3 +1,5 @@
+using CreatorPlatform.Auth.Domain.Users;
+
 namespace CreatorPlatform.Auth.Domain.Roles;
 
 public sealed class UserRole
@@ -6,21 +8,22 @@ public sealed class UserRole
     {
     }
 
-    private UserRole(int userId, short roleId, DateTimeOffset createdAt)
+    private UserRole(User user, RoleId roleId, DateTimeOffset createdAt)
     {
-        UserId = userId;
+        User = user;
         RoleId = roleId;
         CreatedAt = createdAt;
     }
 
-    public static UserRole Create(int userId, short roleId, DateTimeOffset createdAt)
+    public static UserRole Create(User user, RoleId roleId, DateTimeOffset createdAt)
     {
-        return new UserRole(userId, roleId, createdAt);
+        return new UserRole(user, roleId, createdAt);
     }
 
     public int UserId { get; private set; }
 
-    public short RoleId { get; private set; }
+    public RoleId RoleId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+    public User User { get; private set; } = null!;
 }

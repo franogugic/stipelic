@@ -38,7 +38,7 @@ public sealed class User
             passwordHash,
             firstName,
             lastName,
-            UserStatus.Active,
+            UserStatus.PendingEmailVerification,
             createdAt);
     }
 
