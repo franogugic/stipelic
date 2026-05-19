@@ -4,6 +4,7 @@ using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Auth.Domain.Roles;
 using CreatorPlatform.Auth.Domain.Tokens;
 using CreatorPlatform.Auth.Domain.Users;
+using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Auth.Application.Services;
 
@@ -42,7 +43,7 @@ public sealed class AuthService : IAuthService
         var email = request.Email.Trim().ToLowerInvariant();
         var doesExist = await _userRepository.ExistsByEmailAsync(email, ct);
         if (doesExist)
-            throw new UserAlreadyExistsException(email);
+            throw new UserAlreadyExistsException();
 
         var firstName = request.FirstName.Trim();
         var lastName = request.LastName.Trim();
@@ -100,13 +101,13 @@ public sealed class AuthService : IAuthService
         var hasLength = password.Length >= 8;
 
         if (!hasNumber || !hasUpper || !hasLower || !hasSpecialCharacter || !hasLength)
-            throw new InvalidRegistrationRequestException("Password must be at least 8 characters and contain uppercase, lowercase, number, and special character.");
+            throw new BadRequestException("Password must be at least 8 characters and contain uppercase, lowercase, number, and special character.");
 
     }
 
     private static void CheckName(string name, string fieldName)
     {
         if (name.Length < 2)
-            throw new InvalidRegistrationRequestException($"{fieldName} must be at least 2 characters.");
+            throw new BadRequestException($"{fieldName} must be at least 2 characters.");
     }
 }
