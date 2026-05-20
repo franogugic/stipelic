@@ -4,6 +4,7 @@ using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Auth.Domain.Roles;
 using CreatorPlatform.Auth.Domain.Tokens;
 using CreatorPlatform.Auth.Domain.Users;
+using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Auth.Application.Services;
@@ -17,6 +18,7 @@ public sealed class AuthService : IAuthService
     private readonly IEmailVerificationTokenRepository _emailVerificationTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IUserRoleRepository _userRoleRepository;
+    private readonly IEmailSender _emailSender;
 
     public AuthService(
         IUserRepository userRepository,
@@ -25,7 +27,8 @@ public sealed class AuthService : IAuthService
         ITokenHasher tokenHasher,
         IEmailVerificationTokenRepository emailVerificationTokenRepository,
         IUnitOfWork unitOfWork,
-        IUserRoleRepository userRoleRepository
+        IUserRoleRepository userRoleRepository,
+        IEmailSender emailSender
         )
     {
         _userRepository = userRepository;
@@ -35,6 +38,7 @@ public sealed class AuthService : IAuthService
         _emailVerificationTokenRepository = emailVerificationTokenRepository;
         _unitOfWork = unitOfWork;
         _userRoleRepository = userRoleRepository;
+        _emailSender = emailSender;
     }
 
     public async Task<RegisterUserResponseDto> RegisterAsync(RegisterUserRequestDto request,
@@ -82,6 +86,7 @@ public sealed class AuthService : IAuthService
         await _userRoleRepository.AddAsync(userRole, ct);
         
         await _unitOfWork.SaveChangesAsync(ct);
+        await _emailSender.SendEmailVerificationAsync(user.Email, rawEmailVerificationToken, ct);
         
         return new RegisterUserResponseDto
         {
