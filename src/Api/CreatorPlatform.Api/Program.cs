@@ -1,5 +1,6 @@
 using CreatorPlatform.Api.Middlewares;
 using CreatorPlatform.Auth.Infrastructure;
+using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 
 builder.Services.AddAuthInfrastructure();
+builder.Services.AddEmailInfrastructure(builder.Configuration);
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 {
