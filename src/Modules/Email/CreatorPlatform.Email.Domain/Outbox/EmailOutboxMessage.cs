@@ -41,6 +41,30 @@ public sealed class EmailOutboxMessage
             createdAt);
     }
 
+    public void MarkAsSent(DateTimeOffset sentAt)
+    {
+        Status = EmailOutboxMessageStatus.Sent;
+        SentAt = sentAt;
+        LastError = null;
+    }
+
+    public void MarkAsFailed(string error, DateTimeOffset nextAttemptAt, int maxRetryCount)
+    {
+        RetryCount++;
+        LastError = error.Length > 2000
+            ? error[..2000]
+            : error;
+
+        if (RetryCount >= maxRetryCount)
+        {
+            Status = EmailOutboxMessageStatus.Failed;
+            return;
+        }
+
+        Status = EmailOutboxMessageStatus.Pending;
+        NextAttemptAt = nextAttemptAt;
+    }
+
     public Guid Id { get; private set; }
 
     public string ToEmail { get; private set; } = string.Empty;

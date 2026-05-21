@@ -18,7 +18,7 @@ public sealed class AuthService : IAuthService
     private readonly IEmailVerificationTokenRepository _emailVerificationTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IUserRoleRepository _userRoleRepository;
-    private readonly IEmailSender _emailSender;
+    private readonly IEmailOutboxService _emailOutboxService;
 
     public AuthService(
         IUserRepository userRepository,
@@ -28,7 +28,7 @@ public sealed class AuthService : IAuthService
         IEmailVerificationTokenRepository emailVerificationTokenRepository,
         IUnitOfWork unitOfWork,
         IUserRoleRepository userRoleRepository,
-        IEmailSender emailSender
+        IEmailOutboxService emailOutboxService
         )
     {
         _userRepository = userRepository;
@@ -38,7 +38,7 @@ public sealed class AuthService : IAuthService
         _emailVerificationTokenRepository = emailVerificationTokenRepository;
         _unitOfWork = unitOfWork;
         _userRoleRepository = userRoleRepository;
-        _emailSender = emailSender;
+        _emailOutboxService = emailOutboxService;
     }
 
     public async Task<RegisterUserResponseDto> RegisterAsync(RegisterUserRequestDto request,
@@ -84,9 +84,9 @@ public sealed class AuthService : IAuthService
         await _userRepository.AddAsync(user, ct);
         await _emailVerificationTokenRepository.AddAsync(emailVerificationToken, ct);
         await _userRoleRepository.AddAsync(userRole, ct);
+        await _emailOutboxService.QueueEmailVerificationAsync(user.Email, rawEmailVerificationToken, ct);
         
         await _unitOfWork.SaveChangesAsync(ct);
-        await _emailSender.SendEmailVerificationAsync(user.Email, rawEmailVerificationToken, ct);
         
         return new RegisterUserResponseDto
         {

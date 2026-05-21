@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CreatorPlatform.Email.Application\CreatorPlatform.Email.Application.csproj" />
     <ProjectReference Include="..\CreatorPlatform.Email.Domain\CreatorPlatform.Email.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Infrastructure\CreatorPlatform.Shared.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
