@@ -28,6 +28,7 @@ public static class EmailInfrastructureServiceCollectionExtensions
         });
 
         services.AddScoped<IEmailSender, AzureEmailSender>();
+        services.AddScoped<IEmailOutboxService, EmailOutboxService>();
 
         return services;
     }
