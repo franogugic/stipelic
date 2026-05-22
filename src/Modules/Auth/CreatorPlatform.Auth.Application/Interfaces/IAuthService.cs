@@ -6,4 +6,7 @@ public interface IAuthService
 {
     Task<RegisterUserResponseDto> RegisterAsync(RegisterUserRequestDto request, CancellationToken ct);
     Task<VerifyEmailResponseDto> VerifyEmailAsync(VerifyEmailRequestDto request, CancellationToken ct);
+    Task<ResendEmailVerificationResponseDto> ResendEmailVerificationAsync(
+        ResendEmailVerificationRequestDto request,
+        CancellationToken ct);
 }

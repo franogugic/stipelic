@@ -13,6 +13,7 @@ public sealed class AuthService : IAuthService
 {
     private const string InvalidEmailVerificationTokenMessage = "Invalid or expired email verification token.";
     private const string EmailVerifiedSuccessfullyMessage = "Email verified successfully.";
+    private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
 
     private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher _passwordHasher;
@@ -140,6 +141,44 @@ public sealed class AuthService : IAuthService
         };
     }
 
+    public async Task<ResendEmailVerificationResponseDto> ResendEmailVerificationAsync(
+        ResendEmailVerificationRequestDto request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return CreateResendEmailVerificationResponse();
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _userRepository.GetByEmailAsync(email, ct);
+
+        if (user is null || user.IsEmailVerified)
+        {
+            return CreateResendEmailVerificationResponse();
+        }
+
+        var createdAt = DateTimeOffset.UtcNow;
+        var rawEmailVerificationToken = _tokenGenerator.GenerateToken();
+        var hashedEmailVerificationToken = _tokenHasher.Hash(rawEmailVerificationToken);
+        var unusedTokens = await _emailVerificationTokenRepository.GetUnusedByUserIdAsync(user.Id, ct);
+
+        foreach (var unusedToken in unusedTokens)
+        {
+            unusedToken.Invalidate(createdAt);
+        }
+
+        var emailVerificationToken = EmailVerificationToken.Create(
+            user,
+            hashedEmailVerificationToken,
+            createdAt.AddHours(24),
+            createdAt);
+
+        await _emailVerificationTokenRepository.AddAsync(emailVerificationToken, ct);
+        await _emailOutboxService.QueueEmailVerificationAsync(user.Email, rawEmailVerificationToken, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return CreateResendEmailVerificationResponse();
+    }
+
     private void CheckPassword(string password)
     {
         var hasNumber = password.Any(char.IsDigit);
@@ -157,5 +196,13 @@ public sealed class AuthService : IAuthService
     {
         if (name.Length < 2)
             throw new BadRequestException($"{fieldName} must be at least 2 characters.");
+    }
+
+    private static ResendEmailVerificationResponseDto CreateResendEmailVerificationResponse()
+    {
+        return new ResendEmailVerificationResponseDto
+        {
+            Message = ResendEmailVerificationMessage
+        };
     }
 }
