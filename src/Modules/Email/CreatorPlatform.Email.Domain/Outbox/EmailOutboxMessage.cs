@@ -46,6 +46,13 @@ public sealed class EmailOutboxMessage
         Status = EmailOutboxMessageStatus.Sent;
         SentAt = sentAt;
         LastError = null;
+        ProcessingExpiresAt = null;
+    }
+
+    public void MarkAsProcessing(DateTimeOffset processingExpiresAt)
+    {
+        Status = EmailOutboxMessageStatus.Processing;
+        ProcessingExpiresAt = processingExpiresAt;
     }
 
     public void MarkAsFailed(string error, DateTimeOffset nextAttemptAt, int maxRetryCount)
@@ -58,11 +65,13 @@ public sealed class EmailOutboxMessage
         if (RetryCount >= maxRetryCount)
         {
             Status = EmailOutboxMessageStatus.Failed;
+            ProcessingExpiresAt = null;
             return;
         }
 
         Status = EmailOutboxMessageStatus.Pending;
         NextAttemptAt = nextAttemptAt;
+        ProcessingExpiresAt = null;
     }
 
     public Guid Id { get; private set; }
@@ -80,6 +89,8 @@ public sealed class EmailOutboxMessage
     public int RetryCount { get; private set; }
 
     public DateTimeOffset NextAttemptAt { get; private set; }
+
+    public DateTimeOffset? ProcessingExpiresAt { get; private set; }
 
     public DateTimeOffset? SentAt { get; private set; }
 

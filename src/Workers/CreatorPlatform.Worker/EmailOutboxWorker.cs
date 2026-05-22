@@ -12,6 +12,7 @@ public sealed class EmailOutboxWorker(
     private const int BatchSize = 20;
     private const int MaxRetryCount = 3;
     private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ProcessingLeaseTimeout = TimeSpan.FromMinutes(5);
 
     public override Task StartAsync(CancellationToken cancellationToken)
     {
@@ -29,7 +30,7 @@ public sealed class EmailOutboxWorker(
         {
             try
             {
-                await ProcessPendingMessagesAsync(stoppingToken);
+                await ProcessReadyMessagesAsync(stoppingToken);
             }
             catch (Exception exception)
             {
@@ -40,20 +41,12 @@ public sealed class EmailOutboxWorker(
         }
     }
 
-    private async Task ProcessPendingMessagesAsync(CancellationToken ct)
+    private async Task ProcessReadyMessagesAsync(CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
 
         var dbContext = scope.ServiceProvider.GetRequiredService<CreatorPlatformDbContext>();
-        var now = DateTimeOffset.UtcNow;
-
-        var messages = await dbContext.Set<EmailOutboxMessage>()
-            .Where(message =>
-                message.Status == EmailOutboxMessageStatus.Pending &&
-                message.NextAttemptAt <= now)
-            .OrderBy(message => message.CreatedAt)
-            .Take(BatchSize)
-            .ToListAsync(ct);
+        var messages = await ClaimReadyMessagesAsync(dbContext, ct);
 
         if (messages.Count == 0)
             return;
@@ -68,6 +61,40 @@ public sealed class EmailOutboxWorker(
         {
             await ProcessMessageAsync(dbContext, emailSender, message, ct);
         }
+    }
+
+    private static async Task<List<EmailOutboxMessage>> ClaimReadyMessagesAsync(
+        CreatorPlatformDbContext dbContext,
+        CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var processingExpiresAt = now.Add(ProcessingLeaseTimeout);
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
+
+        var messages = await dbContext.Set<EmailOutboxMessage>()
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM email.email_outbox_messages
+                WHERE (
+                    ("Status" = 'Pending' AND "NextAttemptAt" <= {now})
+                    OR ("Status" = 'Processing' AND "ProcessingExpiresAt" <= {now})
+                )
+                ORDER BY "CreatedAt"
+                LIMIT {BatchSize}
+                FOR UPDATE SKIP LOCKED
+                """)
+            .ToListAsync(ct);
+
+        foreach (var message in messages)
+        {
+            message.MarkAsProcessing(processingExpiresAt);
+        }
+
+        await dbContext.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        return messages;
     }
 
     private async Task ProcessMessageAsync(
