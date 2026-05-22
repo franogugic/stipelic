@@ -13,6 +13,16 @@ public sealed class EmailOutboxWorker(
     private const int MaxRetryCount = 3;
     private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(5);
 
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "Email outbox worker started. BatchSize: {BatchSize}. PollingIntervalSeconds: {PollingIntervalSeconds}.",
+            BatchSize,
+            PollingInterval.TotalSeconds);
+
+        return base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -48,6 +58,10 @@ public sealed class EmailOutboxWorker(
         if (messages.Count == 0)
             return;
 
+        logger.LogInformation(
+            "Processing {MessageCount} pending email outbox message(s).",
+            messages.Count);
+
         var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
 
         foreach (var message in messages)
@@ -72,17 +86,32 @@ public sealed class EmailOutboxWorker(
                 ct);
 
             message.MarkAsSent(DateTimeOffset.UtcNow);
+            logger.LogInformation(
+                "Sent email outbox message {MessageId}.",
+                message.Id);
         }
         catch (Exception exception)
         {
             var nextAttemptAt = DateTimeOffset.UtcNow.Add(GetRetryDelay(message.RetryCount + 1));
             message.MarkAsFailed(exception.Message, nextAttemptAt, MaxRetryCount);
 
-            logger.LogWarning(
-                exception,
-                "Failed to send email outbox message {MessageId}. RetryCount: {RetryCount}",
-                message.Id,
-                message.RetryCount);
+            if (message.Status == EmailOutboxMessageStatus.Failed)
+            {
+                logger.LogError(
+                    exception,
+                    "Email outbox message {MessageId} permanently failed after {RetryCount} attempt(s).",
+                    message.Id,
+                    message.RetryCount);
+            }
+            else
+            {
+                logger.LogWarning(
+                    exception,
+                    "Email outbox message {MessageId} failed. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
+                    message.Id,
+                    message.RetryCount,
+                    nextAttemptAt);
+            }
         }
 
         await dbContext.SaveChangesAsync(ct);
