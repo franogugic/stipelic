@@ -35,4 +35,14 @@ public sealed class AuthController : ControllerBase
         var response = await _authService.VerifyEmailAsync(request, ct);
         return Ok(response);
     }
+
+    [HttpPost("resend-verification-email")]
+    [EnableRateLimiting("ResendVerificationEmail")]
+    public async Task<ActionResult<ResendEmailVerificationResponseDto>> ResendVerificationEmail(
+        ResendEmailVerificationRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.ResendEmailVerificationAsync(request, ct);
+        return Ok(response);
+    }
 }

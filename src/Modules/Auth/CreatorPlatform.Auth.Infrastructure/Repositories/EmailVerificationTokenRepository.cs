@@ -25,4 +25,11 @@ public class EmailVerificationTokenRepository : IEmailVerificationTokenRepositor
             .Include(token => token.User)
             .FirstOrDefaultAsync(token => token.TokenHash == tokenHash, ct);
     }
+
+    public async Task<IReadOnlyList<EmailVerificationToken>> GetUnusedByUserIdAsync(int userId, CancellationToken ct)
+    {
+        return await _context.Set<EmailVerificationToken>()
+            .Where(token => token.UserId == userId && token.UsedAt == null)
+            .ToListAsync(ct);
+    }
 }

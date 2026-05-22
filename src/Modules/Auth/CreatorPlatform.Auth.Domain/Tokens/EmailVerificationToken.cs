@@ -48,6 +48,11 @@ public sealed class EmailVerificationToken
         UsedAt = usedAt;
     }
 
+    public void Invalidate(DateTimeOffset invalidatedAt)
+    {
+        UsedAt = invalidatedAt;
+    }
+
     public Guid Id { get; private set; }
 
     public int UserId { get; private set; }
