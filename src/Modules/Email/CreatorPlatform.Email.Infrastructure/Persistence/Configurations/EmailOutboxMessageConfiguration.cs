@@ -37,6 +37,8 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
         builder.Property(message => message.NextAttemptAt)
             .IsRequired();
 
+        builder.Property(message => message.ProcessingExpiresAt);
+
         builder.Property(message => message.LastError)
             .HasMaxLength(1000);
 
@@ -44,5 +46,6 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
             .IsRequired();
 
         builder.HasIndex(message => new { message.Status, message.NextAttemptAt });
+        builder.HasIndex(message => new { message.Status, message.ProcessingExpiresAt });
     }
 }
