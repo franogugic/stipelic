@@ -1,7 +1,9 @@
 using CreatorPlatform.Api.Middlewares;
+using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 
@@ -9,6 +11,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

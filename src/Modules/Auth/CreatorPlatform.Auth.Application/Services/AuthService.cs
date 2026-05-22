@@ -175,7 +175,7 @@ public sealed class AuthService : IAuthService
         await _emailVerificationTokenRepository.AddAsync(emailVerificationToken, ct);
         await _emailOutboxService.QueueEmailVerificationAsync(user.Email, rawEmailVerificationToken, ct);
         await _unitOfWork.SaveChangesAsync(ct);
-
+        
         return CreateResendEmailVerificationResponse();
     }
 
