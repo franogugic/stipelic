@@ -23,4 +23,13 @@ public sealed class AuthController : ControllerBase
         var response = await _authService.RegisterAsync(request, ct);
         return StatusCode(StatusCodes.Status201Created, response);
     }
+
+    [HttpPost("verify-email")]
+    public async Task<ActionResult<VerifyEmailResponseDto>> VerifyEmail(
+        VerifyEmailRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.VerifyEmailAsync(request, ct);
+        return Ok(response);
+    }
 }

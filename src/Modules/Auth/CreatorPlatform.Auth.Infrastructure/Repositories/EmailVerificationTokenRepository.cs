@@ -1,6 +1,7 @@
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Auth.Domain.Tokens;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace CreatorPlatform.Auth.Infrastructure.Repositories;
 
@@ -16,5 +17,12 @@ public class EmailVerificationTokenRepository : IEmailVerificationTokenRepositor
     public async Task AddAsync(EmailVerificationToken emailVerificationToken, CancellationToken ct)
     {
         await _context.Set<EmailVerificationToken>().AddAsync(emailVerificationToken, ct);
+    }
+
+    public async Task<EmailVerificationToken?> GetByTokenHashAsync(string tokenHash, CancellationToken ct)
+    {
+        return await _context.Set<EmailVerificationToken>()
+            .Include(token => token.User)
+            .FirstOrDefaultAsync(token => token.TokenHash == tokenHash, ct);
     }
 }
