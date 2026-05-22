@@ -8,4 +8,5 @@ public interface IEmailVerificationTokenRepository
     Task AddAsync(EmailVerificationToken token, CancellationToken ct);
     Task<EmailVerificationToken?> GetByTokenHashAsync(string tokenHash, CancellationToken ct);
     Task<IReadOnlyList<EmailVerificationToken>> GetUnusedByUserIdAsync(int userId, CancellationToken ct);
+    Task<EmailVerificationToken?> GetLatestByUserIdAsync(int userId, CancellationToken ct);
 }
