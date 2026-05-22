@@ -1,6 +1,7 @@
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
@@ -16,6 +17,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [EnableRateLimiting("Register")]
     public async Task<ActionResult<RegisterUserResponseDto>> Register(
         RegisterUserRequestDto request,
         CancellationToken ct)
@@ -25,6 +27,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("verify-email")]
+    [EnableRateLimiting("VerifyEmail")]
     public async Task<ActionResult<VerifyEmailResponseDto>> VerifyEmail(
         VerifyEmailRequestDto request,
         CancellationToken ct)
