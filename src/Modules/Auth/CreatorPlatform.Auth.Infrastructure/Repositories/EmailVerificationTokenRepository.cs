@@ -32,4 +32,12 @@ public class EmailVerificationTokenRepository : IEmailVerificationTokenRepositor
             .Where(token => token.UserId == userId && token.UsedAt == null)
             .ToListAsync(ct);
     }
+
+    public async Task<EmailVerificationToken?> GetLatestByUserIdAsync(int userId, CancellationToken ct)
+    {
+        return await _context.Set<EmailVerificationToken>()
+            .Where(token => token.UserId == userId)
+            .OrderByDescending(token => token.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
 }

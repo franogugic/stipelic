@@ -14,6 +14,7 @@ public sealed class AuthService : IAuthService
     private const string InvalidEmailVerificationTokenMessage = "Invalid or expired email verification token.";
     private const string EmailVerifiedSuccessfullyMessage = "Email verified successfully.";
     private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
+    private static readonly TimeSpan ResendEmailVerificationCooldown = TimeSpan.FromMinutes(1);
 
     private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher _passwordHasher;
@@ -157,6 +158,13 @@ public sealed class AuthService : IAuthService
         }
 
         var createdAt = DateTimeOffset.UtcNow;
+        var latestToken = await _emailVerificationTokenRepository.GetLatestByUserIdAsync(user.Id, ct);
+        if (latestToken is not null &&
+            latestToken.CreatedAt.Add(ResendEmailVerificationCooldown) > createdAt)
+        {
+            return CreateResendEmailVerificationResponse();
+        }
+
         var rawEmailVerificationToken = _tokenGenerator.GenerateToken();
         var hashedEmailVerificationToken = _tokenHasher.Hash(rawEmailVerificationToken);
         var unusedTokens = await _emailVerificationTokenRepository.GetUnusedByUserIdAsync(user.Id, ct);
