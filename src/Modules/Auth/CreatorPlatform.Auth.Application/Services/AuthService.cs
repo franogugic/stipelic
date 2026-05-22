@@ -11,6 +11,9 @@ namespace CreatorPlatform.Auth.Application.Services;
 
 public sealed class AuthService : IAuthService
 {
+    private const string InvalidEmailVerificationTokenMessage = "Invalid or expired email verification token.";
+    private const string EmailVerifiedSuccessfullyMessage = "Email verified successfully.";
+
     private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenGenerator _tokenGenerator;
@@ -94,6 +97,46 @@ public sealed class AuthService : IAuthService
             FirstName = user.FirstName,
             LastName = user.LastName,
             Email = user.Email
+        };
+    }
+
+    public async Task<VerifyEmailResponseDto> VerifyEmailAsync(VerifyEmailRequestDto request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Token))
+            throw new BadRequestException(InvalidEmailVerificationTokenMessage);
+
+        var token = request.Token.Trim();
+
+        var tokenHash = _tokenHasher.Hash(token);
+        var emailVerificationToken = await _emailVerificationTokenRepository.GetByTokenHashAsync(tokenHash, ct);
+
+        var now = DateTimeOffset.UtcNow;
+        if (emailVerificationToken is null)
+        {
+            throw new BadRequestException(InvalidEmailVerificationTokenMessage);
+        }
+
+        if (emailVerificationToken.User.IsEmailVerified)
+        {
+            return new VerifyEmailResponseDto
+            {
+                Message = EmailVerifiedSuccessfullyMessage
+            };
+        }
+
+        if (emailVerificationToken.IsUsed || emailVerificationToken.IsExpired(now))
+        {
+            throw new BadRequestException(InvalidEmailVerificationTokenMessage);
+        }
+
+        emailVerificationToken.User.VerifyEmail(now);
+        emailVerificationToken.MarkAsUsed(now);
+
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return new VerifyEmailResponseDto
+        {
+            Message = EmailVerifiedSuccessfullyMessage
         };
     }
 

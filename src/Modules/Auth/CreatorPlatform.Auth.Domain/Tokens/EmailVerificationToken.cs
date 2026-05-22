@@ -36,6 +36,18 @@ public sealed class EmailVerificationToken
             createdAt);
     }
 
+    public bool IsUsed => UsedAt is not null;
+
+    public bool IsExpired(DateTimeOffset now)
+    {
+        return ExpiresAt <= now;
+    }
+
+    public void MarkAsUsed(DateTimeOffset usedAt)
+    {
+        UsedAt = usedAt;
+    }
+
     public Guid Id { get; private set; }
 
     public int UserId { get; private set; }

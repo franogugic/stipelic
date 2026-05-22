@@ -42,6 +42,15 @@ public sealed class User
             createdAt);
     }
 
+    public void VerifyEmail(DateTimeOffset verifiedAt)
+    {
+        EmailVerifiedAt = verifiedAt;
+        Status = UserStatus.Active;
+        UpdatedAt = verifiedAt;
+    }
+
+    public bool IsEmailVerified => EmailVerifiedAt is not null && Status == UserStatus.Active;
+
     public int Id { get; private set; }
 
     public Guid PublicId { get; private set; }

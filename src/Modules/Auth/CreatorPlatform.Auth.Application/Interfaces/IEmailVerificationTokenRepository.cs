@@ -6,4 +6,5 @@ namespace CreatorPlatform.Auth.Application.Interfaces;
 public interface IEmailVerificationTokenRepository
 {
     Task AddAsync(EmailVerificationToken token, CancellationToken ct);
+    Task<EmailVerificationToken?> GetByTokenHashAsync(string tokenHash, CancellationToken ct);
 }
