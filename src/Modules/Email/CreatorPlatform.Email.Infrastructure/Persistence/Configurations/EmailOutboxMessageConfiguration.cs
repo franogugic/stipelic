@@ -12,6 +12,15 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
 
         builder.HasKey(message => message.Id);
 
+        builder.Property(message => message.Purpose)
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .IsRequired();
+
+        builder.Property(message => message.CorrelationKey)
+            .HasMaxLength(100)
+            .IsRequired();
+
         builder.Property(message => message.ToEmail)
             .HasMaxLength(100)
             .IsRequired();
@@ -47,5 +56,6 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
 
         builder.HasIndex(message => new { message.Status, message.NextAttemptAt });
         builder.HasIndex(message => new { message.Status, message.ProcessingExpiresAt });
+        builder.HasIndex(message => new { message.Purpose, message.CorrelationKey, message.Status });
     }
 }
