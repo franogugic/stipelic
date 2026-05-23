@@ -105,6 +105,17 @@ public sealed class EmailOutboxWorker(
     {
         try
         {
+            if (await IsMessageCancelledAsync(dbContext, message.Id, ct))
+            {
+                dbContext.Entry(message).State = EntityState.Detached;
+
+                logger.LogInformation(
+                    "Skipped cancelled email outbox message {MessageId}.",
+                    message.Id);
+
+                return;
+            }
+
             await emailSender.SendAsync(
                 message.ToEmail,
                 message.Subject,
@@ -142,6 +153,20 @@ public sealed class EmailOutboxWorker(
         }
 
         await dbContext.SaveChangesAsync(ct);
+    }
+
+    private static async Task<bool> IsMessageCancelledAsync(
+        CreatorPlatformDbContext dbContext,
+        Guid messageId,
+        CancellationToken ct)
+    {
+        var status = await dbContext.Set<EmailOutboxMessage>()
+            .AsNoTracking()
+            .Where(message => message.Id == messageId)
+            .Select(message => message.Status)
+            .SingleAsync(ct);
+
+        return status == EmailOutboxMessageStatus.Cancelled;
     }
 
     private static TimeSpan GetRetryDelay(int retryCount)

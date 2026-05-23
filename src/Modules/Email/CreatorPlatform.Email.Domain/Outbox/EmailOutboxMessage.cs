@@ -8,6 +8,8 @@ public sealed class EmailOutboxMessage
 
     private EmailOutboxMessage(
         Guid id,
+        EmailOutboxMessagePurpose purpose,
+        string correlationKey,
         string toEmail,
         string subject,
         string htmlBody,
@@ -15,6 +17,8 @@ public sealed class EmailOutboxMessage
         DateTimeOffset createdAt)
     {
         Id = id;
+        Purpose = purpose;
+        CorrelationKey = correlationKey;
         ToEmail = toEmail;
         Subject = subject;
         HtmlBody = htmlBody;
@@ -26,6 +30,8 @@ public sealed class EmailOutboxMessage
     }
 
     public static EmailOutboxMessage Create(
+        EmailOutboxMessagePurpose purpose,
+        string correlationKey,
         string toEmail,
         string subject,
         string htmlBody,
@@ -34,6 +40,8 @@ public sealed class EmailOutboxMessage
     {
         return new EmailOutboxMessage(
             Guid.NewGuid(),
+            purpose,
+            correlationKey,
             toEmail,
             subject,
             htmlBody,
@@ -53,6 +61,17 @@ public sealed class EmailOutboxMessage
     {
         Status = EmailOutboxMessageStatus.Processing;
         ProcessingExpiresAt = processingExpiresAt;
+    }
+
+    public void Cancel()
+    {
+        if (Status is not EmailOutboxMessageStatus.Pending and
+            not EmailOutboxMessageStatus.Processing)
+            return;
+
+        Status = EmailOutboxMessageStatus.Cancelled;
+        ProcessingExpiresAt = null;
+        LastError = null;
     }
 
     public void MarkAsFailed(string error, DateTimeOffset nextAttemptAt, int maxRetryCount)
@@ -75,6 +94,10 @@ public sealed class EmailOutboxMessage
     }
 
     public Guid Id { get; private set; }
+
+    public EmailOutboxMessagePurpose Purpose { get; private set; }
+
+    public string CorrelationKey { get; private set; } = string.Empty;
 
     public string ToEmail { get; private set; } = string.Empty;
 
