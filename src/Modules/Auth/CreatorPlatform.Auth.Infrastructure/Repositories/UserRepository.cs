@@ -29,6 +29,14 @@ public sealed class UserRepository : IUserRepository
             .FirstOrDefaultAsync(user => user.Email == email, ct);
     }
 
+    public async Task<User?> GetByIdAsync(int id, CancellationToken ct)
+    {
+        return await _context
+            .Set<User>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(user => user.Id == id, ct);
+    }
+
     public async Task AddAsync(User user, CancellationToken ct)
     {
         await _context.Set<User>().AddAsync(user, ct);

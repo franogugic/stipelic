@@ -52,6 +52,29 @@ public sealed class AuthController : ControllerBase
         return Ok(result.User);
     }
 
+    [HttpGet("me")]
+    public ActionResult<LoginUserResponseDto> Me([FromServices] ICurrentUserContext currentUserContext)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+        {
+            return Unauthorized(new
+            {
+                statusCode = StatusCodes.Status401Unauthorized,
+                message = "Authentication is required.",
+                code = "UNAUTHORIZED"
+            });
+        }
+
+        return Ok(new LoginUserResponseDto
+        {
+            PublicId = currentUser.PublicId,
+            FirstName = currentUser.FirstName,
+            LastName = currentUser.LastName,
+            Email = currentUser.Email
+        });
+    }
+
     [HttpPost("verify-email")]
     [EnableRateLimiting("VerifyEmail")]
     public async Task<ActionResult<VerifyEmailResponseDto>> VerifyEmail(
