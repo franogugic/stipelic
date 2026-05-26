@@ -1,3 +1,4 @@
+using Azure;
 using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Email.Domain.Outbox;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -26,6 +27,7 @@ public sealed class EmailOutboxWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -37,6 +39,7 @@ public sealed class EmailOutboxWorker(
                 logger.LogError(exception, "Email outbox worker failed while processing messages.");
             }
 
+            
             await Task.Delay(PollingInterval, stoppingToken);
         }
     }
@@ -55,6 +58,7 @@ public sealed class EmailOutboxWorker(
             "Processing {MessageCount} pending email outbox message(s).",
             messages.Count);
 
+        
         var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
 
         foreach (var message in messages)
@@ -90,7 +94,7 @@ public sealed class EmailOutboxWorker(
         {
             message.MarkAsProcessing(processingExpiresAt);
         }
-
+        
         await dbContext.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
@@ -105,16 +109,8 @@ public sealed class EmailOutboxWorker(
     {
         try
         {
-            if (await IsMessageCancelledAsync(dbContext, message.Id, ct))
-            {
-                dbContext.Entry(message).State = EntityState.Detached;
-
-                logger.LogInformation(
-                    "Skipped cancelled email outbox message {MessageId}.",
-                    message.Id);
-
+            if (await TrySkipCancelledMessageAsync(dbContext, message, ct))
                 return;
-            }
 
             await emailSender.SendAsync(
                 message.ToEmail,
@@ -130,6 +126,9 @@ public sealed class EmailOutboxWorker(
         }
         catch (Exception exception)
         {
+            if (await TrySkipCancelledMessageAsync(dbContext, message, ct))
+                return;
+
             var nextAttemptAt = DateTimeOffset.UtcNow.Add(GetRetryDelay(message.RetryCount + 1));
             message.MarkAsFailed(exception.Message, nextAttemptAt, MaxRetryCount);
 
@@ -143,16 +142,48 @@ public sealed class EmailOutboxWorker(
             }
             else
             {
-                logger.LogWarning(
-                    exception,
-                    "Email outbox message {MessageId} failed. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
-                    message.Id,
-                    message.RetryCount,
-                    nextAttemptAt);
+                if (exception is RequestFailedException requestFailedException)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Azure Email error. MessageId: {MessageId}. AzureMessage: {AzureMessage}. AzureStatus: {AzureStatus}. AzureErrorCode: {AzureErrorCode}. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
+                        message.Id,
+                        requestFailedException.Message,
+                        requestFailedException.Status,
+                        requestFailedException.ErrorCode,
+                        message.RetryCount,
+                        nextAttemptAt);
+                }
+                else
+                {
+                    logger.LogWarning(
+                        exception,
+                        "Email outbox message {MessageId} failed. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
+                        message.Id,
+                        message.RetryCount,
+                        nextAttemptAt);
+                }
             }
         }
 
         await dbContext.SaveChangesAsync(ct);
+    }
+
+    private async Task<bool> TrySkipCancelledMessageAsync(
+        CreatorPlatformDbContext dbContext,
+        EmailOutboxMessage message,
+        CancellationToken ct)
+    {
+        if (!await IsMessageCancelledAsync(dbContext, message.Id, ct))
+            return false;
+
+        dbContext.Entry(message).State = EntityState.Detached;
+
+        logger.LogInformation(
+            "Skipped cancelled email outbox message {MessageId}.",
+            message.Id);
+
+        return true;
     }
 
     private static async Task<bool> IsMessageCancelledAsync(
