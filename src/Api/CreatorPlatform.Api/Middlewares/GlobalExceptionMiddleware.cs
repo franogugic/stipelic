@@ -28,6 +28,18 @@ public sealed class GlobalExceptionMiddleware
             _logger.LogWarning(e, "Bad request: {Message}", e.Message);
             await HandleExceptionAsync(context, statusCode, e.Message, "BAD_REQUEST");
         }
+        catch (UnauthorizedException e)
+        {
+            var statusCode = StatusCodes.Status401Unauthorized;
+            _logger.LogWarning(e, "Unauthorized: {Message}", e.Message);
+            await HandleExceptionAsync(context, statusCode, e.Message, "UNAUTHORIZED");
+        }
+        catch (EmailNotVerifiedException e)
+        {
+            var statusCode = StatusCodes.Status403Forbidden;
+            _logger.LogWarning(e, "Forbidden: {Message}", e.Message);
+            await HandleExceptionAsync(context, statusCode, e.Message, "EMAIL_NOT_VERIFIED");
+        }
         catch (UserAlreadyExistsException e)
         {
             var statusCode = StatusCodes.Status409Conflict;

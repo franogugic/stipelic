@@ -1,12 +1,15 @@
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
+using CreatorPlatform.Auth.Application.Options;
 using CreatorPlatform.Auth.Domain.Roles;
+using CreatorPlatform.Auth.Domain.Sessions;
 using CreatorPlatform.Auth.Domain.Tokens;
 using CreatorPlatform.Auth.Domain.Users;
 using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace CreatorPlatform.Auth.Application.Services;
 
@@ -15,6 +18,7 @@ public sealed class AuthService : IAuthService
     private const string InvalidEmailVerificationTokenMessage = "Invalid or expired email verification token.";
     private const string EmailVerifiedSuccessfullyMessage = "Email verified successfully.";
     private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
+    private const string InvalidLoginCredentialsMessage = "Invalid email or password.";
     private static readonly TimeSpan ResendEmailVerificationCooldown = TimeSpan.FromMinutes(1);
 
     private readonly IUserRepository _userRepository;
@@ -26,6 +30,8 @@ public sealed class AuthService : IAuthService
     private readonly IUserRoleRepository _userRoleRepository;
     private readonly IEmailOutboxService _emailOutboxService;
     private readonly ILogger<AuthService> _logger;
+    private readonly IUserSessionRepository _userSessionRepository;
+    private readonly AuthOptions _authOptions;
 
     public AuthService(
         IUserRepository userRepository,
@@ -36,7 +42,9 @@ public sealed class AuthService : IAuthService
         IUnitOfWork unitOfWork,
         IUserRoleRepository userRoleRepository,
         IEmailOutboxService emailOutboxService,
-        ILogger<AuthService> logger
+        ILogger<AuthService> logger,
+        IUserSessionRepository userSessionRepository,
+        IOptions<AuthOptions> authOptions
         )
     {
         _userRepository = userRepository;
@@ -48,6 +56,8 @@ public sealed class AuthService : IAuthService
         _userRoleRepository = userRoleRepository;
         _emailOutboxService = emailOutboxService;
         _logger = logger;
+        _userSessionRepository = userSessionRepository;
+        _authOptions = authOptions.Value;
     }
 
     public async Task<RegisterUserResponseDto> RegisterAsync(RegisterUserRequestDto request,
@@ -107,6 +117,49 @@ public sealed class AuthService : IAuthService
             FirstName = user.FirstName,
             LastName = user.LastName,
             Email = user.Email
+        };
+    }
+
+    public async Task<LoginUserResultDto> LoginAsync(LoginUserRequestDto request, CancellationToken ct)
+    {
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _userRepository.GetByEmailAsync(email, ct);
+
+        if (user is null)
+            throw new UnauthorizedException(InvalidLoginCredentialsMessage);
+
+        var isPasswordValid = _passwordHasher.Verify(request.Password, user.PasswordHash);
+        if (!isPasswordValid)
+            throw new UnauthorizedException(InvalidLoginCredentialsMessage);
+
+        if (!user.IsEmailVerified)
+            throw new EmailNotVerifiedException();
+
+        var createdAt = DateTimeOffset.UtcNow;
+        var expiresAt = createdAt.AddDays(_authOptions.SessionLifetimeDays);
+        var sessionToken = _tokenGenerator.GenerateToken();
+        var sessionTokenHash = _tokenHasher.Hash(sessionToken);
+
+        var session = UserSession.Create(
+            user.Id,
+            sessionTokenHash,
+            expiresAt,
+            createdAt);
+
+        await _userSessionRepository.AddAsync(session, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return new LoginUserResultDto
+        {
+            SessionToken = sessionToken,
+            ExpiresAt = expiresAt,
+            User = new LoginUserResponseDto
+            {
+                PublicId = user.PublicId,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email
+            }
         };
     }
 
