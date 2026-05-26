@@ -1,6 +1,8 @@
 using CreatorPlatform.Auth.Application.Dtos;
+using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Auth.Application.Options;
+using CreatorPlatform.Api.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -13,11 +15,16 @@ public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly AuthOptions _authOptions;
+    private readonly LoginAttemptLimiter _loginAttemptLimiter;
 
-    public AuthController(IAuthService authService, IOptions<AuthOptions> authOptions)
+    public AuthController(
+        IAuthService authService,
+        IOptions<AuthOptions> authOptions,
+        LoginAttemptLimiter loginAttemptLimiter)
     {
         _authService = authService;
         _authOptions = authOptions.Value;
+        _loginAttemptLimiter = loginAttemptLimiter;
     }
 
     [HttpPost("register")]
@@ -36,18 +43,16 @@ public sealed class AuthController : ControllerBase
         LoginUserRequestDto request,
         CancellationToken ct)
     {
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (!_loginAttemptLimiter.IsAllowed(ipAddress, request.Email))
+            throw new TooManyLoginAttemptsException();
+
         var result = await _authService.LoginAsync(request, ct);
 
         Response.Cookies.Append(
             _authOptions.SessionCookieName,
             result.SessionToken,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.Lax,
-                Expires = result.ExpiresAt
-            });
+            CreateSessionCookieOptions(result.ExpiresAt));
 
         return Ok(result.User);
     }
@@ -95,12 +100,7 @@ public sealed class AuthController : ControllerBase
 
         Response.Cookies.Delete(
             _authOptions.SessionCookieName,
-            new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.Lax
-            });
+            CreateSessionCookieOptions());
 
         return Ok(response);
     }
@@ -123,5 +123,32 @@ public sealed class AuthController : ControllerBase
     {
         var response = await _authService.ResendEmailVerificationAsync(request, ct);
         return Ok(response);
+    }
+
+    private CookieOptions CreateSessionCookieOptions(DateTimeOffset? expires = null)
+    {
+        var options = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = _authOptions.SessionCookieSecure,
+            SameSite = ParseSameSiteMode(_authOptions.SessionCookieSameSite),
+            Expires = expires
+        };
+
+        if (!string.IsNullOrWhiteSpace(_authOptions.SessionCookieDomain))
+            options.Domain = _authOptions.SessionCookieDomain;
+
+        return options;
+    }
+
+    private static SameSiteMode ParseSameSiteMode(string sameSite)
+    {
+        return sameSite.Trim().ToLowerInvariant() switch
+        {
+            "none" => SameSiteMode.None,
+            "strict" => SameSiteMode.Strict,
+            "lax" => SameSiteMode.Lax,
+            _ => SameSiteMode.Lax
+        };
     }
 }
