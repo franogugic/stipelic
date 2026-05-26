@@ -1,4 +1,5 @@
 using CreatorPlatform.Api.Middlewares;
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Options;
 using CreatorPlatform.Auth.Infrastructure;
@@ -37,7 +38,7 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 10,
+                PermitLimit = 20,
                 Window = TimeSpan.FromMinutes(10),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
@@ -68,6 +69,7 @@ builder.Services.AddRateLimiter(options =>
 
 builder.Services.AddAuthInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<LoginAttemptLimiter>();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 {
