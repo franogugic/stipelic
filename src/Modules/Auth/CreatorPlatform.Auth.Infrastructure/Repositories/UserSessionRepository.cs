@@ -29,4 +29,10 @@ public sealed class UserSessionRepository : IUserSessionRepository
                     session.ExpiresAt > now,
                 ct);
     }
+
+    public async Task<UserSession?> GetByIdAsync(Guid id, CancellationToken ct)
+    {
+        return await _context.Set<UserSession>()
+            .FirstOrDefaultAsync(session => session.Id == id, ct);
+    }
 }

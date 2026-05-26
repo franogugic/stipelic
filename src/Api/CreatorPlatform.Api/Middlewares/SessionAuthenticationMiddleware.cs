@@ -41,6 +41,7 @@ public sealed class SessionAuthenticationMiddleware
                     currentUserContext.User = new CurrentUserDto
                     {
                         Id = user.Id,
+                        SessionId = session.Id,
                         PublicId = user.PublicId,
                         FirstName = user.FirstName,
                         LastName = user.LastName,

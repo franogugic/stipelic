@@ -75,6 +75,36 @@ public sealed class AuthController : ControllerBase
         });
     }
 
+    [HttpPost("logout")]
+    public async Task<ActionResult<LogoutResponseDto>> Logout(
+        [FromServices] ICurrentUserContext currentUserContext,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+        {
+            return Unauthorized(new
+            {
+                statusCode = StatusCodes.Status401Unauthorized,
+                message = "Authentication is required.",
+                code = "UNAUTHORIZED"
+            });
+        }
+
+        var response = await _authService.LogoutAsync(currentUser.SessionId, ct);
+
+        Response.Cookies.Delete(
+            _authOptions.SessionCookieName,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Lax
+            });
+
+        return Ok(response);
+    }
+
     [HttpPost("verify-email")]
     [EnableRateLimiting("VerifyEmail")]
     public async Task<ActionResult<VerifyEmailResponseDto>> VerifyEmail(

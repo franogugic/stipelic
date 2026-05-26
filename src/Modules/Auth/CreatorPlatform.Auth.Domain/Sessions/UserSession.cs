@@ -34,6 +34,11 @@ public sealed class UserSession
             createdAt);
     }
 
+    public void Revoke(DateTimeOffset revokedAt)
+    {
+        RevokedAt = revokedAt;
+    }
+
     public Guid Id { get; private set; }
 
     public int UserId { get; private set; }
