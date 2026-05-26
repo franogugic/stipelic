@@ -76,7 +76,9 @@ public sealed class AuthController : ControllerBase
             PublicId = currentUser.PublicId,
             FirstName = currentUser.FirstName,
             LastName = currentUser.LastName,
-            Email = currentUser.Email
+            Email = currentUser.Email,
+            IsEmailVerified = currentUser.IsEmailVerified,
+            Status = currentUser.Status
         });
     }
 

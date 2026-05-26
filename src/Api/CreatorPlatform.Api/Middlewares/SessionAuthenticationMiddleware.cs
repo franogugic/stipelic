@@ -36,7 +36,7 @@ public sealed class SessionAuthenticationMiddleware
             {
                 var user = await userRepository.GetByIdAsync(session.UserId, context.RequestAborted);
 
-                if (user is not null && user.Status == UserStatus.Active)
+                if (user is not null && user.Status is not UserStatus.Disabled)
                 {
                     currentUserContext.User = new CurrentUserDto
                     {
@@ -45,7 +45,9 @@ public sealed class SessionAuthenticationMiddleware
                         PublicId = user.PublicId,
                         FirstName = user.FirstName,
                         LastName = user.LastName,
-                        Email = user.Email
+                        Email = user.Email,
+                        IsEmailVerified = user.IsEmailVerified,
+                        Status = user.Status.ToString()
                     };
                 }
             }

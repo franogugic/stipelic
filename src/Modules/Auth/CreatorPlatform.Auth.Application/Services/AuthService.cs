@@ -133,8 +133,8 @@ public sealed class AuthService : IAuthService
         if (!isPasswordValid)
             throw new UnauthorizedException(InvalidLoginCredentialsMessage);
 
-        if (!user.IsEmailVerified)
-            throw new EmailNotVerifiedException();
+        if (user.Status == UserStatus.Disabled)
+            throw new UnauthorizedException(InvalidLoginCredentialsMessage);
 
         var createdAt = DateTimeOffset.UtcNow;
         var expiresAt = createdAt.AddDays(_authOptions.SessionLifetimeDays);
@@ -159,7 +159,9 @@ public sealed class AuthService : IAuthService
                 PublicId = user.PublicId,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
-                Email = user.Email
+                Email = user.Email,
+                IsEmailVerified = user.IsEmailVerified,
+                Status = user.Status.ToString()
             }
         };
     }
