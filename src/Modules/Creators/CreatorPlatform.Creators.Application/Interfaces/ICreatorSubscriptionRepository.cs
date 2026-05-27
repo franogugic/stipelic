@@ -1,0 +1,8 @@
+using CreatorPlatform.Creators.Domain.Creators;
+
+namespace CreatorPlatform.Creators.Application.Interfaces;
+
+public interface ICreatorSubscriptionRepository
+{
+    Task AddAsync(CreatorSubscription subscription, CancellationToken ct);
+}

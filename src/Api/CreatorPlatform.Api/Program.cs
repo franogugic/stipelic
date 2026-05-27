@@ -3,6 +3,7 @@ using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Options;
 using CreatorPlatform.Auth.Infrastructure;
+using CreatorPlatform.Creators.Infrastructure;
 using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
@@ -83,6 +84,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddAuthInfrastructure();
+builder.Services.AddCreatorsInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<LoginAttemptLimiter>();
 
