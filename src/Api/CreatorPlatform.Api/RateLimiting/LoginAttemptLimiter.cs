@@ -16,12 +16,15 @@ public sealed class LoginAttemptLimiter
 
         var window = _windows.AddOrUpdate(
             partitionKey,
+            // id window with that key does not exists
             _ => new LoginAttemptWindow(now.Add(Window), 1),
             (_, existingWindow) =>
             {
+                // restart timer
                 if (existingWindow.ExpiresAt <= now)
                     return new LoginAttemptWindow(now.Add(Window), 1);
 
+                // increment attempt count
                 return existingWindow with
                 {
                     AttemptCount = existingWindow.AttemptCount + 1

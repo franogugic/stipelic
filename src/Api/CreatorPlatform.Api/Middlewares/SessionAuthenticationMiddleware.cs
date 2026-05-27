@@ -25,7 +25,6 @@ public sealed class SessionAuthenticationMiddleware
     {
         var cookieName = authOptions.Value.SessionCookieName;
         var sessionToken = context.Request.Cookies[cookieName];
-
         if (!string.IsNullOrWhiteSpace(sessionToken))
         {
             var sessionTokenHash = tokenHasher.Hash(sessionToken);
