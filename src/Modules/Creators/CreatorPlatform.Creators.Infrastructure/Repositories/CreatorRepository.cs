@@ -14,6 +14,14 @@ public sealed class CreatorRepository : ICreatorRepository
         _context = context;
     }
 
+    public async Task<Creator?> GetByOwnerUserIdAsync(int ownerUserId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Creator>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(creator => creator.OwnerUserId == ownerUserId, ct);
+    }
+
     public async Task<bool> ExistsByOwnerUserIdAsync(int ownerUserId, CancellationToken ct)
     {
         return await _context

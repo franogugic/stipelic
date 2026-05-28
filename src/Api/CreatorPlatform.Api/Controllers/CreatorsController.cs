@@ -22,6 +22,18 @@ public sealed class CreatorsController : ControllerBase
         _currentUserContext = currentUserContext;
     }
 
+    [HttpGet("me")]
+    public async Task<ActionResult<CreatorResponseDto?>> Me(CancellationToken ct)
+    {
+        var currentUser = _currentUserContext.User;
+        if (currentUser is null)
+            throw new UnauthorizedException("Authentication is required.");
+
+        var response = await _creatorService.GetCurrentForOwnerAsync(currentUser.Id, ct);
+
+        return Ok(response);
+    }
+
     [HttpPost]
     public async Task<ActionResult<CreatorResponseDto>> Create(
         CreateCreatorRequestDto request,

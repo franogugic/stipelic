@@ -14,7 +14,12 @@ public sealed class CreatorPlan
         Currency currency,
         int monthlyPriceCents,
         int yearlyPriceCents,
-        string limitsJson,
+        int maxContacts,
+        int maxLandingPages,
+        int maxProducts,
+        int maxTeamMembers,
+        int maxEmailSendsPerMonth,
+        int platformFeeBasisPoints,
         string featuresJson,
         bool isActive,
         int sortOrder,
@@ -27,7 +32,12 @@ public sealed class CreatorPlan
         Currency = currency;
         MonthlyPriceCents = monthlyPriceCents;
         YearlyPriceCents = yearlyPriceCents;
-        LimitsJson = limitsJson;
+        MaxContacts = maxContacts;
+        MaxLandingPages = maxLandingPages;
+        MaxProducts = maxProducts;
+        MaxTeamMembers = maxTeamMembers;
+        MaxEmailSendsPerMonth = maxEmailSendsPerMonth;
+        PlatformFeeBasisPoints = platformFeeBasisPoints;
         FeaturesJson = featuresJson;
         IsActive = isActive;
         SortOrder = sortOrder;
@@ -42,7 +52,12 @@ public sealed class CreatorPlan
         Currency currency,
         int monthlyPriceCents,
         int yearlyPriceCents,
-        string limitsJson,
+        int maxContacts,
+        int maxLandingPages,
+        int maxProducts,
+        int maxTeamMembers,
+        int maxEmailSendsPerMonth,
+        int platformFeeBasisPoints,
         string featuresJson,
         int sortOrder,
         DateTimeOffset createdAt)
@@ -55,7 +70,12 @@ public sealed class CreatorPlan
             currency,
             monthlyPriceCents,
             yearlyPriceCents,
-            limitsJson,
+            maxContacts,
+            maxLandingPages,
+            maxProducts,
+            maxTeamMembers,
+            maxEmailSendsPerMonth,
+            platformFeeBasisPoints,
             featuresJson,
             true,
             sortOrder,
@@ -72,14 +92,24 @@ public sealed class CreatorPlan
     public void UpdateDetails(
         string name,
         string description,
-        string limitsJson,
+        int maxContacts,
+        int maxLandingPages,
+        int maxProducts,
+        int maxTeamMembers,
+        int maxEmailSendsPerMonth,
+        int platformFeeBasisPoints,
         string featuresJson,
         int sortOrder,
         DateTimeOffset updatedAt)
     {
         Name = name;
         Description = description;
-        LimitsJson = limitsJson;
+        MaxContacts = maxContacts;
+        MaxLandingPages = maxLandingPages;
+        MaxProducts = maxProducts;
+        MaxTeamMembers = maxTeamMembers;
+        MaxEmailSendsPerMonth = maxEmailSendsPerMonth;
+        PlatformFeeBasisPoints = platformFeeBasisPoints;
         FeaturesJson = featuresJson;
         SortOrder = sortOrder;
         UpdatedAt = updatedAt;
@@ -113,7 +143,17 @@ public sealed class CreatorPlan
 
     public int YearlyPriceCents { get; private set; }
 
-    public string LimitsJson { get; private set; } = "{}";
+    public int MaxContacts { get; private set; }
+
+    public int MaxLandingPages { get; private set; }
+
+    public int MaxProducts { get; private set; }
+
+    public int MaxTeamMembers { get; private set; }
+
+    public int MaxEmailSendsPerMonth { get; private set; }
+
+    public int PlatformFeeBasisPoints { get; private set; }
 
     public string FeaturesJson { get; private set; } = "[]";
 
