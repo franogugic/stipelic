@@ -35,6 +35,11 @@ public sealed class CreatorSettingsConfiguration : IEntityTypeConfiguration<Crea
             .HasMaxLength(100)
             .IsRequired();
 
+        builder.Property(settings => settings.Language)
+            .HasMaxLength(10)
+            .HasDefaultValue("en")
+            .IsRequired();
+
         builder.Property(settings => settings.CreatedAt)
             .IsRequired();
 

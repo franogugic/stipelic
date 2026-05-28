@@ -15,12 +15,6 @@ public sealed class CreatorSubscriptionConfiguration : IEntityTypeConfiguration<
         builder.Property(subscription => subscription.Id)
             .ValueGeneratedOnAdd();
 
-        builder.Property(subscription => subscription.PublicId)
-            .IsRequired();
-
-        builder.HasIndex(subscription => subscription.PublicId)
-            .IsUnique();
-
         builder.Property(subscription => subscription.CreatorId)
             .IsRequired();
 
@@ -54,6 +48,14 @@ public sealed class CreatorSubscriptionConfiguration : IEntityTypeConfiguration<
 
         builder.Property(subscription => subscription.ProviderSubscriptionId)
             .HasMaxLength(255);
+
+        builder.Property(subscription => subscription.CurrentPeriodStart);
+
+        builder.Property(subscription => subscription.CurrentPeriodEnd);
+
+        builder.Property(subscription => subscription.TrialEndsAt);
+
+        builder.Property(subscription => subscription.CancelledAt);
 
         builder.Property(subscription => subscription.CreatedAt)
             .IsRequired();

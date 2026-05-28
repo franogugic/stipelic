@@ -12,6 +12,7 @@ public sealed partial class CreatorService : ICreatorService
     private const string FreePlanCode = "free";
     private const string DefaultPrimaryColor = "#111827";
     private const string DefaultTimezone = "Europe/Sarajevo";
+    private const string DefaultLanguage = "en";
 
     private readonly ICreatorRepository _creatorRepository;
     private readonly ICreatorMemberRepository _creatorMemberRepository;
@@ -50,6 +51,7 @@ public sealed partial class CreatorService : ICreatorService
         var logoUrl = NormalizeOptionalText(request.LogoUrl, 500);
         var primaryColor = NormalizePrimaryColor(request.PrimaryColor);
         var timezone = NormalizeTimezone(request.Timezone);
+        var language = NormalizeLanguage(request.Language);
 
         if (planCode != FreePlanCode)
             throw new BadRequestException("Only the free creator plan can be activated right now.");
@@ -57,11 +59,11 @@ public sealed partial class CreatorService : ICreatorService
         if (await _creatorRepository.SlugExistsAsync(slug, ct))
             throw new BadRequestException("This creator URL is already taken.");
 
-        //if (await _creatorRepository.ExistsByOwnerUserIdAsync(ownerUserId, ct))
-            //throw new BadRequestException("You already have a creator workspace.");
+        if (await _creatorRepository.ExistsByOwnerUserIdAsync(ownerUserId, ct))
+            throw new BadRequestException("You already have a creator workspace.");
 
         var plan = await _creatorPlanRepository.GetByCodeAsync(planCode, ct);
-        if (plan is null || !plan.IsActive)
+        if (plan is null || plan.Status != CreatorPlanStatus.Active)
             throw new BadRequestException("Selected creator plan is not available.");
 
         Creator? creator = null;
@@ -85,6 +87,7 @@ public sealed partial class CreatorService : ICreatorService
                 logoUrl,
                 primaryColor,
                 timezone,
+                language,
                 createdAt);
             var subscription = CreatorSubscription.CreateFree(creator, plan, createdAt);
 
@@ -215,6 +218,22 @@ public sealed partial class CreatorService : ICreatorService
         return normalized;
     }
 
+    private static string NormalizeLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+            return DefaultLanguage;
+
+        var normalized = language.Trim().ToLowerInvariant();
+
+        if (normalized.Length > 10)
+            throw new BadRequestException("Language cannot be longer than 10 characters.");
+
+        if (!LanguageRegex().IsMatch(normalized))
+            throw new BadRequestException("Language is not valid.");
+
+        return normalized;
+    }
+
     private static CreatorResponseDto ToResponse(Creator creator, CreatorPlan plan)
     {
         return ToResponse(creator, plan.Code);
@@ -241,4 +260,7 @@ public sealed partial class CreatorService : ICreatorService
 
     [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
     private static partial Regex HexColorRegex();
+
+    [GeneratedRegex("^[a-z]{2}(-[a-z]{2})?$")]
+    private static partial Regex LanguageRegex();
 }

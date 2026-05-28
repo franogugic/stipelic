@@ -19,8 +19,10 @@ public sealed class CreatorPlanRepository : ICreatorPlanRepository
         return await _context
             .Set<CreatorPlan>()
             .AsNoTracking()
-            .Where(plan => plan.IsActive)
-            .OrderBy(plan => plan.SortOrder)
+            .Include(plan => plan.Limits)
+            .Where(plan => plan.Status == CreatorPlanStatus.Active)
+            .OrderBy(plan => plan.PriceCents)
+            .ThenBy(plan => plan.Id)
             .ToListAsync(ct);
     }
 
@@ -28,6 +30,7 @@ public sealed class CreatorPlanRepository : ICreatorPlanRepository
     {
         return await _context
             .Set<CreatorPlan>()
+            .Include(plan => plan.Limits)
             .FirstOrDefaultAsync(plan => plan.Code == code, ct);
     }
 }

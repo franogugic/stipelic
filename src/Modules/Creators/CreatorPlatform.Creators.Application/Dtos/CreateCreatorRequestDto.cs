@@ -24,4 +24,6 @@ public sealed class CreateCreatorRequestDto
     public string? PrimaryColor { get; init; }
 
     public string? Timezone { get; init; }
+
+    public string? Language { get; init; }
 }

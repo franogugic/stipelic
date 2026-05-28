@@ -13,6 +13,7 @@ public sealed class CreatorSettings
         string? logoUrl,
         string primaryColor,
         string timezone,
+        string language,
         DateTimeOffset createdAt)
     {
         Creator = creator;
@@ -21,6 +22,7 @@ public sealed class CreatorSettings
         LogoUrl = logoUrl;
         PrimaryColor = primaryColor;
         Timezone = timezone;
+        Language = language;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
     }
@@ -32,6 +34,7 @@ public sealed class CreatorSettings
         string? logoUrl,
         string primaryColor,
         string timezone,
+        string language,
         DateTimeOffset createdAt)
     {
         return new CreatorSettings(
@@ -41,6 +44,7 @@ public sealed class CreatorSettings
             logoUrl,
             primaryColor,
             timezone,
+            language,
             createdAt);
     }
 
@@ -56,10 +60,11 @@ public sealed class CreatorSettings
         UpdatedAt = updatedAt;
     }
 
-    public void UpdateSupport(string? supportEmail, string timezone, DateTimeOffset updatedAt)
+    public void UpdateSupport(string? supportEmail, string timezone, string language, DateTimeOffset updatedAt)
     {
         SupportEmail = supportEmail;
         Timezone = timezone;
+        Language = language;
         UpdatedAt = updatedAt;
     }
 
@@ -76,6 +81,8 @@ public sealed class CreatorSettings
     public string PrimaryColor { get; private set; } = string.Empty;
 
     public string Timezone { get; private set; } = string.Empty;
+
+    public string Language { get; private set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; private set; }
 

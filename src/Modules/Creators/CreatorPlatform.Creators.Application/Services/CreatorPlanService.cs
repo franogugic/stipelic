@@ -24,21 +24,15 @@ public sealed class CreatorPlanService : ICreatorPlanService
     {
         return new CreatorPlanResponseDto
         {
-            PublicId = plan.PublicId,
             Code = plan.Code,
             Name = plan.Name,
             Description = plan.Description,
+            Status = plan.Status.ToString(),
             Currency = ToCurrencyCode(plan.Currency),
-            MonthlyPriceCents = plan.MonthlyPriceCents,
-            YearlyPriceCents = plan.YearlyPriceCents,
-            MaxContacts = plan.MaxContacts,
-            MaxLandingPages = plan.MaxLandingPages,
-            MaxProducts = plan.MaxProducts,
-            MaxTeamMembers = plan.MaxTeamMembers,
-            MaxEmailSendsPerMonth = plan.MaxEmailSendsPerMonth,
+            PriceCents = plan.PriceCents,
+            BillingInterval = plan.BillingInterval.ToString(),
             PlatformFeeBasisPoints = plan.PlatformFeeBasisPoints,
-            FeaturesJson = plan.FeaturesJson,
-            SortOrder = plan.SortOrder
+            Limits = plan.Limits.ToDictionary(limit => limit.LimitKey, limit => limit.LimitValue)
         };
     }
 

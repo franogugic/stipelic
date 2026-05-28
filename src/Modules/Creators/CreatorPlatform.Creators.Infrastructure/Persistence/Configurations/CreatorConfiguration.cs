@@ -25,7 +25,8 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
         builder.Property(creator => creator.OwnerUserId)
             .IsRequired();
 
-        builder.HasIndex(creator => creator.OwnerUserId);
+        builder.HasIndex(creator => creator.OwnerUserId)
+            .IsUnique();
 
         builder.HasOne<User>()
             .WithMany()

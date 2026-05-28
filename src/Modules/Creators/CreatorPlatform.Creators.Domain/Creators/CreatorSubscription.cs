@@ -7,7 +7,6 @@ public sealed class CreatorSubscription
     }
 
     private CreatorSubscription(
-        Guid publicId,
         Creator creator,
         CreatorPlan plan,
         CreatorSubscriptionStatus status,
@@ -19,7 +18,6 @@ public sealed class CreatorSubscription
         DateTimeOffset? trialEndsAt,
         DateTimeOffset createdAt)
     {
-        PublicId = publicId;
         Creator = creator;
         Plan = plan;
         Status = status;
@@ -39,7 +37,6 @@ public sealed class CreatorSubscription
         DateTimeOffset createdAt)
     {
         return new CreatorSubscription(
-            Guid.NewGuid(),
             creator,
             plan,
             CreatorSubscriptionStatus.Active,
@@ -61,7 +58,6 @@ public sealed class CreatorSubscription
         DateTimeOffset createdAt)
     {
         return new CreatorSubscription(
-            Guid.NewGuid(),
             creator,
             plan,
             CreatorSubscriptionStatus.Incomplete,
@@ -98,15 +94,7 @@ public sealed class CreatorSubscription
         UpdatedAt = cancelledAt;
     }
 
-    public void ScheduleCancellation(DateTimeOffset cancelAt, DateTimeOffset updatedAt)
-    {
-        CancelAt = cancelAt;
-        UpdatedAt = updatedAt;
-    }
-
     public int Id { get; private set; }
-
-    public Guid PublicId { get; private set; }
 
     public int CreatorId { get; private set; }
 
@@ -129,8 +117,6 @@ public sealed class CreatorSubscription
     public DateTimeOffset? CurrentPeriodEnd { get; private set; }
 
     public DateTimeOffset? TrialEndsAt { get; private set; }
-
-    public DateTimeOffset? CancelAt { get; private set; }
 
     public DateTimeOffset? CancelledAt { get; private set; }
 

@@ -55,5 +55,7 @@ public sealed class CreatorMemberConfiguration : IEntityTypeConfiguration<Creato
             .IsUnique();
 
         builder.HasIndex(member => new { member.UserId, member.Status });
+
+        builder.HasIndex(member => new { member.CreatorId, member.Status });
     }
 }
