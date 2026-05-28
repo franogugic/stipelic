@@ -19,7 +19,10 @@ public sealed class CreatorRepository : ICreatorRepository
         return await _context
             .Set<Creator>()
             .AsNoTracking()
-            .FirstOrDefaultAsync(creator => creator.OwnerUserId == ownerUserId, ct);
+            .FirstOrDefaultAsync(creator =>
+                creator.OwnerUserId == ownerUserId
+                && creator.Status != CreatorStatus.Disabled,
+                ct);
     }
 
     public async Task<bool> ExistsByOwnerUserIdAsync(int ownerUserId, CancellationToken ct)
@@ -27,7 +30,10 @@ public sealed class CreatorRepository : ICreatorRepository
         return await _context
             .Set<Creator>()
             .AsNoTracking()
-            .AnyAsync(creator => creator.OwnerUserId == ownerUserId, ct);
+            .AnyAsync(creator =>
+                creator.OwnerUserId == ownerUserId
+                && creator.Status != CreatorStatus.Disabled,
+                ct);
     }
 
     public async Task<bool> SlugExistsAsync(string slug, CancellationToken ct)
@@ -35,7 +41,10 @@ public sealed class CreatorRepository : ICreatorRepository
         return await _context
             .Set<Creator>()
             .AsNoTracking()
-            .AnyAsync(creator => creator.Slug == slug, ct);
+            .AnyAsync(creator =>
+                creator.Slug == slug
+                && creator.Status != CreatorStatus.Disabled,
+                ct);
     }
 
     public async Task AddAsync(Creator creator, CancellationToken ct)
@@ -43,13 +52,18 @@ public sealed class CreatorRepository : ICreatorRepository
         await _context.Set<Creator>().AddAsync(creator, ct);
     }
 
-    public async Task<bool> DeleteByOwnerUserIdAsync(int ownerUserId, CancellationToken ct)
+    public async Task<bool> DisableByOwnerUserIdAsync(int ownerUserId, DateTimeOffset disabledAt, CancellationToken ct)
     {
-        var deletedCount = await _context
+        var updatedCount = await _context
             .Set<Creator>()
-            .Where(creator => creator.OwnerUserId == ownerUserId)
-            .ExecuteDeleteAsync(ct);
+            .Where(creator =>
+                creator.OwnerUserId == ownerUserId
+                && creator.Status != CreatorStatus.Disabled)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(creator => creator.Status, CreatorStatus.Disabled)
+                .SetProperty(creator => creator.UpdatedAt, disabledAt),
+                ct);
 
-        return deletedCount > 0;
+        return updatedCount > 0;
     }
 }

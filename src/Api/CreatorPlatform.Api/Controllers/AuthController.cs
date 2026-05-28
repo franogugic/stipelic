@@ -3,6 +3,7 @@ using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Auth.Application.Options;
 using CreatorPlatform.Api.RateLimiting;
+using CreatorPlatform.Api.Responses;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
@@ -63,11 +64,11 @@ public sealed class AuthController : ControllerBase
         var currentUser = currentUserContext.User;
         if (currentUser is null)
         {
-            return Unauthorized(new
+            return Unauthorized(new ApiErrorResponse
             {
-                statusCode = StatusCodes.Status401Unauthorized,
-                message = "Authentication is required.",
-                code = "UNAUTHORIZED"
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = "Authentication is required.",
+                Code = "UNAUTHORIZED"
             });
         }
 
@@ -90,11 +91,11 @@ public sealed class AuthController : ControllerBase
         var currentUser = currentUserContext.User;
         if (currentUser is null)
         {
-            return Unauthorized(new
+            return Unauthorized(new ApiErrorResponse
             {
-                statusCode = StatusCodes.Status401Unauthorized,
-                message = "Authentication is required.",
-                code = "UNAUTHORIZED"
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = "Authentication is required.",
+                Code = "UNAUTHORIZED"
             });
         }
 

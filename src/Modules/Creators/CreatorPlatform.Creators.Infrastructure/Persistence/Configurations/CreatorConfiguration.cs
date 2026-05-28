@@ -26,7 +26,8 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
             .IsRequired();
 
         builder.HasIndex(creator => creator.OwnerUserId)
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("\"Status\" <> 'Disabled'");
 
         builder.HasOne<User>()
             .WithMany()
@@ -42,7 +43,8 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
             .IsRequired();
 
         builder.HasIndex(creator => creator.Slug)
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("\"Status\" <> 'Disabled'");
 
         builder.Property(creator => creator.Status)
             .HasConversion<string>()

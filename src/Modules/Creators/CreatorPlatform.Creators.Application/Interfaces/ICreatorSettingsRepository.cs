@@ -5,4 +5,6 @@ namespace CreatorPlatform.Creators.Application.Interfaces;
 public interface ICreatorSettingsRepository
 {
     Task AddAsync(CreatorSettings settings, CancellationToken ct);
+
+    Task<CreatorSettings?> GetByCreatorSlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct);
 }

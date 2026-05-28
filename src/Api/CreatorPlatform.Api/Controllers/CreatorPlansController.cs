@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -16,10 +17,13 @@ public sealed class CreatorPlansController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<CreatorPlanResponseDto>>> ListActive(CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<List<CreatorPlanResponseDto>>>> ListActive(CancellationToken ct)
     {
         var response = await _creatorPlanService.ListActiveAsync(ct);
 
-        return Ok(response);
+        return Ok(ApiResponse<List<CreatorPlanResponseDto>>.Success(
+            StatusCodes.Status200OK,
+            "Creator plans loaded.",
+            response));
     }
 }

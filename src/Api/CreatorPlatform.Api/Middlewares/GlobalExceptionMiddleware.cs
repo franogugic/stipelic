@@ -1,4 +1,5 @@
 using CreatorPlatform.Auth.Application.Exceptions;
+using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Api.Middlewares;
@@ -52,6 +53,18 @@ public sealed class GlobalExceptionMiddleware
             _logger.LogWarning(e, "Conflict: {Message}", e.Message);
             await HandleExceptionAsync(context, statusCode, e.Message, "USER_ALREADY_EXISTS");
         }
+        catch (ConflictException e)
+        {
+            var statusCode = StatusCodes.Status409Conflict;
+            _logger.LogWarning(e, "Conflict: {Message}", e.Message);
+            await HandleExceptionAsync(context, statusCode, e.Message, "CONFLICT");
+        }
+        catch (NotFoundException e)
+        {
+            var statusCode = StatusCodes.Status404NotFound;
+            _logger.LogWarning(e, "Not found: {Message}", e.Message);
+            await HandleExceptionAsync(context, statusCode, e.Message, "NOT_FOUND");
+        }
         catch (InternalServerException e)
         {
             var statusCode = StatusCodes.Status500InternalServerError;
@@ -71,11 +84,11 @@ public sealed class GlobalExceptionMiddleware
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = statusCode;
         
-        var response = new
+        var response = new ApiErrorResponse
         {
-            statusCode,
-            message,
-            code = errorCode
+            StatusCode = statusCode,
+            Message = message,
+            Code = errorCode
         };
 
         await context.Response.WriteAsJsonAsync(response);

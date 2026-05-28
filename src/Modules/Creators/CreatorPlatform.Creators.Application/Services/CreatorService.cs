@@ -61,28 +61,25 @@ public sealed partial class CreatorService : ICreatorService
             throw new BadRequestException("Only the free creator plan can be activated right now.");
 
         if (await _creatorRepository.SlugExistsAsync(slug, ct))
-            throw new BadRequestException("This creator URL is already taken.");
+            throw new ConflictException("This creator URL is already taken.");
 
         if (await _creatorRepository.ExistsByOwnerUserIdAsync(ownerUserId, ct))
-            throw new BadRequestException("You already have a creator workspace.");
+            throw new ConflictException("You already have a creator workspace.");
 
         var plan = await _creatorPlanRepository.GetByCodeAsync(planCode, ct);
         if (plan is null || plan.Status != CreatorPlanStatus.Active)
             throw new BadRequestException("Selected creator plan is not available.");
 
-        Creator? creator = null;
+        var createdAt = DateTimeOffset.UtcNow;
+        var creator = Creator.Create(
+            ownerUserId,
+            name,
+            slug,
+            defaultCurrency,
+            createdAt);
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            var createdAt = DateTimeOffset.UtcNow;
-
-            creator = Creator.Create(
-                ownerUserId,
-                name,
-                slug,
-                defaultCurrency,
-                createdAt);
-
             var ownerMember = CreatorMember.CreateOwner(creator, ownerUserId, createdAt);
             var settings = CreatorSettings.Create(
                 creator,
@@ -102,7 +99,7 @@ public sealed partial class CreatorService : ICreatorService
             await _unitOfWork.SaveChangesAsync(ct);
         }, ct);
 
-        return ToResponse(creator!, plan);
+        return ToResponse(creator, plan);
     }
 
     public async Task<CreatorResponseDto?> GetCurrentForOwnerAsync(int ownerUserId, CancellationToken ct)
@@ -117,11 +114,29 @@ public sealed partial class CreatorService : ICreatorService
         return ToResponse(creator, planCode);
     }
 
+    public async Task<CreatorSettingsResponseDto> GetSettingsAsync(
+        string slug,
+        int ownerUserId,
+        CancellationToken ct)
+    {
+        var normalizedSlug = NormalizeSlug(slug, slug);
+        var settings = await _creatorSettingsRepository.GetByCreatorSlugForOwnerAsync(
+            normalizedSlug,
+            ownerUserId,
+            ct);
+
+        if (settings is null)
+            throw new NotFoundException("Creator settings do not exist.");
+
+        return ToSettingsResponse(settings);
+    }
+
     public async Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
     {
-        var wasDeleted = await _creatorRepository.DeleteByOwnerUserIdAsync(ownerUserId, ct);
-        if (!wasDeleted)
-            throw new BadRequestException("Creator workspace does not exist.");
+        var disabledAt = DateTimeOffset.UtcNow;
+        var wasDisabled = await _creatorRepository.DisableByOwnerUserIdAsync(ownerUserId, disabledAt, ct);
+        if (!wasDisabled)
+            throw new NotFoundException("Creator workspace does not exist.");
     }
 
     private static string NormalizeName(string name)
@@ -283,6 +298,23 @@ public sealed partial class CreatorService : ICreatorService
             Status = creator.Status.ToString(),
             DefaultCurrency = creator.DefaultCurrency.ToString(),
             PlanCode = planCode
+        };
+    }
+
+    private static CreatorSettingsResponseDto ToSettingsResponse(CreatorSettings settings)
+    {
+        return new CreatorSettingsResponseDto
+        {
+            CreatorPublicId = settings.Creator.PublicId,
+            CreatorName = settings.Creator.Name,
+            Slug = settings.Creator.Slug,
+            DefaultCurrency = settings.Creator.DefaultCurrency.ToString(),
+            SupportEmail = settings.SupportEmail ?? string.Empty,
+            BrandName = settings.BrandName,
+            LogoUrl = settings.LogoUrl ?? string.Empty,
+            PrimaryColor = settings.PrimaryColor,
+            Timezone = settings.Timezone,
+            Language = settings.Language
         };
     }
 

@@ -12,5 +12,5 @@ public interface ICreatorRepository
 
     Task AddAsync(Creator creator, CancellationToken ct);
 
-    Task<bool> DeleteByOwnerUserIdAsync(int ownerUserId, CancellationToken ct);
+    Task<bool> DisableByOwnerUserIdAsync(int ownerUserId, DateTimeOffset disabledAt, CancellationToken ct);
 }
