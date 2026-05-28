@@ -49,8 +49,22 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
         builder.Property(plan => plan.YearlyPriceCents)
             .IsRequired();
 
-        builder.Property(plan => plan.LimitsJson)
-            .HasColumnType("jsonb")
+        builder.Property(plan => plan.MaxContacts)
+            .IsRequired();
+
+        builder.Property(plan => plan.MaxLandingPages)
+            .IsRequired();
+
+        builder.Property(plan => plan.MaxProducts)
+            .IsRequired();
+
+        builder.Property(plan => plan.MaxTeamMembers)
+            .IsRequired();
+
+        builder.Property(plan => plan.MaxEmailSendsPerMonth)
+            .IsRequired();
+
+        builder.Property(plan => plan.PlatformFeeBasisPoints)
             .IsRequired();
 
         builder.Property(plan => plan.FeaturesJson)
@@ -82,14 +96,12 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 MonthlyPriceCents = 0,
                 YearlyPriceCents = 0,
-                LimitsJson = """
-                             {
-                               "contacts": 500,
-                               "landingPages": 1,
-                               "products": 1,
-                               "teamMembers": 1
-                             }
-                             """,
+                MaxContacts = 500,
+                MaxLandingPages = 1,
+                MaxProducts = 1,
+                MaxTeamMembers = 1,
+                MaxEmailSendsPerMonth = 500,
+                PlatformFeeBasisPoints = 1000,
                 FeaturesJson = """
                                [
                                  "Basic creator workspace",
@@ -113,14 +125,12 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 MonthlyPriceCents = 1500,
                 YearlyPriceCents = 15000,
-                LimitsJson = """
-                             {
-                               "contacts": 1500,
-                               "landingPages": 5,
-                               "products": 5,
-                               "teamMembers": 2
-                             }
-                             """,
+                MaxContacts = 1500,
+                MaxLandingPages = 5,
+                MaxProducts = 5,
+                MaxTeamMembers = 2,
+                MaxEmailSendsPerMonth = 1500,
+                PlatformFeeBasisPoints = 500,
                 FeaturesJson = """
                                [
                                  "Everything in Free",
@@ -144,14 +154,12 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 MonthlyPriceCents = 3000,
                 YearlyPriceCents = 30000,
-                LimitsJson = """
-                             {
-                               "contacts": 5000,
-                               "landingPages": 20,
-                               "products": 25,
-                               "teamMembers": 5
-                             }
-                             """,
+                MaxContacts = 5000,
+                MaxLandingPages = 20,
+                MaxProducts = 25,
+                MaxTeamMembers = 5,
+                MaxEmailSendsPerMonth = 5000,
+                PlatformFeeBasisPoints = 250,
                 FeaturesJson = """
                                [
                                  "Everything in Basic",
@@ -175,14 +183,12 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 MonthlyPriceCents = 9900,
                 YearlyPriceCents = 99000,
-                LimitsJson = """
-                             {
-                               "contacts": 20000,
-                               "landingPages": 100,
-                               "products": 100,
-                               "teamMembers": 15
-                             }
-                             """,
+                MaxContacts = 20000,
+                MaxLandingPages = 100,
+                MaxProducts = 100,
+                MaxTeamMembers = 15,
+                MaxEmailSendsPerMonth = 20000,
+                PlatformFeeBasisPoints = 100,
                 FeaturesJson = """
                                [
                                  "Everything in Pro",

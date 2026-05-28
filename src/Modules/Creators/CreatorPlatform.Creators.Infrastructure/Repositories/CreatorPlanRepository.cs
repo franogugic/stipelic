@@ -14,6 +14,16 @@ public sealed class CreatorPlanRepository : ICreatorPlanRepository
         _context = context;
     }
 
+    public async Task<List<CreatorPlan>> ListActiveAsync(CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorPlan>()
+            .AsNoTracking()
+            .Where(plan => plan.IsActive)
+            .OrderBy(plan => plan.SortOrder)
+            .ToListAsync(ct);
+    }
+
     public async Task<CreatorPlan?> GetByCodeAsync(string code, CancellationToken ct)
     {
         return await _context

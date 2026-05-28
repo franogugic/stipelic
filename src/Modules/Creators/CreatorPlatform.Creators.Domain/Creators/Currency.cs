@@ -4,5 +4,4 @@ public enum Currency
 {
     Eur = 1,
     Usd = 2,
-    Bam = 3
 }

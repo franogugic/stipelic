@@ -98,6 +98,13 @@ public sealed partial class CreatorService : ICreatorService
         return ToResponse(creator!, plan);
     }
 
+    public async Task<CreatorResponseDto?> GetCurrentForOwnerAsync(int ownerUserId, CancellationToken ct)
+    {
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
+
+        return creator is null ? null : ToResponse(creator, planCode: string.Empty);
+    }
+
     private static string NormalizeName(string name)
     {
         var normalized = name.Trim();
@@ -143,7 +150,6 @@ public sealed partial class CreatorService : ICreatorService
         {
             "EUR" => Currency.Eur,
             "USD" => Currency.Usd,
-            "BAM" => Currency.Bam,
             _ => throw new BadRequestException("Currency is not supported.")
         };
     }
@@ -211,6 +217,11 @@ public sealed partial class CreatorService : ICreatorService
 
     private static CreatorResponseDto ToResponse(Creator creator, CreatorPlan plan)
     {
+        return ToResponse(creator, plan.Code);
+    }
+
+    private static CreatorResponseDto ToResponse(Creator creator, string planCode)
+    {
         return new CreatorResponseDto
         {
             PublicId = creator.PublicId,
@@ -218,7 +229,7 @@ public sealed partial class CreatorService : ICreatorService
             Slug = creator.Slug,
             Status = creator.Status.ToString(),
             DefaultCurrency = creator.DefaultCurrency.ToString(),
-            PlanCode = plan.Code
+            PlanCode = planCode
         };
     }
 
