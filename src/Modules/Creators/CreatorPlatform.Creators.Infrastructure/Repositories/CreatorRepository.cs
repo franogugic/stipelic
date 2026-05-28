@@ -42,4 +42,14 @@ public sealed class CreatorRepository : ICreatorRepository
     {
         await _context.Set<Creator>().AddAsync(creator, ct);
     }
+
+    public async Task<bool> DeleteByOwnerUserIdAsync(int ownerUserId, CancellationToken ct)
+    {
+        var deletedCount = await _context
+            .Set<Creator>()
+            .Where(creator => creator.OwnerUserId == ownerUserId)
+            .ExecuteDeleteAsync(ct);
+
+        return deletedCount > 0;
+    }
 }

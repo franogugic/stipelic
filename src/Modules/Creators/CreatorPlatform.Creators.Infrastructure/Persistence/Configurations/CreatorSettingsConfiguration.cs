@@ -21,7 +21,7 @@ public sealed class CreatorSettingsConfiguration : IEntityTypeConfiguration<Crea
             .HasMaxLength(100);
 
         builder.Property(settings => settings.BrandName)
-            .HasMaxLength(100)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.Property(settings => settings.LogoUrl)
@@ -32,7 +32,7 @@ public sealed class CreatorSettingsConfiguration : IEntityTypeConfiguration<Crea
             .IsRequired();
 
         builder.Property(settings => settings.Timezone)
-            .HasMaxLength(100)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.Property(settings => settings.Language)

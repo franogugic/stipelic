@@ -13,6 +13,10 @@ public sealed partial class CreatorService : ICreatorService
     private const string DefaultPrimaryColor = "#111827";
     private const string DefaultTimezone = "Europe/Sarajevo";
     private const string DefaultLanguage = "en";
+    private const int CreatorNameMaxLength = 50;
+    private const int CreatorSlugMaxLength = 50;
+    private const int BrandNameMaxLength = 50;
+    private const int TimezoneMaxLength = 50;
 
     private readonly ICreatorRepository _creatorRepository;
     private readonly ICreatorMemberRepository _creatorMemberRepository;
@@ -47,8 +51,8 @@ public sealed partial class CreatorService : ICreatorService
         var planCode = NormalizePlanCode(request.PlanCode);
         var defaultCurrency = ParseCurrency(request.DefaultCurrency);
         var supportEmail = NormalizeOptionalEmail(request.SupportEmail);
-        var brandName = NormalizeOptionalText(request.BrandName, 100) ?? name;
-        var logoUrl = NormalizeOptionalText(request.LogoUrl, 500);
+        var brandName = NormalizeOptionalText(request.BrandName, BrandNameMaxLength) ?? name;
+        var logoUrl = NormalizeOptionalUrl(request.LogoUrl);
         var primaryColor = NormalizePrimaryColor(request.PrimaryColor);
         var timezone = NormalizeTimezone(request.Timezone);
         var language = NormalizeLanguage(request.Language);
@@ -104,8 +108,20 @@ public sealed partial class CreatorService : ICreatorService
     public async Task<CreatorResponseDto?> GetCurrentForOwnerAsync(int ownerUserId, CancellationToken ct)
     {
         var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
+        if (creator is null)
+            return null;
 
-        return creator is null ? null : ToResponse(creator, planCode: string.Empty);
+        var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
+        var planCode = subscription?.Plan.Code ?? string.Empty;
+
+        return ToResponse(creator, planCode);
+    }
+
+    public async Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
+    {
+        var wasDeleted = await _creatorRepository.DeleteByOwnerUserIdAsync(ownerUserId, ct);
+        if (!wasDeleted)
+            throw new BadRequestException("Creator workspace does not exist.");
     }
 
     private static string NormalizeName(string name)
@@ -115,8 +131,8 @@ public sealed partial class CreatorService : ICreatorService
         if (normalized.Length < 2)
             throw new BadRequestException("Creator name must be at least 2 characters.");
 
-        if (normalized.Length > 100)
-            throw new BadRequestException("Creator name cannot be longer than 100 characters.");
+        if (normalized.Length > CreatorNameMaxLength)
+            throw new BadRequestException($"Creator name cannot be longer than {CreatorNameMaxLength} characters.");
 
         return normalized;
     }
@@ -131,8 +147,8 @@ public sealed partial class CreatorService : ICreatorService
         if (normalized.Length < 3)
             throw new BadRequestException("Creator URL must be at least 3 characters.");
 
-        if (normalized.Length > 100)
-            throw new BadRequestException("Creator URL cannot be longer than 100 characters.");
+        if (normalized.Length > CreatorSlugMaxLength)
+            throw new BadRequestException($"Creator URL cannot be longer than {CreatorSlugMaxLength} characters.");
 
         return normalized;
     }
@@ -192,6 +208,21 @@ public sealed partial class CreatorService : ICreatorService
         return normalized;
     }
 
+    private static string? NormalizeOptionalUrl(string? value)
+    {
+        var normalized = NormalizeOptionalText(value, 500);
+        if (normalized is null)
+            return null;
+
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new BadRequestException("Logo URL must be a valid HTTP or HTTPS URL.");
+        }
+
+        return normalized;
+    }
+
     private static string NormalizePrimaryColor(string? primaryColor)
     {
         if (string.IsNullOrWhiteSpace(primaryColor))
@@ -212,8 +243,11 @@ public sealed partial class CreatorService : ICreatorService
 
         var normalized = timezone.Trim();
 
-        if (normalized.Length > 100)
-            throw new BadRequestException("Timezone cannot be longer than 100 characters.");
+        if (normalized.Length > TimezoneMaxLength)
+            throw new BadRequestException($"Timezone cannot be longer than {TimezoneMaxLength} characters.");
+
+        if (!TimezoneRegex().IsMatch(normalized))
+            throw new BadRequestException("Timezone is not valid.");
 
         return normalized;
     }
@@ -263,4 +297,7 @@ public sealed partial class CreatorService : ICreatorService
 
     [GeneratedRegex("^[a-z]{2}(-[a-z]{2})?$")]
     private static partial Regex LanguageRegex();
+
+    [GeneratedRegex("^[A-Za-z0-9_./+-]+$")]
+    private static partial Regex TimezoneRegex();
 }

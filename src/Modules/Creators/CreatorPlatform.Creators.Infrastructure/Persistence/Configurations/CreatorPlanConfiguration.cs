@@ -18,14 +18,14 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
             .ValueGeneratedOnAdd();
 
         builder.Property(plan => plan.Code)
-            .HasMaxLength(50)
+            .HasMaxLength(20)
             .IsRequired();
 
         builder.HasIndex(plan => plan.Code)
             .IsUnique();
 
         builder.Property(plan => plan.Name)
-            .HasMaxLength(100)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.Property(plan => plan.Description)

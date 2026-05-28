@@ -34,11 +34,11 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(creator => creator.Name)
-            .HasMaxLength(100)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.Property(creator => creator.Slug)
-            .HasMaxLength(100)
+            .HasMaxLength(50)
             .IsRequired();
 
         builder.HasIndex(creator => creator.Slug)
@@ -51,7 +51,7 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
 
         builder.Property(creator => creator.DefaultCurrency)
             .HasConversion<string>()
-            .HasMaxLength(3)
+            .HasMaxLength(5)
             .IsRequired();
 
         builder.Property(creator => creator.CreatedAt)

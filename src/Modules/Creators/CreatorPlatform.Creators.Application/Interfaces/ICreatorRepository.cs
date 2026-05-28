@@ -11,4 +11,6 @@ public interface ICreatorRepository
     Task<bool> SlugExistsAsync(string slug, CancellationToken ct);
 
     Task AddAsync(Creator creator, CancellationToken ct);
+
+    Task<bool> DeleteByOwnerUserIdAsync(int ownerUserId, CancellationToken ct);
 }

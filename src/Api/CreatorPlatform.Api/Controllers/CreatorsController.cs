@@ -36,7 +36,7 @@ public sealed class CreatorsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<CreatorResponseDto>> Create(
-        CreateCreatorRequestDto request,
+        [FromBody] CreateCreatorRequestDto request,
         CancellationToken ct)
     {
         var currentUser = _currentUserContext.User;
@@ -49,5 +49,19 @@ public sealed class CreatorsController : ControllerBase
         var response = await _creatorService.CreateAsync(currentUser.Id, request, ct);
 
         return StatusCode(StatusCodes.Status201Created, response);
+    }
+
+    [HttpDelete("me")]
+    public async Task<IActionResult> DeleteMe(CancellationToken ct)
+    {
+        var currentUser = _currentUserContext.User;
+        if (currentUser is null)
+            throw new UnauthorizedException("Authentication is required.");
+
+        if (!currentUser.IsEmailVerified)
+            throw new EmailNotVerifiedException();
+        await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
+
+        return NoContent();
     }
 }
