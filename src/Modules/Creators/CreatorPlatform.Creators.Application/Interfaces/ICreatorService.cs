@@ -16,5 +16,9 @@ public interface ICreatorService
 
     Task<CreateCreatorResponseDto> CreateAsync(int ownerUserId, CreateCreatorRequestDto request, CancellationToken ct);
 
+    Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
+        int ownerUserId,
+        CancellationToken ct);
+
     Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 }

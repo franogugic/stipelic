@@ -191,6 +191,35 @@ public sealed partial class CreatorService : ICreatorService
             throw new NotFoundException("Creator workspace does not exist.");
     }
 
+    public async Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
+        int ownerUserId,
+        CancellationToken ct)
+    {
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
+        if (creator is null)
+            throw new NotFoundException("Creator workspace does not exist.");
+
+        if (creator.Status != CreatorStatus.PendingPayment)
+            throw new BadRequestException("Creator workspace does not require payment.");
+
+        var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
+        if (subscription is null)
+            throw new NotFoundException("Creator subscription does not exist.");
+
+        if (subscription.Status != CreatorSubscriptionStatus.PendingPayment)
+            throw new BadRequestException("Creator subscription does not require payment.");
+
+        if (subscription.Plan.PriceCents <= 0 || subscription.Plan.BillingInterval == BillingInterval.None)
+            throw new BadRequestException("Free creator plans do not require checkout.");
+
+        return new StartCreatorSubscriptionCheckoutResponseDto
+        {
+            RequiresPayment = true,
+            PaymentStatus = subscription.Status.ToString(),
+            CheckoutUrl = null
+        };
+    }
+
     private static string NormalizeName(string name)
     {
         var normalized = name.Trim();

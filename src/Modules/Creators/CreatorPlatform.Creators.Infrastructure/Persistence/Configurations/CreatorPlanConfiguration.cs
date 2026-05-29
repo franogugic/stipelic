@@ -52,6 +52,9 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
         builder.Property(plan => plan.PlatformFeeBasisPoints)
             .IsRequired();
 
+        builder.Property(plan => plan.StripePriceId)
+            .HasMaxLength(100);
+
         builder.Property(plan => plan.CreatedAt)
             .IsRequired();
 
@@ -81,6 +84,7 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 BillingInterval = BillingInterval.None,
                 PlatformFeeBasisPoints = 1000,
+                StripePriceId = (string?)null,
                 CreatedAt = SeededAt,
                 UpdatedAt = SeededAt
             },
@@ -95,6 +99,7 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 BillingInterval = BillingInterval.Monthly,
                 PlatformFeeBasisPoints = 500,
+                StripePriceId = (string?)null,
                 CreatedAt = SeededAt,
                 UpdatedAt = SeededAt
             },
@@ -109,6 +114,7 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 BillingInterval = BillingInterval.Monthly,
                 PlatformFeeBasisPoints = 250,
+                StripePriceId = (string?)null,
                 CreatedAt = SeededAt,
                 UpdatedAt = SeededAt
             },
@@ -123,6 +129,7 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 BillingInterval = BillingInterval.Monthly,
                 PlatformFeeBasisPoints = 100,
+                StripePriceId = (string?)null,
                 CreatedAt = SeededAt,
                 UpdatedAt = SeededAt
             });

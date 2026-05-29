@@ -383,6 +383,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int>("PriceCents")
                         .HasColumnType("integer");
 
+                    b.Property<string>("StripePriceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -413,6 +417,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             PlatformFeeBasisPoints = 1000,
                             PriceCents = 0,
                             Status = "Active",
+                            StripePriceId = (string)null,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 26, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
@@ -427,6 +432,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             PlatformFeeBasisPoints = 500,
                             PriceCents = 1500,
                             Status = "Active",
+                            StripePriceId = (string)null,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 26, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
@@ -441,6 +447,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             PlatformFeeBasisPoints = 250,
                             PriceCents = 3000,
                             Status = "Active",
+                            StripePriceId = (string)null,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 26, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
@@ -455,6 +462,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             PlatformFeeBasisPoints = 100,
                             PriceCents = 9900,
                             Status = "Active",
+                            StripePriceId = (string)null,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 26, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });

@@ -119,4 +119,24 @@ public sealed class CreatorsController : ControllerBase
             "Creator disabled.",
             null));
     }
+
+    [HttpPost("current/subscription/checkout")]
+    [EnableRateLimiting("StartCreatorCheckout")]
+    public async Task<ActionResult<ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>>> StartSubscriptionCheckout(
+        CancellationToken ct)
+    {
+        var currentUser = _currentUserContext.User;
+        if (currentUser is null)
+            throw new UnauthorizedException("Authentication is required.");
+
+        if (!currentUser.IsEmailVerified)
+            throw new EmailNotVerifiedException();
+
+        var response = await _creatorService.StartSubscriptionCheckoutAsync(currentUser.Id, ct);
+
+        return Ok(ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Creator subscription checkout is ready.",
+            response));
+    }
 }

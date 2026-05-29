@@ -17,6 +17,7 @@ public sealed class CreatorPlan
         Currency currency,
         BillingInterval billingInterval,
         int platformFeeBasisPoints,
+        string? stripePriceId,
         DateTimeOffset createdAt)
     {
         Code = code;
@@ -27,6 +28,7 @@ public sealed class CreatorPlan
         Currency = currency;
         BillingInterval = billingInterval;
         PlatformFeeBasisPoints = platformFeeBasisPoints;
+        StripePriceId = stripePriceId;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
     }
@@ -39,6 +41,7 @@ public sealed class CreatorPlan
         Currency currency,
         BillingInterval billingInterval,
         int platformFeeBasisPoints,
+        string? stripePriceId,
         DateTimeOffset createdAt)
     {
         return new CreatorPlan(
@@ -50,6 +53,7 @@ public sealed class CreatorPlan
             currency,
             billingInterval,
             platformFeeBasisPoints,
+            stripePriceId,
             createdAt);
     }
 
@@ -58,12 +62,14 @@ public sealed class CreatorPlan
         Currency currency,
         BillingInterval billingInterval,
         int platformFeeBasisPoints,
+        string? stripePriceId,
         DateTimeOffset updatedAt)
     {
         PriceCents = priceCents;
         Currency = currency;
         BillingInterval = billingInterval;
         PlatformFeeBasisPoints = platformFeeBasisPoints;
+        StripePriceId = stripePriceId;
         UpdatedAt = updatedAt;
     }
 
@@ -103,6 +109,8 @@ public sealed class CreatorPlan
     public BillingInterval BillingInterval { get; private set; }
 
     public int PlatformFeeBasisPoints { get; private set; }
+
+    public string? StripePriceId { get; private set; }
 
     public IReadOnlyCollection<CreatorPlanLimit> Limits => _limits.AsReadOnly();
 
