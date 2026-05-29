@@ -57,6 +57,28 @@ public sealed class CreatorsController : ControllerBase
             response));
     }
 
+    [HttpPut("{slug}/settings")]
+    [EnableRateLimiting("UpdateCreatorSettings")]
+    public async Task<ActionResult<ApiResponse<CreatorSettingsResponseDto>>> UpdateSettings(
+        string slug,
+        [FromBody] UpdateCreatorSettingsRequestDto request,
+        CancellationToken ct)
+    {
+        var currentUser = _currentUserContext.User;
+        if (currentUser is null)
+            throw new UnauthorizedException("Authentication is required.");
+
+        if (!currentUser.IsEmailVerified)
+            throw new EmailNotVerifiedException();
+
+        var response = await _creatorService.UpdateSettingsAsync(slug, currentUser.Id, request, ct);
+
+        return Ok(ApiResponse<CreatorSettingsResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Creator settings updated.",
+            response));
+    }
+
     [HttpPost]
     [EnableRateLimiting("CreateCreator")]
     public async Task<ActionResult<ApiResponse<CreatorResponseDto>>> Create(

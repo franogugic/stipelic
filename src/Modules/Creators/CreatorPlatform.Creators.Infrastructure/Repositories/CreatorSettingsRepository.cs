@@ -34,4 +34,19 @@ public sealed class CreatorSettingsRepository : ICreatorSettingsRepository
                 && settings.Creator.Status != CreatorStatus.Disabled,
                 ct);
     }
+
+    public async Task<CreatorSettings?> GetForUpdateBySlugAndOwnerAsync(
+        string slug,
+        int ownerUserId,
+        CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorSettings>()
+            .Include(settings => settings.Creator)
+            .FirstOrDefaultAsync(settings =>
+                settings.Creator.Slug == slug
+                && settings.Creator.OwnerUserId == ownerUserId
+                && settings.Creator.Status != CreatorStatus.Disabled,
+                ct);
+    }
 }

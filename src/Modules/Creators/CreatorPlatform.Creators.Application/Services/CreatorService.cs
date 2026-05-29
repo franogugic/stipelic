@@ -13,6 +13,7 @@ public sealed partial class CreatorService : ICreatorService
     private const string DefaultPrimaryColor = "#111827";
     private const string DefaultTimezone = "Europe/Sarajevo";
     private const string DefaultLanguage = "en";
+    private const string OnlySupportedLanguage = "en";
     private const int CreatorNameMaxLength = 50;
     private const int CreatorSlugMaxLength = 50;
     private const int BrandNameMaxLength = 50;
@@ -119,7 +120,7 @@ public sealed partial class CreatorService : ICreatorService
         int ownerUserId,
         CancellationToken ct)
     {
-        var normalizedSlug = NormalizeSlug(slug, slug);
+        var normalizedSlug = ValidateRouteSlug(slug);
         var settings = await _creatorSettingsRepository.GetByCreatorSlugForOwnerAsync(
             normalizedSlug,
             ownerUserId,
@@ -127,6 +128,38 @@ public sealed partial class CreatorService : ICreatorService
 
         if (settings is null)
             throw new NotFoundException("Creator settings do not exist.");
+
+        return ToSettingsResponse(settings);
+    }
+
+    public async Task<CreatorSettingsResponseDto> UpdateSettingsAsync(
+        string slug,
+        int ownerUserId,
+        UpdateCreatorSettingsRequestDto request,
+        CancellationToken ct)
+    {
+        var normalizedSlug = ValidateRouteSlug(slug);
+        var settings = await _creatorSettingsRepository.GetForUpdateBySlugAndOwnerAsync(
+            normalizedSlug,
+            ownerUserId,
+            ct);
+
+        if (settings is null)
+            throw new NotFoundException("Creator settings do not exist.");
+
+        var update = CreatorSettingsUpdateValidator.Validate(request, settings.Creator.Name);
+        var updatedAt = DateTimeOffset.UtcNow;
+
+        settings.Update(
+            update.SupportEmail,
+            update.BrandName,
+            update.LogoUrl,
+            update.PrimaryColor,
+            update.Timezone,
+            update.Language,
+            updatedAt);
+
+        await _unitOfWork.SaveChangesAsync(ct);
 
         return ToSettingsResponse(settings);
     }
@@ -148,6 +181,25 @@ public sealed partial class CreatorService : ICreatorService
 
         if (normalized.Length > CreatorNameMaxLength)
             throw new BadRequestException($"Creator name cannot be longer than {CreatorNameMaxLength} characters.");
+
+        return normalized;
+    }
+
+    private static string ValidateRouteSlug(string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+            throw new BadRequestException("Creator URL is required.");
+
+        var normalized = slug.Trim();
+
+        if (normalized.Length < 3)
+            throw new BadRequestException("Creator URL must be at least 3 characters.");
+
+        if (normalized.Length > CreatorSlugMaxLength)
+            throw new BadRequestException($"Creator URL cannot be longer than {CreatorSlugMaxLength} characters.");
+
+        if (!SlugRegex().IsMatch(normalized))
+            throw new BadRequestException("Creator URL is not valid.");
 
         return normalized;
     }
@@ -280,6 +332,9 @@ public sealed partial class CreatorService : ICreatorService
         if (!LanguageRegex().IsMatch(normalized))
             throw new BadRequestException("Language is not valid.");
 
+        if (normalized != OnlySupportedLanguage)
+            throw new BadRequestException("English is the only supported language right now.");
+
         return normalized;
     }
 
@@ -323,6 +378,9 @@ public sealed partial class CreatorService : ICreatorService
 
     [GeneratedRegex("-+")]
     private static partial Regex DuplicateDashesRegex();
+
+    [GeneratedRegex("^[a-z0-9]+(?:-[a-z0-9]+)*$")]
+    private static partial Regex SlugRegex();
 
     [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
     private static partial Regex HexColorRegex();

@@ -48,21 +48,19 @@ public sealed class CreatorSettings
             createdAt);
     }
 
-    public void UpdateBranding(
+    public void Update(
+        string? supportEmail,
         string brandName,
         string? logoUrl,
         string primaryColor,
+        string timezone,
+        string language,
         DateTimeOffset updatedAt)
     {
+        SupportEmail = supportEmail;
         BrandName = brandName;
         LogoUrl = logoUrl;
         PrimaryColor = primaryColor;
-        UpdatedAt = updatedAt;
-    }
-
-    public void UpdateSupport(string? supportEmail, string timezone, string language, DateTimeOffset updatedAt)
-    {
-        SupportEmail = supportEmail;
         Timezone = timezone;
         Language = language;
         UpdatedAt = updatedAt;
