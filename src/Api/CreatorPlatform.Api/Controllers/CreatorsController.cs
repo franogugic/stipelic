@@ -81,7 +81,7 @@ public sealed class CreatorsController : ControllerBase
 
     [HttpPost]
     [EnableRateLimiting("CreateCreator")]
-    public async Task<ActionResult<ApiResponse<CreatorResponseDto>>> Create(
+    public async Task<ActionResult<ApiResponse<CreateCreatorResponseDto>>> Create(
         [FromBody] CreateCreatorRequestDto request,
         CancellationToken ct)
     {
@@ -94,7 +94,7 @@ public sealed class CreatorsController : ControllerBase
 
         var response = await _creatorService.CreateAsync(currentUser.Id, request, ct);
 
-        var apiResponse = ApiResponse<CreatorResponseDto>.Success(
+        var apiResponse = ApiResponse<CreateCreatorResponseDto>.Success(
             StatusCodes.Status201Created,
             "Creator created.",
             response);

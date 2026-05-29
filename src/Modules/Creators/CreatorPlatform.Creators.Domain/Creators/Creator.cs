@@ -30,6 +30,7 @@ public sealed class Creator
         string name,
         string slug,
         Currency defaultCurrency,
+        CreatorStatus status,
         DateTimeOffset createdAt)
     {
         return new Creator(
@@ -38,7 +39,7 @@ public sealed class Creator
             name,
             slug,
             defaultCurrency,
-            CreatorStatus.Active,
+            status,
             createdAt);
     }
 

@@ -14,7 +14,7 @@ public interface ICreatorService
         UpdateCreatorSettingsRequestDto request,
         CancellationToken ct);
 
-    Task<CreatorResponseDto> CreateAsync(int ownerUserId, CreateCreatorRequestDto request, CancellationToken ct);
+    Task<CreateCreatorResponseDto> CreateAsync(int ownerUserId, CreateCreatorRequestDto request, CancellationToken ct);
 
     Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 }

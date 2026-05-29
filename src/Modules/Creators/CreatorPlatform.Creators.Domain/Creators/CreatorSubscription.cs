@@ -49,7 +49,7 @@ public sealed class CreatorSubscription
             createdAt);
     }
 
-    public static CreatorSubscription CreateIncompletePaid(
+    public static CreatorSubscription CreatePendingPayment(
         Creator creator,
         CreatorPlan plan,
         BillingInterval billingInterval,
@@ -60,7 +60,7 @@ public sealed class CreatorSubscription
         return new CreatorSubscription(
             creator,
             plan,
-            CreatorSubscriptionStatus.Incomplete,
+            CreatorSubscriptionStatus.PendingPayment,
             billingInterval,
             provider,
             providerSubscriptionId,

@@ -42,7 +42,7 @@ public sealed partial class CreatorService : ICreatorService
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<CreatorResponseDto> CreateAsync(
+    public async Task<CreateCreatorResponseDto> CreateAsync(
         int ownerUserId,
         CreateCreatorRequestDto request,
         CancellationToken ct)
@@ -58,9 +58,6 @@ public sealed partial class CreatorService : ICreatorService
         var timezone = NormalizeTimezone(request.Timezone);
         var language = NormalizeLanguage(request.Language);
 
-        if (planCode != FreePlanCode)
-            throw new BadRequestException("Only the free creator plan can be activated right now.");
-
         if (await _creatorRepository.SlugExistsAsync(slug, ct))
             throw new ConflictException("This creator URL is already taken.");
 
@@ -71,12 +68,18 @@ public sealed partial class CreatorService : ICreatorService
         if (plan is null || plan.Status != CreatorPlanStatus.Active)
             throw new BadRequestException("Selected creator plan is not available.");
 
+        var requiresPayment = plan.Code != FreePlanCode;
+        var creatorStatus = requiresPayment
+            ? CreatorStatus.PendingPayment
+            : CreatorStatus.Active;
+
         var createdAt = DateTimeOffset.UtcNow;
         var creator = Creator.Create(
             ownerUserId,
             name,
             slug,
             defaultCurrency,
+            creatorStatus,
             createdAt);
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
@@ -91,7 +94,15 @@ public sealed partial class CreatorService : ICreatorService
                 timezone,
                 language,
                 createdAt);
-            var subscription = CreatorSubscription.CreateFree(creator, plan, createdAt);
+            var subscription = requiresPayment
+                ? CreatorSubscription.CreatePendingPayment(
+                    creator,
+                    plan,
+                    plan.BillingInterval,
+                    SubscriptionProvider.Internal,
+                    null,
+                    createdAt)
+                : CreatorSubscription.CreateFree(creator, plan, createdAt);
 
             await _creatorRepository.AddAsync(creator, ct);
             await _creatorMemberRepository.AddAsync(ownerMember, ct);
@@ -100,7 +111,15 @@ public sealed partial class CreatorService : ICreatorService
             await _unitOfWork.SaveChangesAsync(ct);
         }, ct);
 
-        return ToResponse(creator, plan);
+        return new CreateCreatorResponseDto
+        {
+            Creator = ToResponse(creator, plan),
+            RequiresPayment = requiresPayment,
+            PaymentStatus = requiresPayment
+                ? CreatorSubscriptionStatus.PendingPayment.ToString()
+                : CreatorSubscriptionStatus.Active.ToString(),
+            CheckoutUrl = null
+        };
     }
 
     public async Task<CreatorResponseDto?> GetCurrentForOwnerAsync(int ownerUserId, CancellationToken ct)
