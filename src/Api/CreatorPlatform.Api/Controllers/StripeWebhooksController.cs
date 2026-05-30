@@ -1,6 +1,7 @@
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
+using CreatorPlatform.Payments.Domain;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -14,15 +15,18 @@ public sealed class StripeWebhooksController : ControllerBase
 {
     private readonly IStripeWebhookService _stripeWebhookService;
     private readonly ICreatorWebhookService _creatorWebhookService;
+    private readonly IWebhookFailureRepository _webhookFailureRepository;
     private readonly ILogger<StripeWebhooksController> _logger;
 
     public StripeWebhooksController(
         IStripeWebhookService stripeWebhookService,
         ICreatorWebhookService creatorWebhookService,
+        IWebhookFailureRepository webhookFailureRepository,
         ILogger<StripeWebhooksController> logger)
     {
         _stripeWebhookService = stripeWebhookService;
         _creatorWebhookService = creatorWebhookService;
+        _webhookFailureRepository = webhookFailureRepository;
         _logger = logger;
     }
 
@@ -61,12 +65,14 @@ public sealed class StripeWebhooksController : ControllerBase
         {
             _logger.LogError(
                 ex,
-                "Unhandled exception while processing Stripe webhook. EventId: {EventId}, EventType: {EventType}",
+                "Stripe webhook handler failed. EventId: {EventId}, EventType: {EventType}",
                 webhookEvent.EventId,
                 webhookEvent.EventType);
 
-            // Return 500 so Stripe retries the event
-            return StatusCode(StatusCodes.Status500InternalServerError);
+            await PersistFailureAsync(webhookEvent, payload, ex, ct);
+
+            // Vraćamo 200 da Stripe ne retryja — event je zapisan u bazu za ručni reprocessing
+            return Ok();
         }
 
         return Ok();
@@ -106,6 +112,36 @@ public sealed class StripeWebhooksController : ControllerBase
                     webhookEvent.EventId,
                     webhookEvent.EventType);
                 break;
+        }
+    }
+
+    private async Task PersistFailureAsync(
+        StripeWebhookEventDto webhookEvent,
+        string payload,
+        Exception ex,
+        CancellationToken ct)
+    {
+        try
+        {
+            var failure = WebhookFailure.Create(
+                provider: "stripe",
+                eventId: webhookEvent.EventId,
+                eventType: webhookEvent.EventType,
+                payload: payload,
+                errorMessage: ex.ToString(),
+                occurredAt: DateTimeOffset.UtcNow);
+
+            await _webhookFailureRepository.AddAsync(failure, ct);
+            await _webhookFailureRepository.SaveChangesAsync(ct);
+        }
+        catch (Exception persistEx)
+        {
+            // Ako i ovo failna, barem logiramo — ne smijemo bacat exception iz error handlera
+            _logger.LogCritical(
+                persistEx,
+                "Failed to persist webhook failure record. EventId: {EventId}, EventType: {EventType}",
+                webhookEvent.EventId,
+                webhookEvent.EventType);
         }
     }
 }
