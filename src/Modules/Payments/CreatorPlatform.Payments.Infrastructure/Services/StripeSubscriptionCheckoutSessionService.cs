@@ -19,6 +19,7 @@ public sealed class StripeSubscriptionCheckoutSessionService : ISubscriptionChec
 
     public async Task<SubscriptionCheckoutSessionDto> CreateAsync(
         string stripePriceId,
+        string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
         CancellationToken ct)
     {
@@ -54,7 +55,11 @@ public sealed class StripeSubscriptionCheckoutSessionService : ISubscriptionChec
         var service = new SessionService();
         var session = await service.CreateAsync(
             options,
-            new RequestOptions { ApiKey = _options.SecretKey },
+            new RequestOptions
+            {
+                ApiKey = _options.SecretKey,
+                IdempotencyKey = idempotencyKey
+            },
             ct);
 
         return new SubscriptionCheckoutSessionDto

@@ -6,6 +6,7 @@ public interface ISubscriptionCheckoutSessionService
 {
     Task<SubscriptionCheckoutSessionDto> CreateAsync(
         string stripePriceId,
+        string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
         CancellationToken ct);
 }

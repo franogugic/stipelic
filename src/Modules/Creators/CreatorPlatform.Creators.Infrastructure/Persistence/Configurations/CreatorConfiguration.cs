@@ -56,6 +56,13 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
             .HasMaxLength(5)
             .IsRequired();
 
+        builder.Property(creator => creator.StripeCustomerId)
+            .HasMaxLength(100);
+
+        builder.HasIndex(creator => creator.StripeCustomerId)
+            .IsUnique()
+            .HasFilter("\"StripeCustomerId\" IS NOT NULL");
+
         builder.Property(creator => creator.CreatedAt)
             .IsRequired();
 

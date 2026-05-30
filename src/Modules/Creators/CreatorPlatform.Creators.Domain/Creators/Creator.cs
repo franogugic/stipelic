@@ -74,6 +74,12 @@ public sealed class Creator
         UpdatedAt = updatedAt;
     }
 
+    public void SetStripeCustomerId(string stripeCustomerId, DateTimeOffset updatedAt)
+    {
+        StripeCustomerId = stripeCustomerId;
+        UpdatedAt = updatedAt;
+    }
+
     public int Id { get; private set; }
 
     public Guid PublicId { get; private set; }
@@ -87,6 +93,8 @@ public sealed class Creator
     public CreatorStatus Status { get; private set; }
 
     public Currency DefaultCurrency { get; private set; }
+
+    public string? StripeCustomerId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

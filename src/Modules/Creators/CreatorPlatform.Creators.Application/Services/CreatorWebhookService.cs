@@ -108,6 +108,9 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                 data.CurrentPeriodEnd,
                 now);
 
+            if (!string.IsNullOrWhiteSpace(data.StripeCustomerId))
+                creator.SetStripeCustomerId(data.StripeCustomerId, now);
+
             creator.Activate(now);
 
             await _unitOfWork.SaveChangesAsync(ct);

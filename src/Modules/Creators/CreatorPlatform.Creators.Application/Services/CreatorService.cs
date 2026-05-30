@@ -221,6 +221,7 @@ public sealed partial class CreatorService : ICreatorService
 
         var checkoutSession = await _subscriptionCheckoutSessionService.CreateAsync(
             subscription.Plan.StripePriceId,
+            idempotencyKey: $"checkout-subscription-{subscription.Id}",
             new Dictionary<string, string>
             {
                 ["creatorId"] = creator.Id.ToString(),
