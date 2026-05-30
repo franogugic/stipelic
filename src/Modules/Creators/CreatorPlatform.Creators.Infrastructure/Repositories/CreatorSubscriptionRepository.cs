@@ -31,4 +31,27 @@ public sealed class CreatorSubscriptionRepository : ICreatorSubscriptionReposito
             .OrderByDescending(subscription => subscription.CreatedAt)
             .FirstOrDefaultAsync(ct);
     }
+
+    public async Task<CreatorSubscription?> GetByIdForUpdateAsync(int id, CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorSubscription>()
+            .Include(subscription => subscription.Plan)
+            .FirstOrDefaultAsync(subscription => subscription.Id == id, ct);
+    }
+
+    public async Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(
+        string providerSubscriptionId,
+        CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorSubscription>()
+            .Include(subscription => subscription.Creator)
+            .Include(subscription => subscription.Plan)
+            .Where(subscription =>
+                subscription.ProviderSubscriptionId == providerSubscriptionId
+                && subscription.Status != CreatorSubscriptionStatus.Cancelled)
+            .OrderByDescending(subscription => subscription.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
 }

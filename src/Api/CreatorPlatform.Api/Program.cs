@@ -6,6 +6,7 @@ using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Creators.Infrastructure;
 using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Payments.Application.Options;
+using CreatorPlatform.Payments.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -133,6 +134,7 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddAuthInfrastructure();
 builder.Services.AddCreatorsInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration);
+builder.Services.AddPaymentsInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>

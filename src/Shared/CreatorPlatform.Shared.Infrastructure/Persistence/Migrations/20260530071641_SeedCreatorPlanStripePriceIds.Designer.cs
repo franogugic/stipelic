@@ -3,6 +3,7 @@ using System;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CreatorPlatformDbContext))]
-    partial class CreatorPlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260530071641_SeedCreatorPlanStripePriceIds")]
+    partial class SeedCreatorPlanStripePriceIds
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -431,7 +434,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             PlatformFeeBasisPoints = 500,
                             PriceCents = 1500,
                             Status = "Active",
-                            StripePriceId = "price_1Tch5JV05qi4vb2A7qhjOae3",
+                            StripePriceId = "price_015",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 26, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
@@ -446,7 +449,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             PlatformFeeBasisPoints = 250,
                             PriceCents = 3000,
                             Status = "Active",
-                            StripePriceId = "price_1Tch5WV05qi4vb2ATVhLgp5V",
+                            StripePriceId = "price_030",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 26, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
@@ -461,7 +464,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             PlatformFeeBasisPoints = 100,
                             PriceCents = 9900,
                             Status = "Active",
-                            StripePriceId = "price_1Tch5iV05qi4vb2AJYWxprid",
+                            StripePriceId = "price_099",
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 26, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });

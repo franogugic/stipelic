@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CreatorPlatform.Creators.Domain\CreatorPlatform.Creators.Domain.csproj" />
+    <ProjectReference Include="..\..\Payments\CreatorPlatform.Payments.Application\CreatorPlatform.Payments.Application.csproj" />
     <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Application\CreatorPlatform.Shared.Application.csproj" />
     <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Domain\CreatorPlatform.Shared.Domain.csproj" />
   </ItemGroup>

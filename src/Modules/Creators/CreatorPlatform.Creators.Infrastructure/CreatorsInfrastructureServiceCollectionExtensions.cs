@@ -12,6 +12,7 @@ public static class CreatorsInfrastructureServiceCollectionExtensions
     {
         services.AddScoped<ICreatorService, CreatorService>();
         services.AddScoped<ICreatorPlanService, CreatorPlanService>();
+        services.AddScoped<ICreatorWebhookService, CreatorWebhookService>();
         services.AddScoped<ICreatorRepository, CreatorRepository>();
         services.AddScoped<ICreatorMemberRepository, CreatorMemberRepository>();
         services.AddScoped<ICreatorPlanRepository, CreatorPlanRepository>();

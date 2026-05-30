@@ -81,6 +81,29 @@ public sealed class CreatorSubscription
         UpdatedAt = updatedAt;
     }
 
+    public void ActivateWithProvider(
+        string providerSubscriptionId,
+        DateTimeOffset currentPeriodStart,
+        DateTimeOffset? currentPeriodEnd,
+        DateTimeOffset updatedAt)
+    {
+        Status = CreatorSubscriptionStatus.Active;
+        ProviderSubscriptionId = providerSubscriptionId;
+        CurrentPeriodStart = currentPeriodStart;
+        CurrentPeriodEnd = currentPeriodEnd;
+        UpdatedAt = updatedAt;
+    }
+
+    public void UpdatePeriod(
+        DateTimeOffset currentPeriodStart,
+        DateTimeOffset currentPeriodEnd,
+        DateTimeOffset updatedAt)
+    {
+        CurrentPeriodStart = currentPeriodStart;
+        CurrentPeriodEnd = currentPeriodEnd;
+        UpdatedAt = updatedAt;
+    }
+
     public void MarkPastDue(DateTimeOffset updatedAt)
     {
         Status = CreatorSubscriptionStatus.PastDue;

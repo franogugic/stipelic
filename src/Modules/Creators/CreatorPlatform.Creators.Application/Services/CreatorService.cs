@@ -3,6 +3,7 @@ using System.Net.Mail;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Creators.Application.Services;
@@ -25,6 +26,7 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ICreatorSettingsRepository _creatorSettingsRepository;
     private readonly ICreatorSubscriptionRepository _creatorSubscriptionRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
+    private readonly ISubscriptionCheckoutSessionService _subscriptionCheckoutSessionService;
 
     public CreatorService(
         ICreatorRepository creatorRepository,
@@ -32,7 +34,8 @@ public sealed partial class CreatorService : ICreatorService
         ICreatorPlanRepository creatorPlanRepository,
         ICreatorSettingsRepository creatorSettingsRepository,
         ICreatorSubscriptionRepository creatorSubscriptionRepository,
-        ICreatorsUnitOfWork unitOfWork)
+        ICreatorsUnitOfWork unitOfWork,
+        ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService)
     {
         _creatorRepository = creatorRepository;
         _creatorMemberRepository = creatorMemberRepository;
@@ -40,6 +43,7 @@ public sealed partial class CreatorService : ICreatorService
         _creatorSettingsRepository = creatorSettingsRepository;
         _creatorSubscriptionRepository = creatorSubscriptionRepository;
         _unitOfWork = unitOfWork;
+        _subscriptionCheckoutSessionService = subscriptionCheckoutSessionService;
     }
 
     public async Task<CreateCreatorResponseDto> CreateAsync(
@@ -212,11 +216,26 @@ public sealed partial class CreatorService : ICreatorService
         if (subscription.Plan.PriceCents <= 0 || subscription.Plan.BillingInterval == BillingInterval.None)
             throw new BadRequestException("Free creator plans do not require checkout.");
 
+        if (string.IsNullOrWhiteSpace(subscription.Plan.StripePriceId))
+            throw new BadRequestException("Stripe price is not configured for this creator plan.");
+
+        var checkoutSession = await _subscriptionCheckoutSessionService.CreateAsync(
+            subscription.Plan.StripePriceId,
+            new Dictionary<string, string>
+            {
+                ["creatorId"] = creator.Id.ToString(),
+                ["creatorPublicId"] = creator.PublicId.ToString(),
+                ["subscriptionId"] = subscription.Id.ToString(),
+                ["planCode"] = subscription.Plan.Code,
+                ["ownerUserId"] = creator.OwnerUserId.ToString()
+            },
+            ct);
+
         return new StartCreatorSubscriptionCheckoutResponseDto
         {
             RequiresPayment = true,
             PaymentStatus = subscription.Status.ToString(),
-            CheckoutUrl = null
+            CheckoutUrl = checkoutSession.CheckoutUrl
         };
     }
 
