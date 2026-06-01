@@ -27,6 +27,7 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ICreatorSubscriptionRepository _creatorSubscriptionRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly ISubscriptionCheckoutSessionService _subscriptionCheckoutSessionService;
+    private readonly ISubscriptionCancellationService _subscriptionCancellationService;
 
     public CreatorService(
         ICreatorRepository creatorRepository,
@@ -35,7 +36,8 @@ public sealed partial class CreatorService : ICreatorService
         ICreatorSettingsRepository creatorSettingsRepository,
         ICreatorSubscriptionRepository creatorSubscriptionRepository,
         ICreatorsUnitOfWork unitOfWork,
-        ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService)
+        ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService,
+        ISubscriptionCancellationService subscriptionCancellationService)
     {
         _creatorRepository = creatorRepository;
         _creatorMemberRepository = creatorMemberRepository;
@@ -44,6 +46,7 @@ public sealed partial class CreatorService : ICreatorService
         _creatorSubscriptionRepository = creatorSubscriptionRepository;
         _unitOfWork = unitOfWork;
         _subscriptionCheckoutSessionService = subscriptionCheckoutSessionService;
+        _subscriptionCancellationService = subscriptionCancellationService;
     }
 
     public async Task<CreateCreatorResponseDto> CreateAsync(
@@ -86,6 +89,8 @@ public sealed partial class CreatorService : ICreatorService
             creatorStatus,
             createdAt);
 
+        CreatorSubscription? createdSubscription = null;
+
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
             var ownerMember = CreatorMember.CreateOwner(creator, ownerUserId, createdAt);
@@ -98,7 +103,7 @@ public sealed partial class CreatorService : ICreatorService
                 timezone,
                 language,
                 createdAt);
-            var subscription = requiresPayment
+            createdSubscription = requiresPayment
                 ? CreatorSubscription.CreatePendingPayment(
                     creator,
                     plan,
@@ -111,13 +116,13 @@ public sealed partial class CreatorService : ICreatorService
             await _creatorRepository.AddAsync(creator, ct);
             await _creatorMemberRepository.AddAsync(ownerMember, ct);
             await _creatorSettingsRepository.AddAsync(settings, ct);
-            await _creatorSubscriptionRepository.AddAsync(subscription, ct);
+            await _creatorSubscriptionRepository.AddAsync(createdSubscription, ct);
             await _unitOfWork.SaveChangesAsync(ct);
         }, ct);
 
         return new CreateCreatorResponseDto
         {
-            Creator = ToResponse(creator, plan),
+            Creator = ToResponse(creator, createdSubscription),
             RequiresPayment = requiresPayment,
             PaymentStatus = requiresPayment
                 ? CreatorSubscriptionStatus.PendingPayment.ToString()
@@ -133,9 +138,8 @@ public sealed partial class CreatorService : ICreatorService
             return null;
 
         var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
-        var planCode = subscription?.Plan.Code ?? string.Empty;
 
-        return ToResponse(creator, planCode);
+        return ToResponse(creator, subscription);
     }
 
     public async Task<CreatorSettingsResponseDto> GetSettingsAsync(
@@ -187,6 +191,39 @@ public sealed partial class CreatorService : ICreatorService
         return ToSettingsResponse(settings);
     }
 
+    public async Task CancelSubscriptionAsync(int ownerUserId, CancellationToken ct)
+    {
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
+        if (creator is null)
+            throw new NotFoundException("Creator workspace does not exist.");
+
+        var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
+        if (subscription is null)
+            throw new NotFoundException("Creator subscription does not exist.");
+
+        if (subscription.Status != CreatorSubscriptionStatus.Active)
+            throw new BadRequestException("Only active subscriptions can be cancelled.");
+
+        if (subscription.Provider != SubscriptionProvider.Stripe)
+            throw new BadRequestException("Free plan subscriptions cannot be cancelled.");
+
+        if (string.IsNullOrWhiteSpace(subscription.ProviderSubscriptionId))
+            throw new BadRequestException("Subscription is not linked to a payment provider.");
+
+        if (subscription.CancelAtPeriodEnd)
+            throw new BadRequestException("Subscription is already scheduled for cancellation.");
+
+        await _subscriptionCancellationService.CancelAtPeriodEndAsync(
+            subscription.ProviderSubscriptionId, ct);
+
+        var now = DateTimeOffset.UtcNow;
+        var trackedSubscription = await _creatorSubscriptionRepository
+            .GetByIdForUpdateAsync(subscription.Id, ct);
+
+        trackedSubscription!.ScheduleCancel(now);
+        await _unitOfWork.SaveChangesAsync(ct);
+    }
+
     public async Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
     {
         var disabledAt = DateTimeOffset.UtcNow;
@@ -228,7 +265,6 @@ public sealed partial class CreatorService : ICreatorService
                 ["creatorPublicId"] = creator.PublicId.ToString(),
                 ["subscriptionId"] = subscription.Id.ToString(),
                 ["planCode"] = subscription.Plan.Code,
-                ["ownerUserId"] = creator.OwnerUserId.ToString()
             },
             ct);
 
@@ -406,12 +442,7 @@ public sealed partial class CreatorService : ICreatorService
         return normalized;
     }
 
-    private static CreatorResponseDto ToResponse(Creator creator, CreatorPlan plan)
-    {
-        return ToResponse(creator, plan.Code);
-    }
-
-    private static CreatorResponseDto ToResponse(Creator creator, string planCode)
+    private static CreatorResponseDto ToResponse(Creator creator, CreatorSubscription? subscription)
     {
         return new CreatorResponseDto
         {
@@ -420,7 +451,8 @@ public sealed partial class CreatorService : ICreatorService
             Slug = creator.Slug,
             Status = creator.Status.ToString(),
             DefaultCurrency = creator.DefaultCurrency.ToString(),
-            PlanCode = planCode
+            PlanCode = subscription?.Plan.Code ?? string.Empty,
+            CancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false,
         };
     }
 

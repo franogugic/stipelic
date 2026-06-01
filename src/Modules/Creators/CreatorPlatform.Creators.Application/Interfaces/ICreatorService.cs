@@ -20,5 +20,7 @@ public interface ICreatorService
         int ownerUserId,
         CancellationToken ct);
 
+    Task CancelSubscriptionAsync(int ownerUserId, CancellationToken ct);
+
     Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 }

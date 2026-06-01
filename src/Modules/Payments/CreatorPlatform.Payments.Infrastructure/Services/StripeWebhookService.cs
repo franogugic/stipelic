@@ -113,6 +113,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 StripeSubscriptionId = subscription.Id,
                 StripeCustomerId = subscription.CustomerId,
                 Status = subscription.Status,
+                CancelAtPeriodEnd = subscription.CancelAtPeriodEnd,
                 CurrentPeriodStart = new DateTimeOffset(periodStart, TimeSpan.Zero),
                 CurrentPeriodEnd = new DateTimeOffset(periodEnd, TimeSpan.Zero),
                 Metadata = subscription.Metadata ?? new Dictionary<string, string>()

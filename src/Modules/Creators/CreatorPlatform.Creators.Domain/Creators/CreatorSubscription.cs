@@ -88,6 +88,7 @@ public sealed class CreatorSubscription
         DateTimeOffset updatedAt)
     {
         Status = CreatorSubscriptionStatus.Active;
+        Provider = SubscriptionProvider.Stripe;
         ProviderSubscriptionId = providerSubscriptionId;
         CurrentPeriodStart = currentPeriodStart;
         CurrentPeriodEnd = currentPeriodEnd;
@@ -110,9 +111,22 @@ public sealed class CreatorSubscription
         UpdatedAt = updatedAt;
     }
 
+    public void ScheduleCancel(DateTimeOffset updatedAt)
+    {
+        CancelAtPeriodEnd = true;
+        UpdatedAt = updatedAt;
+    }
+
+    public void UndoScheduledCancel(DateTimeOffset updatedAt)
+    {
+        CancelAtPeriodEnd = false;
+        UpdatedAt = updatedAt;
+    }
+
     public void Cancel(DateTimeOffset cancelledAt)
     {
         Status = CreatorSubscriptionStatus.Cancelled;
+        CancelAtPeriodEnd = false;
         CancelledAt = cancelledAt;
         UpdatedAt = cancelledAt;
     }
@@ -140,6 +154,8 @@ public sealed class CreatorSubscription
     public DateTimeOffset? CurrentPeriodEnd { get; private set; }
 
     public DateTimeOffset? TrialEndsAt { get; private set; }
+
+    public bool CancelAtPeriodEnd { get; private set; }
 
     public DateTimeOffset? CancelledAt { get; private set; }
 

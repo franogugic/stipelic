@@ -1,3 +1,4 @@
+using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Api.Responses;
@@ -28,9 +29,7 @@ public sealed class CreatorsController : ControllerBase
     [HttpGet("me")]
     public async Task<ActionResult<ApiResponse<CreatorResponseDto?>>> Me(CancellationToken ct)
     {
-        var currentUser = _currentUserContext.User;
-        if (currentUser is null)
-            throw new UnauthorizedException("Authentication is required.");
+        var currentUser = GetAuthenticatedUser();
 
         var response = await _creatorService.GetCurrentForOwnerAsync(currentUser.Id, ct);
 
@@ -45,9 +44,7 @@ public sealed class CreatorsController : ControllerBase
         string slug,
         CancellationToken ct)
     {
-        var currentUser = _currentUserContext.User;
-        if (currentUser is null)
-            throw new UnauthorizedException("Authentication is required.");
+        var currentUser = GetAuthenticatedUser();
 
         var response = await _creatorService.GetSettingsAsync(slug, currentUser.Id, ct);
 
@@ -64,12 +61,7 @@ public sealed class CreatorsController : ControllerBase
         [FromBody] UpdateCreatorSettingsRequestDto request,
         CancellationToken ct)
     {
-        var currentUser = _currentUserContext.User;
-        if (currentUser is null)
-            throw new UnauthorizedException("Authentication is required.");
-
-        if (!currentUser.IsEmailVerified)
-            throw new EmailNotVerifiedException();
+        var currentUser = GetVerifiedUser();
 
         var response = await _creatorService.UpdateSettingsAsync(slug, currentUser.Id, request, ct);
 
@@ -85,12 +77,7 @@ public sealed class CreatorsController : ControllerBase
         [FromBody] CreateCreatorRequestDto request,
         CancellationToken ct)
     {
-        var currentUser = _currentUserContext.User;
-        if (currentUser is null)
-            throw new UnauthorizedException("Authentication is required.");
-
-        if (!currentUser.IsEmailVerified)
-            throw new EmailNotVerifiedException();
+        var currentUser = GetVerifiedUser();
 
         var response = await _creatorService.CreateAsync(currentUser.Id, request, ct);
 
@@ -105,12 +92,7 @@ public sealed class CreatorsController : ControllerBase
     [HttpDelete("current")]
     public async Task<ActionResult<ApiResponse<object>>> DeleteCurrent(CancellationToken ct)
     {
-        var currentUser = _currentUserContext.User;
-        if (currentUser is null)
-            throw new UnauthorizedException("Authentication is required.");
-
-        if (!currentUser.IsEmailVerified)
-            throw new EmailNotVerifiedException();
+        var currentUser = GetVerifiedUser();
 
         await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
 
@@ -120,17 +102,25 @@ public sealed class CreatorsController : ControllerBase
             null));
     }
 
+    [HttpDelete("current/subscription")]
+    public async Task<ActionResult<ApiResponse<object>>> CancelSubscription(CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        await _creatorService.CancelSubscriptionAsync(currentUser.Id, ct);
+
+        return Ok(ApiResponse<object>.Success(
+            StatusCodes.Status200OK,
+            "Subscription scheduled for cancellation at the end of the current billing period.",
+            null));
+    }
+
     [HttpPost("current/subscription/checkout")]
     [EnableRateLimiting("StartCreatorCheckout")]
     public async Task<ActionResult<ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>>> StartSubscriptionCheckout(
         CancellationToken ct)
     {
-        var currentUser = _currentUserContext.User;
-        if (currentUser is null)
-            throw new UnauthorizedException("Authentication is required.");
-
-        if (!currentUser.IsEmailVerified)
-            throw new EmailNotVerifiedException();
+        var currentUser = GetVerifiedUser();
 
         var response = await _creatorService.StartSubscriptionCheckoutAsync(currentUser.Id, ct);
 
@@ -138,5 +128,23 @@ public sealed class CreatorsController : ControllerBase
             StatusCodes.Status200OK,
             "Creator subscription checkout is ready.",
             response));
+    }
+
+    /// <summary>Returns the authenticated user or throws 401.</summary>
+    private CurrentUserDto GetAuthenticatedUser()
+    {
+        var user = _currentUserContext.User;
+        if (user is null)
+            throw new UnauthorizedException("Authentication is required.");
+        return user;
+    }
+
+    /// <summary>Returns the authenticated and email-verified user or throws 401/403.</summary>
+    private CurrentUserDto GetVerifiedUser()
+    {
+        var user = GetAuthenticatedUser();
+        if (!user.IsEmailVerified)
+            throw new EmailNotVerifiedException();
+        return user;
     }
 }

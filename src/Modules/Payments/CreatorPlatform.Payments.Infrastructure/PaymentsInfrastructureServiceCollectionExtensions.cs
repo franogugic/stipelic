@@ -13,6 +13,7 @@ public static class PaymentsInfrastructureServiceCollectionExtensions
         StripeConfiguration.MaxNetworkRetries = 3;
 
         services.AddScoped<ISubscriptionCheckoutSessionService, StripeSubscriptionCheckoutSessionService>();
+        services.AddScoped<ISubscriptionCancellationService, StripeSubscriptionCancellationService>();
         services.AddScoped<IStripeWebhookService, StripeWebhookService>();
         services.AddScoped<IWebhookFailureRepository, WebhookFailureRepository>();
 

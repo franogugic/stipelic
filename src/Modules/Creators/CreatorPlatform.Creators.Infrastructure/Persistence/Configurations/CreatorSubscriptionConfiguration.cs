@@ -55,6 +55,9 @@ public sealed class CreatorSubscriptionConfiguration : IEntityTypeConfiguration<
 
         builder.Property(subscription => subscription.TrialEndsAt);
 
+        builder.Property(subscription => subscription.CancelAtPeriodEnd)
+            .IsRequired();
+
         builder.Property(subscription => subscription.CancelledAt);
 
         builder.Property(subscription => subscription.CreatedAt)

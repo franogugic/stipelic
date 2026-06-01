@@ -148,9 +148,14 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                     if (subscription.Creator.Status != CreatorStatus.Active)
                         subscription.Creator.Activate(now);
 
+                    if (data.CancelAtPeriodEnd && !subscription.CancelAtPeriodEnd)
+                        subscription.ScheduleCancel(now);
+                    else if (!data.CancelAtPeriodEnd && subscription.CancelAtPeriodEnd)
+                        subscription.UndoScheduledCancel(now);
+
                     _logger.LogInformation(
-                        "Subscription period updated via Stripe. StripeSubscriptionId: {StripeSubscriptionId}",
-                        data.StripeSubscriptionId);
+                        "Subscription period updated via Stripe. StripeSubscriptionId: {StripeSubscriptionId}, CancelAtPeriodEnd: {CancelAtPeriodEnd}",
+                        data.StripeSubscriptionId, data.CancelAtPeriodEnd);
                     break;
 
                 case "past_due":

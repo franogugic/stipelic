@@ -13,4 +13,6 @@ public sealed class CreatorResponseDto
     public string DefaultCurrency { get; init; } = string.Empty;
 
     public string PlanCode { get; init; } = string.Empty;
+
+    public bool CancelAtPeriodEnd { get; init; }
 }
