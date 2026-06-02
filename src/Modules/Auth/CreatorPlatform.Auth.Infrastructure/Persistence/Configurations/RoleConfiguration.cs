@@ -13,6 +13,7 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.HasKey(role => role.Id);
 
         builder.Property(role => role.Id)
+            .HasConversion<short>()
             .ValueGeneratedNever();
 
         builder.Property(role => role.Name)
@@ -21,5 +22,11 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.HasIndex(role => role.Name)
             .IsUnique();
+
+        builder.HasData(
+            Role.Create(RoleId.User, "user"),
+            Role.Create(RoleId.PlatformAdmin, "platform_admin"),
+            Role.Create(RoleId.CreatorOwner, "creator_owner"),
+            Role.Create(RoleId.CreatorStaff, "creator_staff"));
     }
 }

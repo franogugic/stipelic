@@ -14,7 +14,8 @@ public sealed class CreatorPlatformDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(CreatorPlatformDbContext).Assembly);
+        // za sat ne triba jer u ovom proejktu nema konfig nikakve
+        //modelBuilder.ApplyConfigurationsFromAssembly(typeof(CreatorPlatformDbContext).Assembly);
 
         foreach (var assembly in GetLoadedInfrastructureAssemblies())
         {
@@ -22,6 +23,8 @@ public sealed class CreatorPlatformDbContext : DbContext
         }
     }
 
+    // pokupi sve assyempye koji pocinju s creatorplatofr i zavrsavaju s .inf
+    // da skupimo sve konfiguracije jer su raspojedljenje po modulesima
     private static IEnumerable<Assembly> GetLoadedInfrastructureAssemblies()
     {
         return AppDomain.CurrentDomain

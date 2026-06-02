@@ -38,9 +38,18 @@ public sealed class User
             passwordHash,
             firstName,
             lastName,
-            UserStatus.Active,
+            UserStatus.PendingEmailVerification,
             createdAt);
     }
+
+    public void VerifyEmail(DateTimeOffset verifiedAt)
+    {
+        EmailVerifiedAt = verifiedAt;
+        Status = UserStatus.Active;
+        UpdatedAt = verifiedAt;
+    }
+
+    public bool IsEmailVerified => EmailVerifiedAt is not null && Status == UserStatus.Active;
 
     public int Id { get; private set; }
 

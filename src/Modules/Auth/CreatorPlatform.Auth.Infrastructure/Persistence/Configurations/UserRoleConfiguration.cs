@@ -13,7 +13,11 @@ public sealed class UserRoleConfiguration : IEntityTypeConfiguration<UserRole>
 
         builder.HasKey(userRole => new { userRole.UserId, userRole.RoleId });
 
-        builder.HasOne<User>()
+        builder.Property(userRole => userRole.RoleId)
+            .HasConversion<short>()
+            .ValueGeneratedNever();
+        
+        builder.HasOne(userRole => userRole.User)
             .WithMany()
             .HasForeignKey(userRole => userRole.UserId)
             .OnDelete(DeleteBehavior.Cascade);

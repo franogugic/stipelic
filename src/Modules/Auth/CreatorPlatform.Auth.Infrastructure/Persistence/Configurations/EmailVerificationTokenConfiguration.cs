@@ -12,11 +12,12 @@ public sealed class EmailVerificationTokenConfiguration : IEntityTypeConfigurati
         builder.ToTable("email_verification_tokens", "auth");
 
         builder.HasKey(token => token.Id);
-
-        builder.HasOne<User>()
+        
+        builder.HasOne(token => token.User)
             .WithMany()
             .HasForeignKey(token => token.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+            
 
         builder.Property(token => token.TokenHash)
             .HasMaxLength(255)

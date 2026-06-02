@@ -2,8 +2,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CreatorPlatform.Auth.Domain\CreatorPlatform.Auth.Domain.csproj" />
+    <ProjectReference Include="..\..\Email\CreatorPlatform.Email.Application\CreatorPlatform.Email.Application.csproj" />
     <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Application\CreatorPlatform.Shared.Application.csproj" />
     <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Domain\CreatorPlatform.Shared.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
   </ItemGroup>
 
   <PropertyGroup>

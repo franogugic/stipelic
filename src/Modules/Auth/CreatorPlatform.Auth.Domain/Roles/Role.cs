@@ -6,20 +6,18 @@ public sealed class Role
     {
     }
 
-    private Role(short id, string name)
+    private Role(RoleId id, string name)
     {
         Id = id;
         Name = name;
     }
 
-    public short Id { get; private set; }
-
-    public string Name { get; private set; } = string.Empty;
-
-    // id nije dinamicki vec se upisuje rucno
-    // jer su role fiksne
-    public static Role Create(short id, string name)
+    public static Role Create(RoleId id, string name)
     {
         return new Role(id, name);
     }
+
+    public RoleId Id { get; private set; }
+
+    public string Name { get; private set; } = string.Empty;
 }
