@@ -7,4 +7,6 @@ public interface ICreatorPlanRepository
     Task<List<CreatorPlan>> ListActiveAsync(CancellationToken ct);
 
     Task<CreatorPlan?> GetByCodeAsync(string code, CancellationToken ct);
+
+    Task<CreatorPlan?> GetByStripePriceIdAsync(string stripePriceId, CancellationToken ct);
 }

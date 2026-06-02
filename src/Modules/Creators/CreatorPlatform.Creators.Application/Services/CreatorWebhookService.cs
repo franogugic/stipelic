@@ -9,17 +9,20 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
 {
     private readonly ICreatorRepository _creatorRepository;
     private readonly ICreatorSubscriptionRepository _creatorSubscriptionRepository;
+    private readonly ICreatorPlanRepository _creatorPlanRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly ILogger<CreatorWebhookService> _logger;
 
     public CreatorWebhookService(
         ICreatorRepository creatorRepository,
         ICreatorSubscriptionRepository creatorSubscriptionRepository,
+        ICreatorPlanRepository creatorPlanRepository,
         ICreatorsUnitOfWork unitOfWork,
         ILogger<CreatorWebhookService> logger)
     {
         _creatorRepository = creatorRepository;
         _creatorSubscriptionRepository = creatorSubscriptionRepository;
+        _creatorPlanRepository = creatorPlanRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -153,8 +156,30 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                     else if (!data.CancelAtPeriodEnd && subscription.CancelAtPeriodEnd)
                         subscription.UndoScheduledCancel(now);
 
+                    // Ažuriraj plan ako se promijenio (upgrade/downgrade)
+                    if (!string.IsNullOrWhiteSpace(data.StripePriceId)
+                        && data.StripePriceId != subscription.Plan.StripePriceId)
+                    {
+                        var newPlan = await _creatorPlanRepository
+                            .GetByStripePriceIdAsync(data.StripePriceId, ct);
+
+                        if (newPlan is not null)
+                        {
+                            subscription.UpdatePlan(newPlan, now);
+                            _logger.LogInformation(
+                                "Subscription plan updated. StripeSubscriptionId: {StripeSubscriptionId}, NewPlan: {NewPlan}",
+                                data.StripeSubscriptionId, newPlan.Code);
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "Plan not found for StripePriceId: {StripePriceId}. Plan not updated.",
+                                data.StripePriceId);
+                        }
+                    }
+
                     _logger.LogInformation(
-                        "Subscription period updated via Stripe. StripeSubscriptionId: {StripeSubscriptionId}, CancelAtPeriodEnd: {CancelAtPeriodEnd}",
+                        "Subscription updated via Stripe. StripeSubscriptionId: {StripeSubscriptionId}, CancelAtPeriodEnd: {CancelAtPeriodEnd}",
                         data.StripeSubscriptionId, data.CancelAtPeriodEnd);
                     break;
 

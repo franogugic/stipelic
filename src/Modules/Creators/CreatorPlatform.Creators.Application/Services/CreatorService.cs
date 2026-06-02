@@ -28,6 +28,7 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly ISubscriptionCheckoutSessionService _subscriptionCheckoutSessionService;
     private readonly ISubscriptionCancellationService _subscriptionCancellationService;
+    private readonly IBillingPortalService _billingPortalService;
 
     public CreatorService(
         ICreatorRepository creatorRepository,
@@ -37,7 +38,8 @@ public sealed partial class CreatorService : ICreatorService
         ICreatorSubscriptionRepository creatorSubscriptionRepository,
         ICreatorsUnitOfWork unitOfWork,
         ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService,
-        ISubscriptionCancellationService subscriptionCancellationService)
+        ISubscriptionCancellationService subscriptionCancellationService,
+        IBillingPortalService billingPortalService)
     {
         _creatorRepository = creatorRepository;
         _creatorMemberRepository = creatorMemberRepository;
@@ -47,6 +49,7 @@ public sealed partial class CreatorService : ICreatorService
         _unitOfWork = unitOfWork;
         _subscriptionCheckoutSessionService = subscriptionCheckoutSessionService;
         _subscriptionCancellationService = subscriptionCancellationService;
+        _billingPortalService = billingPortalService;
     }
 
     public async Task<CreateCreatorResponseDto> CreateAsync(
@@ -224,6 +227,21 @@ public sealed partial class CreatorService : ICreatorService
         await _unitOfWork.SaveChangesAsync(ct);
     }
 
+    public async Task<string> GetBillingPortalUrlAsync(int ownerUserId, CancellationToken ct)
+    {
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
+        if (creator is null)
+            throw new NotFoundException("Creator workspace does not exist.");
+
+        if (string.IsNullOrWhiteSpace(creator.StripeCustomerId))
+            throw new BadRequestException("No billing account found. Please contact support.");
+
+        return await _billingPortalService.CreateSessionAsync(
+            creator.StripeCustomerId,
+            returnUrl: $"/app/{creator.Slug}",
+            ct);
+    }
+
     public async Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
     {
         var disabledAt = DateTimeOffset.UtcNow;
@@ -258,7 +276,7 @@ public sealed partial class CreatorService : ICreatorService
 
         var checkoutSession = await _subscriptionCheckoutSessionService.CreateAsync(
             subscription.Plan.StripePriceId,
-            idempotencyKey: $"checkout-subscription-{subscription.Id}",
+            idempotencyKey: $"checkout-sub-{subscription.Id}-{subscription.Plan.StripePriceId}",
             new Dictionary<string, string>
             {
                 ["creatorId"] = creator.Id.ToString(),

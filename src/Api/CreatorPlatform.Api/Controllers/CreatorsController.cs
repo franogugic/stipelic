@@ -102,6 +102,19 @@ public sealed class CreatorsController : ControllerBase
             null));
     }
 
+    [HttpPost("current/billing-portal")]
+    public async Task<ActionResult<ApiResponse<string>>> BillingPortal(CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var url = await _creatorService.GetBillingPortalUrlAsync(currentUser.Id, ct);
+
+        return Ok(ApiResponse<string>.Success(
+            StatusCodes.Status200OK,
+            "Billing portal session created.",
+            url));
+    }
+
     [HttpDelete("current/subscription")]
     public async Task<ActionResult<ApiResponse<object>>> CancelSubscription(CancellationToken ct)
     {

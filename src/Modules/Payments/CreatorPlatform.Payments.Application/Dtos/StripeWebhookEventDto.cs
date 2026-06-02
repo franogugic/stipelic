@@ -25,6 +25,7 @@ public sealed class SubscriptionChangedData
     public required string StripeCustomerId { get; init; }
     public required string Status { get; init; }
     public bool CancelAtPeriodEnd { get; init; }
+    public string? StripePriceId { get; init; }
     public DateTimeOffset CurrentPeriodStart { get; init; }
     public DateTimeOffset CurrentPeriodEnd { get; init; }
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();

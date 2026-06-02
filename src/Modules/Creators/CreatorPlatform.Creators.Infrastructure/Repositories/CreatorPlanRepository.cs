@@ -33,4 +33,12 @@ public sealed class CreatorPlanRepository : ICreatorPlanRepository
             .Include(plan => plan.Limits)
             .FirstOrDefaultAsync(plan => plan.Code == code, ct);
     }
+
+    public async Task<CreatorPlan?> GetByStripePriceIdAsync(string stripePriceId, CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorPlan>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(plan => plan.StripePriceId == stripePriceId, ct);
+    }
 }

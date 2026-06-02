@@ -22,5 +22,7 @@ public interface ICreatorService
 
     Task CancelSubscriptionAsync(int ownerUserId, CancellationToken ct);
 
+    Task<string> GetBillingPortalUrlAsync(int ownerUserId, CancellationToken ct);
+
     Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 }

@@ -104,6 +104,8 @@ public sealed class StripeWebhookService : IStripeWebhookService
         var periodStart = firstItem?.CurrentPeriodStart ?? DateTime.UtcNow;
         var periodEnd = firstItem?.CurrentPeriodEnd ?? DateTime.UtcNow.AddMonths(1);
 
+        var stripePriceId = firstItem?.Price?.Id;
+
         return new StripeWebhookEventDto
         {
             EventId = stripeEvent.Id,
@@ -114,6 +116,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 StripeCustomerId = subscription.CustomerId,
                 Status = subscription.Status,
                 CancelAtPeriodEnd = subscription.CancelAtPeriodEnd,
+                StripePriceId = stripePriceId,
                 CurrentPeriodStart = new DateTimeOffset(periodStart, TimeSpan.Zero),
                 CurrentPeriodEnd = new DateTimeOffset(periodEnd, TimeSpan.Zero),
                 Metadata = subscription.Metadata ?? new Dictionary<string, string>()

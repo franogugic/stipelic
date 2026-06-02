@@ -95,6 +95,12 @@ public sealed class CreatorSubscription
         UpdatedAt = updatedAt;
     }
 
+    public void UpdatePlan(CreatorPlan newPlan, DateTimeOffset updatedAt)
+    {
+        Plan = newPlan;
+        UpdatedAt = updatedAt;
+    }
+
     public void UpdatePeriod(
         DateTimeOffset currentPeriodStart,
         DateTimeOffset currentPeriodEnd,

@@ -11,4 +11,6 @@ public sealed class StripeOptions
     public string SuccessUrl { get; init; } = string.Empty;
 
     public string CancelUrl { get; init; } = string.Empty;
+
+    public string BillingPortalReturnUrl { get; init; } = string.Empty;
 }

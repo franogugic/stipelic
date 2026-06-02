@@ -99,7 +99,7 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 BillingInterval = BillingInterval.Monthly,
                 PlatformFeeBasisPoints = 500,
-                StripePriceId = "price_1Tch5JV05qi4vb2A7qhjOae3",
+                StripePriceId = "price_1TdeWaV05qi4vb2Az5izI6wj",
                 CreatedAt = SeededAt,
                 UpdatedAt = SeededAt
             },
@@ -114,7 +114,7 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 BillingInterval = BillingInterval.Monthly,
                 PlatformFeeBasisPoints = 250,
-                StripePriceId = "price_1Tch5WV05qi4vb2ATVhLgp5V",
+                StripePriceId = "price_1TdeXhV05qi4vb2A1eMRjOFC",
                 CreatedAt = SeededAt,
                 UpdatedAt = SeededAt
             },
@@ -129,7 +129,7 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
                 Currency = Currency.Eur,
                 BillingInterval = BillingInterval.Monthly,
                 PlatformFeeBasisPoints = 100,
-                StripePriceId = "price_1Tch5iV05qi4vb2AJYWxprid",
+                StripePriceId = "price_1TdeXtV05qi4vb2AGEHnliO9",
                 CreatedAt = SeededAt,
                 UpdatedAt = SeededAt
             });
