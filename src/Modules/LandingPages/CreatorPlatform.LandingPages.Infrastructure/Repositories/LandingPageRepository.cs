@@ -14,6 +14,23 @@ public sealed class LandingPageRepository : ILandingPageRepository
         _context = context;
     }
 
+    public async Task<List<LandingPage>> ListByCreatorIdAsync(int creatorId, CancellationToken ct)
+    {
+        return await _context
+            .Set<LandingPage>()
+            .AsNoTracking()
+            .Where(lp => lp.CreatorId == creatorId && lp.Status != LandingPageStatus.Archived)
+            .OrderByDescending(lp => lp.CreatedAt)
+            .ToListAsync(ct);
+    }
+
+    public async Task<LandingPage?> GetByPublicIdAndCreatorIdForUpdateAsync(Guid publicId, int creatorId, CancellationToken ct)
+    {
+        return await _context
+            .Set<LandingPage>()
+            .FirstOrDefaultAsync(lp => lp.PublicId == publicId && lp.CreatorId == creatorId, ct);
+    }
+
     public async Task<bool> SlugExistsForCreatorAsync(int creatorId, string slug, CancellationToken ct)
     {
         return await _context

@@ -13,6 +13,7 @@ public static class LandingPagesInfrastructureServiceCollectionExtensions
     {
         services.AddScoped<ILandingPageService, LandingPageService>();
         services.AddScoped<ILandingPageRepository, LandingPageRepository>();
+        services.AddScoped<ILandingPageSectionRepository, LandingPageSectionRepository>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<ILandingPagesUnitOfWork, LandingPagesUnitOfWork>();
 
