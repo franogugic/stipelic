@@ -8,6 +8,7 @@ using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Payments.Application.Options;
 using CreatorPlatform.LandingPages.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
+using CreatorPlatform.Analytics.Infrastructure;
 using CreatorPlatform.Products.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
@@ -183,6 +184,7 @@ builder.Services.AddProductsInfrastructure();
 builder.Services.AddLandingPagesInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration);
 builder.Services.AddPaymentsInfrastructure();
+builder.Services.AddAnalyticsInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
