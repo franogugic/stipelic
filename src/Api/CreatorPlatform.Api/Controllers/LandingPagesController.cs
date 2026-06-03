@@ -1,3 +1,5 @@
+using CreatorPlatform.Analytics.Application.Dtos;
+using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
@@ -14,13 +16,16 @@ namespace CreatorPlatform.Api.Controllers;
 public sealed class LandingPagesController : ControllerBase
 {
     private readonly ILandingPageService _landingPageService;
+    private readonly IPageViewService _pageViewService;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
         ILandingPageService landingPageService,
+        IPageViewService pageViewService,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
+        _pageViewService = pageViewService;
         _currentUserContext = currentUserContext;
     }
 
@@ -93,6 +98,18 @@ public sealed class LandingPagesController : ControllerBase
         var user = GetVerifiedUser();
         var page = await _landingPageService.SaveEditorAsync(slug, pageId, user.Id, request, ct);
         return Ok(ApiResponse<LandingPageWithSectionsResponseDto>.Success(StatusCodes.Status200OK, "Landing page saved.", page));
+    }
+
+    [HttpGet("{pageId:guid}/analytics")]
+    public async Task<ActionResult<ApiResponse<LandingPageAnalyticsResponseDto>>> GetAnalytics(
+        string slug,
+        Guid pageId,
+        CancellationToken ct)
+    {
+        var user = GetAuthenticatedUser();
+        var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
+        var analytics = await _pageViewService.GetLandingPageStatsAsync(page.InternalId, ct);
+        return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
     }
 
     [HttpGet("section-templates")]

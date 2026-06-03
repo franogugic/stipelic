@@ -1,7 +1,12 @@
+using System.Text.Json.Serialization;
+
 namespace CreatorPlatform.LandingPages.Application.Dtos;
 
 public sealed class LandingPageWithSectionsResponseDto
 {
+    [JsonIgnore]
+    public int InternalId { get; init; }
+
     public Guid PublicId { get; init; }
     public string Title { get; init; } = string.Empty;
     public string Slug { get; init; } = string.Empty;
