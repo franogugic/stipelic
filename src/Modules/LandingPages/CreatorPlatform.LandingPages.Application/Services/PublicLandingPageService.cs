@@ -45,7 +45,7 @@ public sealed class PublicLandingPageService : IPublicLandingPageService
                     SortOrder = s.SortOrder,
                     BackgroundColor = s.BackgroundColor,
                     ContentJson = s.ContentJson,
-                    IsLocked = s.Type is LandingPageSectionType.Hero or LandingPageSectionType.Cta
+                    IsLocked = s.Type is LandingPageSectionType.Navbar or LandingPageSectionType.Footer
                 })
                 .ToList(),
             CreatedAt = landingPage.CreatedAt,

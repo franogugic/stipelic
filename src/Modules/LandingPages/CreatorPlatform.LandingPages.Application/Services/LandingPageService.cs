@@ -53,14 +53,15 @@ public sealed partial class LandingPageService : ILandingPageService
 
         await _landingPageRepository.AddAsync(landingPage, ct);
 
+        var navbarTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Navbar);
         var heroTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Hero);
         var ctaTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Cta);
+        var footerTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Footer);
 
-        var hero = LandingPageSection.Create(landingPage, LandingPageSectionType.Hero, 0, heroTemplate.DefaultBackgroundColor, heroTemplate.ContentJson, now);
-        var cta = LandingPageSection.Create(landingPage, LandingPageSectionType.Cta, 1, ctaTemplate.DefaultBackgroundColor, ctaTemplate.ContentJson, now);
-
-        await _sectionRepository.AddAsync(hero, ct);
-        await _sectionRepository.AddAsync(cta, ct);
+        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Navbar, 0, navbarTemplate.DefaultBackgroundColor, navbarTemplate.ContentJson, now), ct);
+        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Hero, 1, heroTemplate.DefaultBackgroundColor, heroTemplate.ContentJson, now), ct);
+        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Cta, 2, ctaTemplate.DefaultBackgroundColor, ctaTemplate.ContentJson, now), ct);
+        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Footer, 3, footerTemplate.DefaultBackgroundColor, footerTemplate.ContentJson, now), ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
         return MapToDto(landingPage);
@@ -168,22 +169,34 @@ public sealed partial class LandingPageService : ILandingPageService
             throw new ConflictException("A landing page with this URL already exists.");
 
         // Validate sections structure
-        if (request.Sections.Count < 2)
-            throw new BadRequestException("Landing page must have at least a Hero and a CTA section.");
+        if (request.Sections.Count < 4)
+            throw new BadRequestException("Landing page must have at least Navbar, Hero, CTA and Footer sections.");
 
         var requestedTypes = request.Sections.Select(s => ParseSectionType(s.Type)).ToList();
 
-        if (requestedTypes[0] != LandingPageSectionType.Hero)
-            throw new BadRequestException("First section must be Hero.");
+        if (requestedTypes[0] != LandingPageSectionType.Navbar)
+            throw new BadRequestException("First section must be Navbar.");
 
-        if (requestedTypes[^1] != LandingPageSectionType.Cta)
-            throw new BadRequestException("Last section must be CTA.");
+        if (requestedTypes[^1] != LandingPageSectionType.Footer)
+            throw new BadRequestException("Last section must be Footer.");
 
-        if (requestedTypes.Count(t => t == LandingPageSectionType.Hero) != 1)
-            throw new BadRequestException("Landing page must have exactly one Hero section.");
+        if (requestedTypes.Count(t => t == LandingPageSectionType.Navbar) != 1)
+            throw new BadRequestException("Landing page must have exactly one Navbar section.");
 
-        if (requestedTypes.Count(t => t == LandingPageSectionType.Cta) != 1)
-            throw new BadRequestException("Landing page must have exactly one CTA section.");
+        if (requestedTypes.Count(t => t == LandingPageSectionType.Footer) != 1)
+            throw new BadRequestException("Landing page must have exactly one Footer section.");
+
+        if (!requestedTypes.Contains(LandingPageSectionType.Hero))
+            throw new BadRequestException("Landing page must have a Hero section.");
+
+        if (!requestedTypes.Contains(LandingPageSectionType.Cta))
+            throw new BadRequestException("Landing page must have a CTA section.");
+
+        if (requestedTypes.Count(t => t == LandingPageSectionType.Hero) > 1)
+            throw new BadRequestException("Landing page cannot have more than one Hero section.");
+
+        if (requestedTypes.Count(t => t == LandingPageSectionType.Cta) > 1)
+            throw new BadRequestException("Landing page cannot have more than one CTA section.");
 
         // Load existing sections
         var existingSections = await _sectionRepository.ListByLandingPageIdAsync(landingPage.Id, ct);
@@ -234,7 +247,7 @@ public sealed partial class LandingPageService : ILandingPageService
     public List<SectionTemplateResponseDto> GetSectionTemplates()
     {
         return SectionTemplates.All
-            .Where(t => t.Type is not LandingPageSectionType.Hero and not LandingPageSectionType.Cta)
+            .Where(t => t.Type is not LandingPageSectionType.Navbar and not LandingPageSectionType.Footer)
             .Select(t => new SectionTemplateResponseDto
             {
                 Key = t.Key,
@@ -317,7 +330,7 @@ public sealed partial class LandingPageService : ILandingPageService
     }
 
     private static bool IsLockedSection(LandingPageSectionType type)
-        => type is LandingPageSectionType.Hero or LandingPageSectionType.Cta;
+        => type is LandingPageSectionType.Navbar or LandingPageSectionType.Footer;
 
     private static LandingPageResponseDto MapToDto(LandingPage lp) => new()
     {

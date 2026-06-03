@@ -17,6 +17,14 @@ public static class SectionTemplates
     [
         new SectionTemplate
         {
+            Key = "navbar-simple",
+            Name = "Simple",
+            Type = LandingPageSectionType.Navbar,
+            DefaultBackgroundColor = "#ffffff",
+            ContentJson = """{"brandName":"My Brand","links":[]}"""
+        },
+        new SectionTemplate
+        {
             Key = "hero-minimal",
             Name = "Minimal",
             Type = LandingPageSectionType.Hero,
@@ -78,6 +86,14 @@ public static class SectionTemplates
             Type = LandingPageSectionType.Cta,
             DefaultBackgroundColor = "#111827",
             ContentJson = """{"heading":"Ready to get started?","subheading":"Don't miss out. Join today.","buttonText":"Get started now"}"""
+        },
+        new SectionTemplate
+        {
+            Key = "footer-simple",
+            Name = "Simple",
+            Type = LandingPageSectionType.Footer,
+            DefaultBackgroundColor = "#ffffff",
+            ContentJson = """{"copyright":"© 2025 My Brand. All rights reserved."}"""
         }
     ];
 
