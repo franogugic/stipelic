@@ -347,6 +347,7 @@ public sealed partial class LandingPageService : ILandingPageService
 
     private static LandingPageWithSectionsResponseDto MapToWithSectionsDto(LandingPage lp, List<LandingPageSection> sections) => new()
     {
+        InternalId = lp.Id,
         PublicId = lp.PublicId,
         Title = lp.Title,
         Slug = lp.Slug,

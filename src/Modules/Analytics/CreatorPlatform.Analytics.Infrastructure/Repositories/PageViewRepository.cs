@@ -14,28 +14,21 @@ public sealed class PageViewRepository : IPageViewRepository
         _context = context;
     }
 
-    public async Task<bool> HasRecentViewAsync(int landingPageId, Guid visitorId, DateTimeOffset since, CancellationToken ct)
-    {
-        return await _context
-            .Set<PageView>()
-            .AsNoTracking()
-            .AnyAsync(pv =>
-                pv.LandingPageId == landingPageId &&
-                pv.VisitorId == visitorId &&
-                pv.ViewedAt >= since,
-                ct);
-    }
-
     public async Task AddAsync(PageView pageView, CancellationToken ct)
     {
-        await _context.Set<PageView>().AddAsync(pageView, ct);
-        await _context.SaveChangesAsync(ct);
+        await _context.Database.ExecuteSqlAsync(
+            $"""
+             INSERT INTO analytics.page_views ("Id", "LandingPageId", "VisitorId", "ViewedAt", "ViewedDate")
+             VALUES ({pageView.Id}, {pageView.LandingPageId}, {pageView.VisitorId}, {pageView.ViewedAt}, {pageView.ViewedDate})
+             ON CONFLICT ("LandingPageId", "VisitorId", "ViewedDate") DO NOTHING
+             """,
+            ct);
     }
 
     public async Task<PageViewStatsRow> GetStatsAsync(int landingPageId, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var startOfToday = now.Date;
+        var startOfToday = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
         var sevenDaysAgo = now.AddDays(-7);
         var thirtyDaysAgo = now.AddDays(-30);
 

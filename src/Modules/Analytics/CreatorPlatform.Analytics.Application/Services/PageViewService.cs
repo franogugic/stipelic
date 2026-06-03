@@ -6,8 +6,6 @@ namespace CreatorPlatform.Analytics.Application.Services;
 
 public sealed class PageViewService : IPageViewService
 {
-    private static readonly TimeSpan DeduplicationWindow = TimeSpan.FromHours(24);
-
     private readonly IPageViewRepository _repository;
 
     public PageViewService(IPageViewRepository repository)
@@ -18,18 +16,15 @@ public sealed class PageViewService : IPageViewService
     public async Task RecordAsync(int landingPageId, Guid visitorId, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var since = now - DeduplicationWindow;
-
-        var hasRecentView = await _repository.HasRecentViewAsync(landingPageId, visitorId, since, ct);
-        if (hasRecentView)
-            return;
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
 
         var pageView = new PageView
         {
             Id = Guid.NewGuid(),
             LandingPageId = landingPageId,
             VisitorId = visitorId,
-            ViewedAt = now
+            ViewedAt = now,
+            ViewedDate = today
         };
 
         await _repository.AddAsync(pageView, ct);

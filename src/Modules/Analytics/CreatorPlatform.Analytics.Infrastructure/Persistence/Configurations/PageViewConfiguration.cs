@@ -24,8 +24,12 @@ public sealed class PageViewConfiguration : IEntityTypeConfiguration<PageView>
         builder.Property(pv => pv.ViewedAt)
             .IsRequired();
 
-        // Dedup check: postoji li view za ovog visitora na ovoj stranici u zadnjih 24h?
-        builder.HasIndex(pv => new { pv.LandingPageId, pv.VisitorId, pv.ViewedAt });
+        builder.Property(pv => pv.ViewedDate)
+            .IsRequired();
+
+        // Unique constraint — jedan view po visitoru po stranici po danu (UTC)
+        builder.HasIndex(pv => new { pv.LandingPageId, pv.VisitorId, pv.ViewedDate })
+            .IsUnique();
 
         // Analytics queriji: koliko viewova/unika za stranicu u nekom periodu?
         builder.HasIndex(pv => new { pv.LandingPageId, pv.ViewedAt });

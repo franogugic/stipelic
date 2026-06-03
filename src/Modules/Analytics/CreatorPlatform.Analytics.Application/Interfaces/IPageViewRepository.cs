@@ -4,7 +4,6 @@ namespace CreatorPlatform.Analytics.Application.Interfaces;
 
 public interface IPageViewRepository
 {
-    Task<bool> HasRecentViewAsync(int landingPageId, Guid visitorId, DateTimeOffset since, CancellationToken ct);
     Task AddAsync(PageView pageView, CancellationToken ct);
     Task<PageViewStatsRow> GetStatsAsync(int landingPageId, CancellationToken ct);
 }
