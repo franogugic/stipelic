@@ -6,6 +6,7 @@ using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Creators.Infrastructure;
 using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Payments.Application.Options;
+using CreatorPlatform.LandingPages.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
 using CreatorPlatform.Products.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -157,6 +158,7 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddAuthInfrastructure();
 builder.Services.AddCreatorsInfrastructure();
 builder.Services.AddProductsInfrastructure();
+builder.Services.AddLandingPagesInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration);
 builder.Services.AddPaymentsInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();
