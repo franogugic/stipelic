@@ -5,6 +5,7 @@ using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
@@ -39,6 +40,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [EnableRateLimiting("CreateProduct")]
     public async Task<ActionResult<ApiResponse<ProductResponseDto>>> Create(
         string slug,
         [FromBody] CreateProductRequestDto request,
@@ -55,6 +57,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPut("{productId:guid}")]
+    [EnableRateLimiting("UpdateProduct")]
     public async Task<ActionResult<ApiResponse<ProductResponseDto>>> Update(
         string slug,
         Guid productId,
