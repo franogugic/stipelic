@@ -31,6 +31,31 @@ public sealed class LandingPageRepository : ILandingPageRepository
             .FirstOrDefaultAsync(lp => lp.PublicId == publicId && lp.CreatorId == creatorId, ct);
     }
 
+    public async Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct)
+    {
+        return await _context.Database
+            .SqlQuery<LandingPageIdRow>($"""
+                SELECT lp."Id"
+                FROM landing_pages.landing_pages lp
+                JOIN creators.creators c ON c."Id" = lp."CreatorId"
+                WHERE c."Slug"  = {creatorSlug}
+                  AND lp."Slug" = {landingPageSlug}
+                  AND lp."Status" = 'Published'
+                  AND c."Status" != 'Disabled'
+                LIMIT 1
+                """)
+            .AsNoTracking()
+            .Select(r => r.Id)
+            .FirstOrDefaultAsync(ct) is int id
+                ? await _context.Set<LandingPage>().AsNoTracking().FirstOrDefaultAsync(lp => lp.Id == id, ct)
+                : null;
+    }
+
+    private sealed class LandingPageIdRow
+    {
+        public int Id { get; init; }
+    }
+
     public async Task<bool> SlugExistsForCreatorAsync(int creatorId, string slug, CancellationToken ct)
     {
         return await _context

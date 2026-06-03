@@ -10,5 +10,7 @@ public interface ILandingPageRepository
 
     Task<bool> SlugExistsForCreatorAsync(int creatorId, string slug, CancellationToken ct);
 
+    Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct);
+
     Task AddAsync(LandingPage landingPage, CancellationToken ct);
 }
