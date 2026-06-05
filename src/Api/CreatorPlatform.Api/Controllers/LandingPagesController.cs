@@ -108,7 +108,7 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetAuthenticatedUser();
         var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
-        var analytics = await _pageViewService.GetLandingPageStatsAsync(page.InternalId, ct);
+        var analytics = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
     }
 

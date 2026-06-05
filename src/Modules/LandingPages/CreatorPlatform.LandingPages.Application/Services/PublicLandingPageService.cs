@@ -30,7 +30,8 @@ public sealed class PublicLandingPageService : IPublicLandingPageService
 
         return new LandingPageWithSectionsResponseDto
         {
-            InternalId = landingPage.Id,
+            Id = landingPage.Id,
+            ProductId = landingPage.ProductId,
             PublicId = landingPage.PublicId,
             Title = landingPage.Title,
             Slug = landingPage.Slug,

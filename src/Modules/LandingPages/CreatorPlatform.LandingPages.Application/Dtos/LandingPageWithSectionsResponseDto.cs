@@ -5,7 +5,10 @@ namespace CreatorPlatform.LandingPages.Application.Dtos;
 public sealed class LandingPageWithSectionsResponseDto
 {
     [JsonIgnore]
-    public int InternalId { get; init; }
+    public int Id { get; init; }
+
+    [JsonIgnore]
+    public int? ProductId { get; init; }
 
     public Guid PublicId { get; init; }
     public string Title { get; init; } = string.Empty;

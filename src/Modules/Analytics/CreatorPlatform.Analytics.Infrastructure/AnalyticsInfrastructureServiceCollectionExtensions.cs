@@ -11,6 +11,8 @@ public static class AnalyticsInfrastructureServiceCollectionExtensions
     {
         services.AddScoped<IPageViewService, PageViewService>();
         services.AddScoped<IPageViewRepository, PageViewRepository>();
+        services.AddScoped<IEmailCaptureService, EmailCaptureService>();
+        services.AddScoped<IEmailCaptureRepository, EmailCaptureRepository>();
 
         return services;
     }
