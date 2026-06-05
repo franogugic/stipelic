@@ -17,15 +17,18 @@ public sealed class LandingPagesController : ControllerBase
 {
     private readonly ILandingPageService _landingPageService;
     private readonly IPageViewService _pageViewService;
+    private readonly IEmailCaptureService _emailCaptureService;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
         ILandingPageService landingPageService,
         IPageViewService pageViewService,
+        IEmailCaptureService emailCaptureService,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
         _pageViewService = pageViewService;
+        _emailCaptureService = emailCaptureService;
         _currentUserContext = currentUserContext;
     }
 
@@ -108,7 +111,18 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetAuthenticatedUser();
         var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
-        var analytics = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
+
+        var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
+        var captureCount = await _emailCaptureService.GetCaptureCountAsync(page.Id, ct);
+
+        var analytics = new LandingPageAnalyticsResponseDto
+        {
+            AllTime = stats.AllTime,
+            Today = stats.Today,
+            Last7Days = stats.Last7Days,
+            Last30Days = stats.Last30Days,
+            TotalEmailCaptures = captureCount
+        };
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
     }
 

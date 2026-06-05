@@ -6,6 +6,7 @@ public sealed class LandingPageAnalyticsResponseDto
     public required PeriodStatsDto Today { get; init; }
     public required PeriodStatsDto Last7Days { get; init; }
     public required PeriodStatsDto Last30Days { get; init; }
+    public required long TotalEmailCaptures { get; init; }
 }
 
 public sealed class PeriodStatsDto

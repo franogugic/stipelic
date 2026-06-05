@@ -24,4 +24,11 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
              """,
             ct);
     }
+
+    public async Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct)
+    {
+        return await _context.Set<EmailCapture>()
+            .AsNoTracking()
+            .LongCountAsync(ec => ec.LandingPageId == landingPageId, ct);
+    }
 }

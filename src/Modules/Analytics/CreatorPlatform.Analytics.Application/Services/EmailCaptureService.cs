@@ -25,4 +25,7 @@ public sealed class EmailCaptureService : IEmailCaptureService
 
         await _repository.AddAsync(capture, ct);
     }
+
+    public Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct) =>
+        _repository.GetCaptureCountAsync(landingPageId, ct);
 }

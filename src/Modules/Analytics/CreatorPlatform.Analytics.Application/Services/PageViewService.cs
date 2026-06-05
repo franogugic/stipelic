@@ -55,7 +55,8 @@ public sealed class PageViewService : IPageViewService
             {
                 TotalViews = stats.ViewsLast30Days,
                 UniqueVisitors = stats.UniqueVisitorsLast30Days
-            }
+            },
+            TotalEmailCaptures = 0
         };
     }
 }
