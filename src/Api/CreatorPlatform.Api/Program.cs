@@ -7,6 +7,8 @@ using CreatorPlatform.Creators.Infrastructure;
 using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Payments.Application.Options;
 using CreatorPlatform.LandingPages.Infrastructure;
+using CreatorPlatform.Orders.Application.Options;
+using CreatorPlatform.Orders.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
 using CreatorPlatform.Analytics.Infrastructure;
 using CreatorPlatform.Products.Infrastructure;
@@ -36,6 +38,7 @@ builder.Services.AddCors(options =>
 });
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
+builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
@@ -185,6 +188,7 @@ builder.Services.AddLandingPagesInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration);
 builder.Services.AddPaymentsInfrastructure();
 builder.Services.AddAnalyticsInfrastructure();
+builder.Services.AddOrdersInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>

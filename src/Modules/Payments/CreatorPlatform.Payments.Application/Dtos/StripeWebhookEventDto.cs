@@ -14,6 +14,7 @@ public sealed class CheckoutSessionCompletedData
     public required string SessionId { get; init; }
     public required string StripeSubscriptionId { get; init; }
     public required string StripeCustomerId { get; init; }
+    public string? StripePaymentIntentId { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
     public DateTimeOffset CurrentPeriodStart { get; init; }
     public DateTimeOffset? CurrentPeriodEnd { get; init; }

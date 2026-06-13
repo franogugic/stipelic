@@ -3,6 +3,8 @@ using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Dtos;
+using CreatorPlatform.Orders.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CreatorPlatform.Api.Controllers;
@@ -23,15 +25,18 @@ public sealed class PublicLandingPagesController : ControllerBase
     private readonly IPublicLandingPageService _publicLandingPageService;
     private readonly IPageViewService _pageViewService;
     private readonly IEmailCaptureService _emailCaptureService;
+    private readonly IOrderCheckoutService _orderCheckoutService;
 
     public PublicLandingPagesController(
         IPublicLandingPageService publicLandingPageService,
         IPageViewService pageViewService,
-        IEmailCaptureService emailCaptureService)
+        IEmailCaptureService emailCaptureService,
+        IOrderCheckoutService orderCheckoutService)
     {
         _publicLandingPageService = publicLandingPageService;
         _pageViewService = pageViewService;
         _emailCaptureService = emailCaptureService;
+        _orderCheckoutService = orderCheckoutService;
     }
 
     [HttpGet("{creatorSlug}/{landingPageSlug}")]
@@ -79,6 +84,21 @@ public sealed class PublicLandingPagesController : ControllerBase
         await _emailCaptureService.CaptureAsync(page.Id, page.ProductId, request.Email, ct);
 
         return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Email captured.", null));
+    }
+
+    [HttpPost("{creatorSlug}/{landingPageSlug}/checkout")]
+    public async Task<ActionResult<ApiResponse<CreateCheckoutResultDto>>> Checkout(
+        string creatorSlug,
+        string landingPageSlug,
+        [FromBody] CreateCheckoutRequestDto request,
+        CancellationToken ct)
+    {
+        var result = await _orderCheckoutService.CreateCheckoutAsync(creatorSlug, landingPageSlug, request.Email, ct);
+
+        return Ok(ApiResponse<CreateCheckoutResultDto>.Success(
+            StatusCodes.Status200OK,
+            "Checkout session created.",
+            result));
     }
 
     private Guid ResolveVisitorId()

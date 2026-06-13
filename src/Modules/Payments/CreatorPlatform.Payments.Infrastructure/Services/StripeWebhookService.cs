@@ -79,6 +79,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 SessionId = session.Id,
                 StripeSubscriptionId = session.SubscriptionId ?? string.Empty,
                 StripeCustomerId = session.CustomerId ?? string.Empty,
+                StripePaymentIntentId = session.PaymentIntentId,
                 Metadata = session.Metadata ?? new Dictionary<string, string>(),
                 CurrentPeriodStart = DateTimeOffset.UtcNow,
                 CurrentPeriodEnd = null
