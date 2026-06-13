@@ -48,8 +48,12 @@ public sealed partial class LandingPageService : ILandingPageService
         if (await _landingPageRepository.SlugExistsForCreatorAsync(creatorId, slug, ct))
             throw new ConflictException("A landing page with this URL already exists.");
 
+        var productId = await _creatorContextProvider.GetProductIdForCreatorAsync(creatorId, request.ProductId, ct);
+        if (productId is null)
+            throw new NotFoundException("Product not found.");
+
         var now = DateTimeOffset.UtcNow;
-        var landingPage = LandingPage.Create(creatorId, null, title, slug, type, now);
+        var landingPage = LandingPage.Create(creatorId, productId, title, slug, type, now);
 
         await _landingPageRepository.AddAsync(landingPage, ct);
 

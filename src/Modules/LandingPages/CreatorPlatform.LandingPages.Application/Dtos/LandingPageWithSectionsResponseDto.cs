@@ -10,6 +10,9 @@ public sealed class LandingPageWithSectionsResponseDto
     [JsonIgnore]
     public int? ProductId { get; init; }
 
+    public string? ProductName { get; init; }
+    public int? ProductPriceCents { get; init; }
+
     public Guid PublicId { get; init; }
     public string Title { get; init; } = string.Empty;
     public string Slug { get; init; } = string.Empty;

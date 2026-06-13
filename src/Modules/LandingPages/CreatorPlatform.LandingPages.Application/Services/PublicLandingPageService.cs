@@ -8,13 +8,16 @@ public sealed class PublicLandingPageService : IPublicLandingPageService
 {
     private readonly ILandingPageRepository _landingPageRepository;
     private readonly ILandingPageSectionRepository _sectionRepository;
+    private readonly ICreatorContextProvider _creatorContextProvider;
 
     public PublicLandingPageService(
         ILandingPageRepository landingPageRepository,
-        ILandingPageSectionRepository sectionRepository)
+        ILandingPageSectionRepository sectionRepository,
+        ICreatorContextProvider creatorContextProvider)
     {
         _landingPageRepository = landingPageRepository;
         _sectionRepository = sectionRepository;
+        _creatorContextProvider = creatorContextProvider;
     }
 
     public async Task<LandingPageWithSectionsResponseDto?> GetPublishedAsync(
@@ -28,10 +31,16 @@ public sealed class PublicLandingPageService : IPublicLandingPageService
 
         var sections = await _sectionRepository.ListByLandingPageIdAsync(landingPage.Id, ct);
 
+        var productInfo = landingPage.ProductId.HasValue
+            ? await _creatorContextProvider.GetProductInfoAsync(landingPage.ProductId.Value, ct)
+            : null;
+
         return new LandingPageWithSectionsResponseDto
         {
             Id = landingPage.Id,
             ProductId = landingPage.ProductId,
+            ProductName = productInfo?.Name,
+            ProductPriceCents = productInfo?.PriceCents,
             PublicId = landingPage.PublicId,
             Title = landingPage.Title,
             Slug = landingPage.Slug,

@@ -56,6 +56,41 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return new CreatorContext(row.CreatorId, row.MaxLandingPages, row.ActiveLandingPageCount);
     }
 
+    public async Task<int?> GetProductIdForCreatorAsync(int creatorId, Guid productPublicId, CancellationToken ct)
+    {
+        var id = await _context.Database
+            .SqlQuery<int>($"""
+                SELECT p."Id"
+                FROM products.products p
+                WHERE p."PublicId" = {productPublicId}
+                  AND p."CreatorId" = {creatorId}
+                LIMIT 1
+                """)
+            .ToListAsync(ct);
+
+        return id.Count > 0 ? id[0] : null;
+    }
+
+    public async Task<ProductInfo?> GetProductInfoAsync(int productId, CancellationToken ct)
+    {
+        var rows = await _context.Database
+            .SqlQuery<ProductInfoRow>($"""
+                SELECT p."Name", p."PriceCents"
+                FROM products.products p
+                WHERE p."Id" = {productId}
+                LIMIT 1
+                """)
+            .ToListAsync(ct);
+
+        return rows.Count > 0 ? new ProductInfo(rows[0].Name, rows[0].PriceCents) : null;
+    }
+
+    private sealed class ProductInfoRow
+    {
+        public string Name { get; init; } = string.Empty;
+        public int PriceCents { get; init; }
+    }
+
     private sealed class CreatorContextRow
     {
         public int CreatorId { get; init; }
