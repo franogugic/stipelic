@@ -1,3 +1,4 @@
+using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
 
@@ -28,4 +29,17 @@ public sealed class EmailCaptureService : IEmailCaptureService
 
     public Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct) =>
         _repository.GetCaptureCountAsync(landingPageId, ct);
+
+    public async Task<List<EmailCaptureResponseDto>> ListCapturesAsync(int landingPageId, CancellationToken ct)
+    {
+        var captures = await _repository.ListByLandingPageIdAsync(landingPageId, ct);
+
+        return captures
+            .Select(c => new EmailCaptureResponseDto
+            {
+                Email = c.Email,
+                CapturedAt = c.CapturedAt
+            })
+            .ToList();
+    }
 }

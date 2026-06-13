@@ -31,4 +31,13 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             .AsNoTracking()
             .LongCountAsync(ec => ec.LandingPageId == landingPageId, ct);
     }
+
+    public async Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct)
+    {
+        return await _context.Set<EmailCapture>()
+            .AsNoTracking()
+            .Where(ec => ec.LandingPageId == landingPageId)
+            .OrderByDescending(ec => ec.CapturedAt)
+            .ToListAsync(ct);
+    }
 }

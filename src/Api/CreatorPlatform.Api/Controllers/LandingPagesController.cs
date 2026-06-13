@@ -126,6 +126,18 @@ public sealed class LandingPagesController : ControllerBase
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
     }
 
+    [HttpGet("{pageId:guid}/captures")]
+    public async Task<ActionResult<ApiResponse<List<EmailCaptureResponseDto>>>> ListCaptures(
+        string slug,
+        Guid pageId,
+        CancellationToken ct)
+    {
+        var user = GetAuthenticatedUser();
+        var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
+        var captures = await _emailCaptureService.ListCapturesAsync(page.Id, ct);
+        return Ok(ApiResponse<List<EmailCaptureResponseDto>>.Success(StatusCodes.Status200OK, "Captures loaded.", captures));
+    }
+
     [HttpGet("section-templates")]
     public ActionResult<ApiResponse<List<SectionTemplateResponseDto>>> GetSectionTemplates(string slug)
     {
