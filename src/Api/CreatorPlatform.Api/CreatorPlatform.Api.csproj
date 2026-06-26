@@ -28,6 +28,8 @@
     <ProjectReference Include="..\..\Modules\Access\CreatorPlatform.Access.Infrastructure\CreatorPlatform.Access.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Customers\CreatorPlatform.Customers.Infrastructure\CreatorPlatform.Customers.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Email\CreatorPlatform.Email.Infrastructure\CreatorPlatform.Email.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Analytics\CreatorPlatform.Analytics.Infrastructure\CreatorPlatform.Analytics.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Analytics\CreatorPlatform.Analytics.Application\CreatorPlatform.Analytics.Application.csproj" />
   </ItemGroup>
 
 </Project>

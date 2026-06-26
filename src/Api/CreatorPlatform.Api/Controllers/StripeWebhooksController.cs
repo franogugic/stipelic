@@ -1,4 +1,5 @@
 using CreatorPlatform.Creators.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Payments.Domain;
@@ -15,17 +16,20 @@ public sealed class StripeWebhooksController : ControllerBase
 {
     private readonly IStripeWebhookService _stripeWebhookService;
     private readonly ICreatorWebhookService _creatorWebhookService;
+    private readonly IOrderWebhookService _orderWebhookService;
     private readonly IWebhookFailureRepository _webhookFailureRepository;
     private readonly ILogger<StripeWebhooksController> _logger;
 
     public StripeWebhooksController(
         IStripeWebhookService stripeWebhookService,
         ICreatorWebhookService creatorWebhookService,
+        IOrderWebhookService orderWebhookService,
         IWebhookFailureRepository webhookFailureRepository,
         ILogger<StripeWebhooksController> logger)
     {
         _stripeWebhookService = stripeWebhookService;
         _creatorWebhookService = creatorWebhookService;
+        _orderWebhookService = orderWebhookService;
         _webhookFailureRepository = webhookFailureRepository;
         _logger = logger;
     }
@@ -86,6 +90,12 @@ public sealed class StripeWebhooksController : ControllerBase
                 when webhookEvent.CheckoutSessionCompleted is not null:
                 await _creatorWebhookService
                     .HandleCheckoutSessionCompletedAsync(webhookEvent.CheckoutSessionCompleted, ct);
+                await _orderWebhookService
+                    .HandleCheckoutSessionCompletedAsync(
+                        new OrderCheckoutCompletedDto(
+                            webhookEvent.CheckoutSessionCompleted.SessionId,
+                            webhookEvent.CheckoutSessionCompleted.StripePaymentIntentId),
+                        ct);
                 break;
 
             case StripeEventTypes.CustomerSubscriptionUpdated

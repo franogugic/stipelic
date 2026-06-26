@@ -6,7 +6,13 @@ using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Creators.Infrastructure;
 using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Payments.Application.Options;
+using CreatorPlatform.LandingPages.Infrastructure;
+using CreatorPlatform.Orders.Application.Options;
+using CreatorPlatform.Orders.Infrastructure;
+using CreatorPlatform.Access.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
+using CreatorPlatform.Analytics.Infrastructure;
+using CreatorPlatform.Products.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +39,7 @@ builder.Services.AddCors(options =>
 });
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
+builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
@@ -108,6 +115,50 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             }));
 
+    options.AddPolicy("CreateLandingPage", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("UpdateLandingPage", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("CreateProduct", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("UpdateProduct", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
     options.AddPolicy("UpdateCreatorSettings", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -133,8 +184,13 @@ builder.Services.AddRateLimiter(options =>
 
 builder.Services.AddAuthInfrastructure();
 builder.Services.AddCreatorsInfrastructure();
+builder.Services.AddProductsInfrastructure();
+builder.Services.AddLandingPagesInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration);
 builder.Services.AddPaymentsInfrastructure();
+builder.Services.AddAnalyticsInfrastructure();
+builder.Services.AddOrdersInfrastructure();
+builder.Services.AddAccessInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>

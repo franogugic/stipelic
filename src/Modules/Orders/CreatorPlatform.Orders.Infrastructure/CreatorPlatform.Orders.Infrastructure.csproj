@@ -4,11 +4,13 @@
     <ProjectReference Include="..\CreatorPlatform.Orders.Application\CreatorPlatform.Orders.Application.csproj" />
     <ProjectReference Include="..\CreatorPlatform.Orders.Domain\CreatorPlatform.Orders.Domain.csproj" />
     <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Infrastructure\CreatorPlatform.Shared.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Payments\CreatorPlatform.Payments.Application\CreatorPlatform.Payments.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageReference Include="Stripe.net" Version="51.2.0" />
   </ItemGroup>
 
   <PropertyGroup>
