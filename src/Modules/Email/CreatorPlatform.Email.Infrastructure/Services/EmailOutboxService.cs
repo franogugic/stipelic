@@ -51,6 +51,20 @@ public sealed class EmailOutboxService : IEmailOutboxService
         }
     }
 
+    public async Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct)
+    {
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.OrderAccess,
+            orderPublicId,
+            toEmail,
+            OrderAccessTemplate.Subject,
+            OrderAccessTemplate.BuildHtml(productName, accessUrl),
+            OrderAccessTemplate.BuildPlainText(productName, accessUrl),
+            DateTimeOffset.UtcNow);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
     private string BuildVerificationUrl(string token)
     {
         var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');

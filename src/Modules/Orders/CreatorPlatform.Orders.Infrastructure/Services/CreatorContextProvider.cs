@@ -46,6 +46,26 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return new LandingPageProductInfo(row.CreatorId, row.ProductId, row.LandingPageId, row.ProductName, row.PriceCents, row.Currency);
     }
 
+    public async Task<string?> GetProductNameAsync(int productId, CancellationToken ct)
+    {
+        var rows = await _context.Database
+            .SqlQuery<ProductNameRow>($"""
+                SELECT p."Name" AS "Name"
+                FROM products.products p
+                WHERE p."Id" = {productId}
+                LIMIT 1
+                """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        return rows.Count == 0 ? null : rows[0].Name;
+    }
+
+    private sealed class ProductNameRow
+    {
+        public string Name { get; init; } = string.Empty;
+    }
+
     private sealed class LandingPageProductInfoRow
     {
         public int CreatorId { get; init; }

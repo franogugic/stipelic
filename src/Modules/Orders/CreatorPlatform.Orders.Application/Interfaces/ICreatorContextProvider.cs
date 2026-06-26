@@ -14,4 +14,6 @@ public interface ICreatorContextProvider
         string creatorSlug,
         string landingPageSlug,
         CancellationToken ct);
+
+    Task<string?> GetProductNameAsync(int productId, CancellationToken ct);
 }

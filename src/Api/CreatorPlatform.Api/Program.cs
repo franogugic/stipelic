@@ -9,6 +9,7 @@ using CreatorPlatform.Payments.Application.Options;
 using CreatorPlatform.LandingPages.Infrastructure;
 using CreatorPlatform.Orders.Application.Options;
 using CreatorPlatform.Orders.Infrastructure;
+using CreatorPlatform.Access.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
 using CreatorPlatform.Analytics.Infrastructure;
 using CreatorPlatform.Products.Infrastructure;
@@ -189,6 +190,7 @@ builder.Services.AddEmailInfrastructure(builder.Configuration);
 builder.Services.AddPaymentsInfrastructure();
 builder.Services.AddAnalyticsInfrastructure();
 builder.Services.AddOrdersInfrastructure();
+builder.Services.AddAccessInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
