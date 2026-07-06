@@ -1,4 +1,5 @@
 using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
@@ -89,5 +90,61 @@ public sealed class OrderRepository : IOrderRepository
         return summary is null
             ? new OrderSummaryDto(0, 0, null)
             : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
+    }
+
+    public async Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        var creator = await _context.Set<Creator>()
+            .AsNoTracking()
+            .Where(c => c.Slug == creatorSlug && c.OwnerUserId == ownerUserId)
+            .Select(c => new { c.Id, c.DefaultCurrency })
+            .FirstOrDefaultAsync(ct);
+
+        if (creator is null)
+            return new HomeSummaryDto(0, 0, null, 0, 0, []);
+
+        var orderStats = await _context.Set<Order>()
+            .AsNoTracking()
+            .Where(o => o.CreatorId == creator.Id)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
+                TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        var productCount = await _context.Set<Product>()
+            .AsNoTracking()
+            .CountAsync(p => p.CreatorId == creator.Id, ct);
+
+        var landingPageCount = await _context.Set<LandingPage>()
+            .AsNoTracking()
+            .CountAsync(lp => lp.CreatorId == creator.Id, ct);
+
+        var recentOrders = await (
+            from o in _context.Set<Order>().AsNoTracking()
+            join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
+            where o.CreatorId == creator.Id && o.Status == OrderStatus.Paid
+            orderby o.PaidAt descending
+            select new OrderDto(
+                o.PublicId,
+                o.Email,
+                o.Name,
+                p.Name,
+                o.AmountCents,
+                o.Currency.ToString(),
+                o.Status.ToString(),
+                o.CreatedAt,
+                o.PaidAt)
+        ).Take(5).ToListAsync(ct);
+
+        return new HomeSummaryDto(
+            orderStats?.TotalPaidAmountCents ?? 0,
+            orderStats?.PaidOrderCount ?? 0,
+            creator.DefaultCurrency.ToString(),
+            productCount,
+            landingPageCount,
+            recentOrders);
     }
 }

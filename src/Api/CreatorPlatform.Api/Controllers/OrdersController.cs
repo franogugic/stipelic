@@ -53,4 +53,20 @@ public sealed class OrdersController : ControllerBase
             "Order summary loaded.",
             summary));
     }
+
+    [HttpGet("home-summary")]
+    public async Task<ActionResult<ApiResponse<HomeSummaryDto>>> HomeSummary(
+        string slug,
+        CancellationToken ct)
+    {
+        var user = _currentUserContext.User
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        var summary = await _orderService.GetHomeSummaryAsync(slug, user.Id, ct);
+
+        return Ok(ApiResponse<HomeSummaryDto>.Success(
+            StatusCodes.Status200OK,
+            "Home summary loaded.",
+            summary));
+    }
 }
