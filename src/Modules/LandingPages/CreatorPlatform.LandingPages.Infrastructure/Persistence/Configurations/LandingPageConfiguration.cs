@@ -1,4 +1,6 @@
+using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.LandingPages.Domain.LandingPages;
+using CreatorPlatform.Products.Domain.Products;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -62,5 +64,17 @@ public sealed class LandingPageConfiguration : IEntityTypeConfiguration<LandingP
 
         builder.Property(lp => lp.UpdatedAt)
             .IsRequired();
+
+        builder.HasOne<Creator>()
+            .WithMany()
+            .HasForeignKey(lp => lp.CreatorId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired();
+
+        builder.HasOne<Product>()
+            .WithMany()
+            .HasForeignKey(lp => lp.ProductId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
     }
 }

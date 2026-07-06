@@ -16,4 +16,13 @@ public sealed class OrdersUnitOfWork : IOrdersUnitOfWork
     {
         await _context.SaveChangesAsync(ct);
     }
+
+    public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+
+        await operation();
+
+        await transaction.CommitAsync(ct);
+    }
 }

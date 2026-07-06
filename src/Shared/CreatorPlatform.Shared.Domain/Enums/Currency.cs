@@ -1,4 +1,4 @@
-namespace CreatorPlatform.Creators.Domain.Creators;
+namespace CreatorPlatform.Shared.Domain.Enums;
 
 public enum Currency
 {

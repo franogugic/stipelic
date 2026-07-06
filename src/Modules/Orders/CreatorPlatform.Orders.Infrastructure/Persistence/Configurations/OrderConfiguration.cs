@@ -1,4 +1,7 @@
+using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Orders.Domain.Orders;
+using CreatorPlatform.Products.Domain.Products;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -40,6 +43,7 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .IsRequired();
 
         builder.Property(o => o.Currency)
+            .HasConversion<string>()
             .HasMaxLength(3)
             .IsRequired();
 
@@ -67,5 +71,27 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .IsRequired();
 
         builder.HasIndex(o => new { o.CreatorId, o.CreatedAt });
+
+        builder.HasIndex(o => o.Email);
+
+        builder.ToTable(t => t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0"));
+
+        builder.HasOne<Creator>()
+            .WithMany()
+            .HasForeignKey(o => o.CreatorId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired();
+
+        builder.HasOne<Product>()
+            .WithMany()
+            .HasForeignKey(o => o.ProductId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired();
+
+        builder.HasOne<LandingPage>()
+            .WithMany()
+            .HasForeignKey(o => o.LandingPageId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
     }
 }

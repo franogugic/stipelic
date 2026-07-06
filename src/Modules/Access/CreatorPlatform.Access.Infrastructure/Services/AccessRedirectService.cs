@@ -1,4 +1,6 @@
 using CreatorPlatform.Access.Application.Interfaces;
+using CreatorPlatform.Orders.Domain.Orders;
+using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,26 +17,11 @@ public sealed class AccessRedirectService : IAccessRedirectService
 
     public async Task<string?> GetAccessUrlAsync(Guid orderPublicId, CancellationToken ct)
     {
-        var rows = await _context.Database
-            .SqlQuery<AccessUrlRow>($"""
-                SELECT p."AccessUrl" AS "AccessUrl"
-                FROM orders.orders o
-                JOIN products.products p ON p."Id" = o."ProductId"
-                WHERE o."PublicId" = {orderPublicId}
-                  AND o."Status" = 'Paid'
-                LIMIT 1
-                """)
-            .AsNoTracking()
-            .ToListAsync(ct);
-
-        if (rows.Count == 0)
-            return null;
-
-        return rows[0].AccessUrl;
-    }
-
-    private sealed class AccessUrlRow
-    {
-        public string? AccessUrl { get; init; }
+        return await (
+            from o in _context.Set<Order>().AsNoTracking()
+            join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
+            where o.PublicId == orderPublicId && o.Status == OrderStatus.Paid
+            select p.AccessUrl
+        ).FirstOrDefaultAsync(ct);
     }
 }

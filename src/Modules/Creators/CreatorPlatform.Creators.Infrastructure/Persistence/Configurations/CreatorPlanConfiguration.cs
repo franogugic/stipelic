@@ -1,4 +1,5 @@
 using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.Shared.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -62,6 +63,8 @@ public sealed class CreatorPlanConfiguration : IEntityTypeConfiguration<CreatorP
             .IsRequired();
 
         builder.HasIndex(plan => plan.Status);
+
+        builder.ToTable(t => t.HasCheckConstraint("CK_creator_plans_PriceCents_NonNegative", "\"PriceCents\" >= 0"));
 
         builder.HasMany(plan => plan.Limits)
             .WithOne(limit => limit.Plan)

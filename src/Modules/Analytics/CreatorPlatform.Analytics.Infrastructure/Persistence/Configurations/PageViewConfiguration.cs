@@ -1,4 +1,5 @@
 using CreatorPlatform.Analytics.Domain.PageViews;
+using CreatorPlatform.LandingPages.Domain.LandingPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -33,5 +34,11 @@ public sealed class PageViewConfiguration : IEntityTypeConfiguration<PageView>
 
         // Analytics queriji: koliko viewova/unika za stranicu u nekom periodu?
         builder.HasIndex(pv => new { pv.LandingPageId, pv.ViewedAt });
+
+        builder.HasOne<LandingPage>()
+            .WithMany()
+            .HasForeignKey(pv => pv.LandingPageId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired();
     }
 }

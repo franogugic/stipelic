@@ -1,6 +1,7 @@
 using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Options;
+using CreatorPlatform.Orders.Domain.Orders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -33,22 +34,61 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
     public async Task HandleCheckoutSessionCompletedAsync(OrderCheckoutCompletedDto data, CancellationToken ct)
     {
-        var order = await _orderRepository.GetByStripeCheckoutSessionIdAsync(data.SessionId, ct);
-        if (order is null)
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            _logger.LogInformation(
-                "checkout.session.completed event does not match any order, ignoring. SessionId: {SessionId}",
-                data.SessionId);
-            return;
-        }
+            var order = await _orderRepository.GetByStripeCheckoutSessionIdForUpdateAsync(data.SessionId, ct);
+            if (order is null)
+            {
+                _logger.LogInformation(
+                    "checkout.session.completed event does not match any order, ignoring. SessionId: {SessionId}",
+                    data.SessionId);
+                return;
+            }
 
-        order.MarkPaid(data.PaymentIntentId ?? string.Empty, DateTimeOffset.UtcNow);
+            if (order.Status is OrderStatus.Paid or OrderStatus.Refunded)
+            {
+                _logger.LogInformation(
+                    "checkout.session.completed event already processed (idempotent). OrderId: {OrderId}, Status: {Status}",
+                    order.PublicId,
+                    order.Status);
+                return;
+            }
 
-        var productName = await _creatorContextProvider.GetProductNameAsync(order.ProductId, ct) ?? "your purchase";
-        var accessUrl = $"{_options.ApiBaseUrl.TrimEnd('/')}/api/access/{order.PublicId}";
+            order.MarkPaid(data.PaymentIntentId ?? string.Empty, DateTimeOffset.UtcNow);
 
-        await _emailOutboxService.QueueOrderAccessAsync(order.Email, order.PublicId.ToString(), productName, accessUrl, ct);
+            var productName = await _creatorContextProvider.GetProductNameAsync(order.ProductId, ct) ?? "your purchase";
+            var accessUrl = $"{_options.ApiBaseUrl.TrimEnd('/')}/api/access/{order.PublicId}";
 
-        await _unitOfWork.SaveChangesAsync(ct);
+            await _emailOutboxService.QueueOrderAccessAsync(order.Email, order.PublicId.ToString(), productName, accessUrl, ct);
+
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, ct);
+    }
+
+    public async Task HandleChargeRefundedAsync(OrderChargeRefundedDto data, CancellationToken ct)
+    {
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            var order = await _orderRepository.GetByStripePaymentIntentIdAsync(data.PaymentIntentId, ct);
+            if (order is null)
+            {
+                _logger.LogInformation(
+                    "charge.refunded event does not match any order, ignoring. PaymentIntentId: {PaymentIntentId}",
+                    data.PaymentIntentId);
+                return;
+            }
+
+            if (order.Status == OrderStatus.Refunded)
+            {
+                _logger.LogInformation(
+                    "charge.refunded event already processed (idempotent). OrderId: {OrderId}",
+                    order.PublicId);
+                return;
+            }
+
+            order.MarkRefunded(DateTimeOffset.UtcNow);
+
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, ct);
     }
 }

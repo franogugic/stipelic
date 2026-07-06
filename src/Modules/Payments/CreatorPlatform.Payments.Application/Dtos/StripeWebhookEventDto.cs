@@ -7,6 +7,7 @@ public sealed class StripeWebhookEventDto
     public CheckoutSessionCompletedData? CheckoutSessionCompleted { get; init; }
     public SubscriptionChangedData? SubscriptionChanged { get; init; }
     public InvoicePaymentFailedData? InvoicePaymentFailed { get; init; }
+    public ChargeRefundedData? ChargeRefunded { get; init; }
 }
 
 public sealed class CheckoutSessionCompletedData
@@ -38,10 +39,17 @@ public sealed class InvoicePaymentFailedData
     public required string StripeCustomerId { get; init; }
 }
 
+public sealed class ChargeRefundedData
+{
+    public required string PaymentIntentId { get; init; }
+    public required string ChargeId { get; init; }
+}
+
 public static class StripeEventTypes
 {
     public const string CheckoutSessionCompleted = "checkout.session.completed";
     public const string CustomerSubscriptionUpdated = "customer.subscription.updated";
     public const string CustomerSubscriptionDeleted = "customer.subscription.deleted";
     public const string InvoicePaymentFailed = "invoice.payment_failed";
+    public const string ChargeRefunded = "charge.refunded";
 }

@@ -116,6 +116,16 @@ public sealed class StripeWebhooksController : ControllerBase
                     .HandleInvoicePaymentFailedAsync(webhookEvent.InvoicePaymentFailed, ct);
                 break;
 
+            case StripeEventTypes.ChargeRefunded
+                when webhookEvent.ChargeRefunded is not null:
+                await _orderWebhookService
+                    .HandleChargeRefundedAsync(
+                        new OrderChargeRefundedDto(
+                            webhookEvent.ChargeRefunded.PaymentIntentId,
+                            webhookEvent.ChargeRefunded.ChargeId),
+                        ct);
+                break;
+
             default:
                 _logger.LogInformation(
                     "Unhandled Stripe event type received, ignoring. EventId: {EventId}, EventType: {EventType}",

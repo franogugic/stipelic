@@ -1,6 +1,7 @@
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.Shared.Domain.Enums;
 
 namespace CreatorPlatform.Creators.Application.Services;
 

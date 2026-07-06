@@ -5,6 +5,9 @@
     <ProjectReference Include="..\CreatorPlatform.Orders.Domain\CreatorPlatform.Orders.Domain.csproj" />
     <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Infrastructure\CreatorPlatform.Shared.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Payments\CreatorPlatform.Payments.Application\CreatorPlatform.Payments.Application.csproj" />
+    <ProjectReference Include="..\..\Creators\CreatorPlatform.Creators.Domain\CreatorPlatform.Creators.Domain.csproj" />
+    <ProjectReference Include="..\..\Products\CreatorPlatform.Products.Domain\CreatorPlatform.Products.Domain.csproj" />
+    <ProjectReference Include="..\..\LandingPages\CreatorPlatform.LandingPages.Domain\CreatorPlatform.LandingPages.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>

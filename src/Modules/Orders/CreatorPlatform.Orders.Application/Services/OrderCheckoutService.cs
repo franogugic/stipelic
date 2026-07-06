@@ -51,7 +51,7 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
         var session = await _checkoutSessionService.CreateAsync(
             productInfo.ProductName,
             productInfo.PriceCents,
-            productInfo.Currency,
+            productInfo.Currency.ToString().ToLowerInvariant(),
             email,
             successUrl,
             cancelUrl,

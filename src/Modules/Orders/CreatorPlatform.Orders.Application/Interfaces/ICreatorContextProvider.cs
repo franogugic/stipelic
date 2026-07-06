@@ -1,3 +1,5 @@
+using CreatorPlatform.Shared.Domain.Enums;
+
 namespace CreatorPlatform.Orders.Application.Interfaces;
 
 public sealed record LandingPageProductInfo(
@@ -6,7 +8,7 @@ public sealed record LandingPageProductInfo(
     int LandingPageId,
     string ProductName,
     int PriceCents,
-    string Currency);
+    Currency Currency);
 
 public interface ICreatorContextProvider
 {

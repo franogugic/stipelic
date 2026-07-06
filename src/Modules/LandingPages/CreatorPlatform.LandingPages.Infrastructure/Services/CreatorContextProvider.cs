@@ -1,4 +1,7 @@
+using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.LandingPages.Application.Interfaces;
+using CreatorPlatform.LandingPages.Domain.LandingPages;
+using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,6 +9,9 @@ namespace CreatorPlatform.LandingPages.Infrastructure.Services;
 
 public sealed class CreatorContextProvider : ICreatorContextProvider
 {
+    private const string MaxLandingPagesLimitKey = "max_landing_pages";
+    private const int DefaultMaxLandingPages = 1;
+
     private readonly CreatorPlatformDbContext _context;
 
     public CreatorContextProvider(CreatorPlatformDbContext context)
@@ -18,83 +24,46 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         int ownerUserId,
         CancellationToken ct)
     {
-        var row = await _context.Database
-            .SqlQuery<CreatorContextRow>($"""
-                SELECT
-                    c."Id" AS "CreatorId",
-                    COALESCE(
-                        (
-                            SELECT cpl."LimitValue"
-                            FROM creators.creator_subscriptions cs
-                            JOIN creators.creator_plan_limits cpl
-                                ON cpl."PlanId" = cs."PlanId"
-                               AND cpl."LimitKey" = 'max_landing_pages'
-                            WHERE cs."CreatorId" = c."Id"
-                              AND cs."Status" != 'Cancelled'
-                            ORDER BY cs."CreatedAt" DESC
-                            LIMIT 1
-                        ),
-                        1
-                    ) AS "MaxLandingPages",
-                    (
-                        SELECT COUNT(*)::int
-                        FROM landing_pages.landing_pages lp
-                        WHERE lp."CreatorId" = c."Id"
-                          AND lp."Status" != 'Archived'
-                    ) AS "ActiveLandingPageCount"
-                FROM creators.creators c
-                WHERE c."Slug"        = {slug}
-                  AND c."OwnerUserId" = {ownerUserId}
-                  AND c."Status"     != 'Disabled'
-                LIMIT 1
-                """)
+        var creator = await _context.Set<Creator>()
             .AsNoTracking()
+            .Where(c => c.Slug == slug && c.OwnerUserId == ownerUserId && c.Status != CreatorStatus.Disabled)
+            .Select(c => new { c.Id })
             .FirstOrDefaultAsync(ct);
 
-        if (row is null) return null;
+        if (creator is null)
+            return null;
 
-        return new CreatorContext(row.CreatorId, row.MaxLandingPages, row.ActiveLandingPageCount);
+        var maxLandingPages = await _context.Set<CreatorSubscription>()
+            .AsNoTracking()
+            .Where(cs => cs.CreatorId == creator.Id && cs.Status != CreatorSubscriptionStatus.Cancelled)
+            .OrderByDescending(cs => cs.CreatedAt)
+            .SelectMany(cs => _context.Set<CreatorPlanLimit>()
+                .Where(cpl => cpl.PlanId == cs.PlanId && cpl.LimitKey == MaxLandingPagesLimitKey)
+                .Select(cpl => (int?)cpl.LimitValue))
+            .FirstOrDefaultAsync(ct) ?? DefaultMaxLandingPages;
+
+        var activeLandingPageCount = await _context.Set<LandingPage>()
+            .AsNoTracking()
+            .CountAsync(lp => lp.CreatorId == creator.Id && lp.Status != LandingPageStatus.Archived, ct);
+
+        return new CreatorContext(creator.Id, maxLandingPages, activeLandingPageCount);
     }
 
     public async Task<int?> GetProductIdForCreatorAsync(int creatorId, Guid productPublicId, CancellationToken ct)
     {
-        var id = await _context.Database
-            .SqlQuery<int>($"""
-                SELECT p."Id"
-                FROM products.products p
-                WHERE p."PublicId" = {productPublicId}
-                  AND p."CreatorId" = {creatorId}
-                LIMIT 1
-                """)
-            .ToListAsync(ct);
-
-        return id.Count > 0 ? id[0] : null;
+        return await _context.Set<Product>()
+            .AsNoTracking()
+            .Where(p => p.PublicId == productPublicId && p.CreatorId == creatorId)
+            .Select(p => (int?)p.Id)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<ProductInfo?> GetProductInfoAsync(int productId, CancellationToken ct)
     {
-        var rows = await _context.Database
-            .SqlQuery<ProductInfoRow>($"""
-                SELECT p."Name", p."PriceCents"
-                FROM products.products p
-                WHERE p."Id" = {productId}
-                LIMIT 1
-                """)
-            .ToListAsync(ct);
-
-        return rows.Count > 0 ? new ProductInfo(rows[0].Name, rows[0].PriceCents) : null;
-    }
-
-    private sealed class ProductInfoRow
-    {
-        public string Name { get; init; } = string.Empty;
-        public int PriceCents { get; init; }
-    }
-
-    private sealed class CreatorContextRow
-    {
-        public int CreatorId { get; init; }
-        public int MaxLandingPages { get; init; }
-        public int ActiveLandingPageCount { get; init; }
+        return await _context.Set<Product>()
+            .AsNoTracking()
+            .Where(p => p.Id == productId)
+            .Select(p => new ProductInfo(p.Name, p.PriceCents))
+            .FirstOrDefaultAsync(ct);
     }
 }
