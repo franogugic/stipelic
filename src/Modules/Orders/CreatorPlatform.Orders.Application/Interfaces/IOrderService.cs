@@ -1,0 +1,10 @@
+using CreatorPlatform.Orders.Application.Dtos;
+
+namespace CreatorPlatform.Orders.Application.Interfaces;
+
+public interface IOrderService
+{
+    Task<List<OrderDto>> ListAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
+
+    Task<OrderSummaryDto> GetSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
+}

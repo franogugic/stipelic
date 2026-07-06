@@ -1,3 +1,4 @@
+using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Products.Domain.Products;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -59,5 +60,13 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
 
         builder.Property(product => product.UpdatedAt)
             .IsRequired();
+
+        builder.HasOne<Creator>()
+            .WithMany()
+            .HasForeignKey(product => product.CreatorId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired();
+
+        builder.ToTable(t => t.HasCheckConstraint("CK_products_PriceCents_NonNegative", "\"PriceCents\" >= 0"));
     }
 }

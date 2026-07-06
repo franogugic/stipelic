@@ -1,4 +1,6 @@
+using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Products.Application.Interfaces;
+using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,6 +9,7 @@ namespace CreatorPlatform.Products.Infrastructure.Services;
 public sealed class CreatorContextProvider : ICreatorContextProvider
 {
     private const string MaxProductsLimitKey = "max_products";
+    private const int DefaultMaxProducts = 1;
 
     private readonly CreatorPlatformDbContext _context;
 
@@ -20,48 +23,28 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         int ownerUserId,
         CancellationToken ct)
     {
-        var row = await _context.Database
-            .SqlQuery<CreatorContextRow>($"""
-                SELECT
-                    c."Id" AS "CreatorId",
-                    COALESCE(
-                        (
-                            SELECT cpl."LimitValue"
-                            FROM creators.creator_subscriptions cs
-                            JOIN creators.creator_plan_limits cpl
-                                ON cpl."PlanId" = cs."PlanId"
-                               AND cpl."LimitKey" = 'max_products'
-                            WHERE cs."CreatorId" = c."Id"
-                              AND cs."Status" != 'Cancelled'
-                            ORDER BY cs."CreatedAt" DESC
-                            LIMIT 1
-                        ),
-                        1
-                    ) AS "MaxProducts",
-                    (
-                        SELECT COUNT(*)::int
-                        FROM products.products p
-                        WHERE p."CreatorId" = c."Id"
-                          AND p."Status" != 'Archived'
-                    ) AS "ActiveProductCount"
-                FROM creators.creators c
-                WHERE c."Slug"        = {slug}
-                  AND c."OwnerUserId" = {ownerUserId}
-                  AND c."Status"     != 'Disabled'
-                LIMIT 1
-                """)
+        var creator = await _context.Set<Creator>()
             .AsNoTracking()
+            .Where(c => c.Slug == slug && c.OwnerUserId == ownerUserId && c.Status != CreatorStatus.Disabled)
+            .Select(c => new { c.Id })
             .FirstOrDefaultAsync(ct);
 
-        if (row is null) return null;
+        if (creator is null)
+            return null;
 
-        return new CreatorContext(row.CreatorId, row.MaxProducts, row.ActiveProductCount);
-    }
+        var maxProducts = await _context.Set<CreatorSubscription>()
+            .AsNoTracking()
+            .Where(cs => cs.CreatorId == creator.Id && cs.Status != CreatorSubscriptionStatus.Cancelled)
+            .OrderByDescending(cs => cs.CreatedAt)
+            .SelectMany(cs => _context.Set<CreatorPlanLimit>()
+                .Where(cpl => cpl.PlanId == cs.PlanId && cpl.LimitKey == MaxProductsLimitKey)
+                .Select(cpl => (int?)cpl.LimitValue))
+            .FirstOrDefaultAsync(ct) ?? DefaultMaxProducts;
 
-    private sealed class CreatorContextRow
-    {
-        public int CreatorId { get; init; }
-        public int MaxProducts { get; init; }
-        public int ActiveProductCount { get; init; }
+        var activeProductCount = await _context.Set<Product>()
+            .AsNoTracking()
+            .CountAsync(p => p.CreatorId == creator.Id && p.Status != ProductStatus.Archived, ct);
+
+        return new CreatorContext(creator.Id, maxProducts, activeProductCount);
     }
 }

@@ -1,5 +1,6 @@
 using CreatorPlatform.Auth.Domain.Users;
 using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.Shared.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 

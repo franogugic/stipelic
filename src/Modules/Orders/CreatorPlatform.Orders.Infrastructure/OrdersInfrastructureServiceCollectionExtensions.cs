@@ -17,6 +17,7 @@ public static class OrdersInfrastructureServiceCollectionExtensions
         services.AddScoped<IPaymentCheckoutSessionService, StripePaymentCheckoutSessionService>();
         services.AddScoped<IOrderCheckoutService, OrderCheckoutService>();
         services.AddScoped<IOrderWebhookService, OrderWebhookService>();
+        services.AddScoped<IOrderService, OrderService>();
 
         return services;
     }

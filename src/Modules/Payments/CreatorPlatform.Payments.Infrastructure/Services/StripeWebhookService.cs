@@ -56,6 +56,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
             StripeEventTypes.CustomerSubscriptionUpdated => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.CustomerSubscriptionDeleted => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.InvoicePaymentFailed => MapInvoicePaymentFailed(stripeEvent),
+            StripeEventTypes.ChargeRefunded => MapChargeRefunded(stripeEvent),
             _ => new StripeWebhookEventDto
             {
                 EventId = stripeEvent.Id,
@@ -142,6 +143,24 @@ public sealed class StripeWebhookService : IStripeWebhookService
             {
                 StripeSubscriptionId = stripeSubscriptionId,
                 StripeCustomerId = invoice.CustomerId ?? string.Empty
+            }
+        };
+    }
+
+    private static StripeWebhookEventDto MapChargeRefunded(Event stripeEvent)
+    {
+        var charge = stripeEvent.Data.Object as Charge
+            ?? throw new InvalidOperationException(
+                $"Expected Charge object in charge.refunded event. EventId: {stripeEvent.Id}");
+
+        return new StripeWebhookEventDto
+        {
+            EventId = stripeEvent.Id,
+            EventType = stripeEvent.Type,
+            ChargeRefunded = new ChargeRefundedData
+            {
+                PaymentIntentId = charge.PaymentIntentId ?? string.Empty,
+                ChargeId = charge.Id
             }
         };
     }

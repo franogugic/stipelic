@@ -3,6 +3,7 @@ using System;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CreatorPlatformDbContext))]
-    partial class CreatorPlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260705175855_AddCrossModuleForeignKeys")]
+    partial class AddCrossModuleForeignKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -468,10 +471,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("creator_plans", "creators", t =>
-                        {
-                            t.HasCheckConstraint("CK_creator_plans_PriceCents_NonNegative", "\"PriceCents\" >= 0");
-                        });
+                    b.ToTable("creator_plans", "creators");
 
                     b.HasData(
                         new
@@ -1150,8 +1150,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Email");
-
                     b.HasIndex("LandingPageId");
 
                     b.HasIndex("ProductId");
@@ -1164,10 +1162,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatorId", "CreatedAt");
 
-                    b.ToTable("orders", "orders", t =>
-                        {
-                            t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0");
-                        });
+                    b.ToTable("orders", "orders");
                 });
 
             modelBuilder.Entity("CreatorPlatform.Payments.Domain.WebhookFailure", b =>
@@ -1278,10 +1273,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatorId", "Status");
 
-                    b.ToTable("products", "products", t =>
-                        {
-                            t.HasCheckConstraint("CK_products_PriceCents_NonNegative", "\"PriceCents\" >= 0");
-                        });
+                    b.ToTable("products", "products");
                 });
 
             modelBuilder.Entity("CreatorPlatform.Analytics.Domain.EmailCaptures.EmailCapture", b =>

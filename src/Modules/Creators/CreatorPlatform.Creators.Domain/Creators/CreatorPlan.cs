@@ -1,3 +1,5 @@
+using CreatorPlatform.Shared.Domain.Enums;
+
 namespace CreatorPlatform.Creators.Domain.Creators;
 
 public sealed class CreatorPlan

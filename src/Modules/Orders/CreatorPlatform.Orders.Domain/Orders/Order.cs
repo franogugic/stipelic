@@ -1,3 +1,5 @@
+using CreatorPlatform.Shared.Domain.Enums;
+
 namespace CreatorPlatform.Orders.Domain.Orders;
 
 public sealed class Order
@@ -14,7 +16,7 @@ public sealed class Order
         string email,
         string? name,
         int amountCents,
-        string currency,
+        Currency currency,
         OrderStatus status,
         string stripeCheckoutSessionId,
         DateTimeOffset createdAt)
@@ -40,7 +42,7 @@ public sealed class Order
         string email,
         string? name,
         int amountCents,
-        string currency,
+        Currency currency,
         string stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
@@ -94,7 +96,7 @@ public sealed class Order
 
     public int AmountCents { get; private set; }
 
-    public string Currency { get; private set; } = string.Empty;
+    public Currency Currency { get; private set; }
 
     public OrderStatus Status { get; private set; }
 

@@ -4,6 +4,7 @@
     <ProjectReference Include="..\CreatorPlatform.Products.Application\CreatorPlatform.Products.Application.csproj" />
     <ProjectReference Include="..\CreatorPlatform.Products.Domain\CreatorPlatform.Products.Domain.csproj" />
     <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Infrastructure\CreatorPlatform.Shared.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Creators\CreatorPlatform.Creators.Domain\CreatorPlatform.Creators.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>

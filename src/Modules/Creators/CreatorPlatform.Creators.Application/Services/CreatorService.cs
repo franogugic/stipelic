@@ -5,6 +5,7 @@ using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
+using CreatorPlatform.Shared.Domain.Enums;
 
 namespace CreatorPlatform.Creators.Application.Services;
 

@@ -1,4 +1,6 @@
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
+using CreatorPlatform.LandingPages.Domain.LandingPages;
+using CreatorPlatform.Products.Domain.Products;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -32,5 +34,17 @@ public sealed class EmailCaptureConfiguration : IEntityTypeConfiguration<EmailCa
             .IsUnique();
 
         builder.HasIndex(ec => new { ec.LandingPageId, ec.CapturedAt });
+
+        builder.HasOne<LandingPage>()
+            .WithMany()
+            .HasForeignKey(ec => ec.LandingPageId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired();
+
+        builder.HasOne<Product>()
+            .WithMany()
+            .HasForeignKey(ec => ec.ProductId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
     }
 }

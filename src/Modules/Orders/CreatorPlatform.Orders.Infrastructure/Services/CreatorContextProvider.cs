@@ -1,4 +1,7 @@
+using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,61 +21,43 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         string landingPageSlug,
         CancellationToken ct)
     {
-        var rows = await _context.Database
-            .SqlQuery<LandingPageProductInfoRow>($"""
-                SELECT
-                    c."Id" AS "CreatorId",
-                    p."Id" AS "ProductId",
-                    lp."Id" AS "LandingPageId",
-                    p."Name" AS "ProductName",
-                    p."PriceCents" AS "PriceCents",
-                    c."DefaultCurrency" AS "Currency"
-                FROM landing_pages.landing_pages lp
-                JOIN creators.creators c ON c."Id" = lp."CreatorId"
-                JOIN products.products p ON p."Id" = lp."ProductId"
-                WHERE c."Slug"  = {creatorSlug}
-                  AND lp."Slug" = {landingPageSlug}
-                  AND lp."Status" = 'Published'
-                  AND c."Status" != 'Disabled'
-                LIMIT 1
-                """)
-            .AsNoTracking()
-            .ToListAsync(ct);
+        var result = await (
+            from lp in _context.Set<LandingPage>().AsNoTracking()
+            join c in _context.Set<Creator>().AsNoTracking() on lp.CreatorId equals c.Id
+            join p in _context.Set<Product>().AsNoTracking() on lp.ProductId equals p.Id
+            where c.Slug == creatorSlug
+                && lp.Slug == landingPageSlug
+                && lp.Status == LandingPageStatus.Published
+                && c.Status != CreatorStatus.Disabled
+            select new
+            {
+                c.Id,
+                ProductId = p.Id,
+                LandingPageId = lp.Id,
+                ProductName = p.Name,
+                p.PriceCents,
+                Currency = c.DefaultCurrency
+            }
+        ).FirstOrDefaultAsync(ct);
 
-        if (rows.Count == 0)
+        if (result is null)
             return null;
 
-        var row = rows[0];
-        return new LandingPageProductInfo(row.CreatorId, row.ProductId, row.LandingPageId, row.ProductName, row.PriceCents, row.Currency);
+        return new LandingPageProductInfo(
+            result.Id,
+            result.ProductId,
+            result.LandingPageId,
+            result.ProductName,
+            result.PriceCents,
+            result.Currency);
     }
 
     public async Task<string?> GetProductNameAsync(int productId, CancellationToken ct)
     {
-        var rows = await _context.Database
-            .SqlQuery<ProductNameRow>($"""
-                SELECT p."Name" AS "Name"
-                FROM products.products p
-                WHERE p."Id" = {productId}
-                LIMIT 1
-                """)
+        return await _context.Set<Product>()
             .AsNoTracking()
-            .ToListAsync(ct);
-
-        return rows.Count == 0 ? null : rows[0].Name;
-    }
-
-    private sealed class ProductNameRow
-    {
-        public string Name { get; init; } = string.Empty;
-    }
-
-    private sealed class LandingPageProductInfoRow
-    {
-        public int CreatorId { get; init; }
-        public int ProductId { get; init; }
-        public int LandingPageId { get; init; }
-        public string ProductName { get; init; } = string.Empty;
-        public int PriceCents { get; init; }
-        public string Currency { get; init; } = string.Empty;
+            .Where(p => p.Id == productId)
+            .Select(p => p.Name)
+            .FirstOrDefaultAsync(ct);
     }
 }
