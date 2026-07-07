@@ -72,6 +72,8 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.HasIndex(o => new { o.CreatorId, o.CreatedAt });
 
+        builder.HasIndex(o => o.LandingPageId);
+
         builder.HasIndex(o => o.Email);
 
         builder.ToTable(t => t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0"));

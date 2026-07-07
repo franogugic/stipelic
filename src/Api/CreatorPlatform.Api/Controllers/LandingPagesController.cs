@@ -5,6 +5,7 @@ using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -18,17 +19,20 @@ public sealed class LandingPagesController : ControllerBase
     private readonly ILandingPageService _landingPageService;
     private readonly IPageViewService _pageViewService;
     private readonly IEmailCaptureService _emailCaptureService;
+    private readonly IOrderService _orderService;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
         ILandingPageService landingPageService,
         IPageViewService pageViewService,
         IEmailCaptureService emailCaptureService,
+        IOrderService orderService,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
         _pageViewService = pageViewService;
         _emailCaptureService = emailCaptureService;
+        _orderService = orderService;
         _currentUserContext = currentUserContext;
     }
 
@@ -114,6 +118,7 @@ public sealed class LandingPagesController : ControllerBase
 
         var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
         var captureCount = await _emailCaptureService.GetCaptureCountAsync(page.Id, ct);
+        var orderSummary = await _orderService.GetSummaryByLandingPageIdAsync(page.Id, ct);
 
         var analytics = new LandingPageAnalyticsResponseDto
         {
@@ -121,7 +126,10 @@ public sealed class LandingPagesController : ControllerBase
             Today = stats.Today,
             Last7Days = stats.Last7Days,
             Last30Days = stats.Last30Days,
-            TotalEmailCaptures = captureCount
+            TotalEmailCaptures = captureCount,
+            PurchaseCount = orderSummary.PaidOrderCount,
+            TotalRevenueCents = orderSummary.TotalPaidAmountCents,
+            Currency = orderSummary.Currency
         };
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
     }

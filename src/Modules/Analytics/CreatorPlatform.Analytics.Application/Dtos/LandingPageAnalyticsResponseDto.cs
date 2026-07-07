@@ -7,6 +7,9 @@ public sealed class LandingPageAnalyticsResponseDto
     public required PeriodStatsDto Last7Days { get; init; }
     public required PeriodStatsDto Last30Days { get; init; }
     public required long TotalEmailCaptures { get; init; }
+    public required int PurchaseCount { get; init; }
+    public required int TotalRevenueCents { get; init; }
+    public string? Currency { get; init; }
 }
 
 public sealed class PeriodStatsDto

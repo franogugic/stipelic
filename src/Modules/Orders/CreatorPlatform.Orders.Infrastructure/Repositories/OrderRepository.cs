@@ -92,6 +92,26 @@ public sealed class OrderRepository : IOrderRepository
             : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
     }
 
+    public async Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
+    {
+        var summary = await (
+            from o in _context.Set<Order>().AsNoTracking()
+            join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
+            where o.LandingPageId == landingPageId
+            group o by c.DefaultCurrency into g
+            select new
+            {
+                Currency = g.Key,
+                PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
+                TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0)
+            }
+        ).FirstOrDefaultAsync(ct);
+
+        return summary is null
+            ? new OrderSummaryDto(0, 0, null)
+            : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
+    }
+
     public async Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
         var creator = await _context.Set<Creator>()

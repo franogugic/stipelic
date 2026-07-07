@@ -24,6 +24,11 @@ public sealed class OrderService : IOrderService
         return _orderRepository.GetSummaryByCreatorSlugAsync(creatorSlug, ownerUserId, ct);
     }
 
+    public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
+    {
+        return _orderRepository.GetSummaryByLandingPageIdAsync(landingPageId, ct);
+    }
+
     public async Task<HomeSummaryDto> GetHomeSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
         if (_homeSummaryCache.TryGet(creatorSlug, ownerUserId, out var cached) && cached is not null)
