@@ -40,4 +40,31 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             .OrderByDescending(ec => ec.CapturedAt)
             .ToListAsync(ct);
     }
+
+    public async Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(
+        int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
+    {
+        // bucketUnit comes from a fixed server-side map (never from raw query string), so it is safe to
+        // interpolate into date_trunc / generate_series. Zero-filled buckets via LEFT JOIN on generate_series.
+        return await _context.Database.SqlQuery<CapturesBucketRow>($"""
+            WITH buckets AS (
+                SELECT generate_series(
+                    date_trunc({bucketUnit}, {cutoff}::timestamptz),
+                    date_trunc({bucketUnit}, now()),
+                    ('1 ' || {bucketUnit})::interval
+                ) AS bucket_start
+            )
+            SELECT
+                b.bucket_start                                      AS "BucketStart",
+                COALESCE(COUNT(ec."Id"), 0)                         AS "CaptureCount"
+            FROM buckets b
+            LEFT JOIN analytics.email_captures ec
+                ON ec."LandingPageId" = {landingPageId}
+                AND date_trunc({bucketUnit}, ec."CapturedAt") = b.bucket_start
+            GROUP BY b.bucket_start
+            ORDER BY b.bucket_start
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
 }

@@ -112,6 +112,35 @@ public sealed class OrderRepository : IOrderRepository
             : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
     }
 
+    public async Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(
+        int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
+    {
+        // bucketUnit comes from a fixed server-side map (never from raw query string), so it is safe to
+        // interpolate into date_trunc / generate_series. Zero-filled buckets via LEFT JOIN on generate_series.
+        return await _context.Database.SqlQuery<PurchasesBucketRow>($"""
+            WITH buckets AS (
+                SELECT generate_series(
+                    date_trunc({bucketUnit}, {cutoff}::timestamptz),
+                    date_trunc({bucketUnit}, now()),
+                    ('1 ' || {bucketUnit})::interval
+                ) AS bucket_start
+            )
+            SELECT
+                b.bucket_start                                      AS "BucketStart",
+                COALESCE(COUNT(o."Id"), 0)::int                     AS "PurchaseCount",
+                COALESCE(SUM(o."AmountCents"), 0)::int              AS "RevenueCents"
+            FROM buckets b
+            LEFT JOIN orders.orders o
+                ON o."LandingPageId" = {landingPageId}
+                AND o."Status" = 'Paid'
+                AND date_trunc({bucketUnit}, o."CreatedAt") = b.bucket_start
+            GROUP BY b.bucket_start
+            ORDER BY b.bucket_start
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
     public async Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
         var creator = await _context.Set<Creator>()
