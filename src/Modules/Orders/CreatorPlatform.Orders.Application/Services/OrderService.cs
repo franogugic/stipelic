@@ -36,12 +36,12 @@ public sealed class OrderService : IOrderService
 
     public async Task<HomeSummaryDto> GetHomeSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
-        if (_homeSummaryCache.TryGet(creatorSlug, ownerUserId, out var cached) && cached is not null)
+        if (_homeSummaryCache.TryGet(creatorSlug, out var cached) && cached is not null)
             return cached;
 
         var result = await _orderRepository.GetHomeSummaryByCreatorSlugAsync(creatorSlug, ownerUserId, ct);
 
-        _homeSummaryCache.Set(creatorSlug, ownerUserId, result);
+        _homeSummaryCache.Set(creatorSlug, result);
 
         return result;
     }

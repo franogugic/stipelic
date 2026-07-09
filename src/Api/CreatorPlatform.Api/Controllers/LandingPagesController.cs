@@ -22,6 +22,7 @@ public sealed class LandingPagesController : ControllerBase
     private readonly IOrderService _orderService;
     private readonly ILandingPageInsightsService _landingPageInsightsService;
     private readonly ILandingPageTimeSeriesCache _timeSeriesCache;
+    private readonly IHomeSummaryCache _homeSummaryCache;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
@@ -31,6 +32,7 @@ public sealed class LandingPagesController : ControllerBase
         IOrderService orderService,
         ILandingPageInsightsService landingPageInsightsService,
         ILandingPageTimeSeriesCache timeSeriesCache,
+        IHomeSummaryCache homeSummaryCache,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
@@ -39,6 +41,7 @@ public sealed class LandingPagesController : ControllerBase
         _orderService = orderService;
         _landingPageInsightsService = landingPageInsightsService;
         _timeSeriesCache = timeSeriesCache;
+        _homeSummaryCache = homeSummaryCache;
         _currentUserContext = currentUserContext;
     }
 
@@ -73,6 +76,8 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         var page = await _landingPageService.CreateAsync(slug, user.Id, request, ct);
+        // Landing page count on the home summary changed — invalidate so the dashboard reflects it immediately.
+        _homeSummaryCache.Remove(slug);
         return StatusCode(StatusCodes.Status201Created, ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status201Created, "Landing page created.", page));
     }
 
@@ -97,6 +102,7 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         await _landingPageService.ArchiveAsync(slug, pageId, user.Id, ct);
+        _homeSummaryCache.Remove(slug);
         return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Landing page archived.", null));
     }
 

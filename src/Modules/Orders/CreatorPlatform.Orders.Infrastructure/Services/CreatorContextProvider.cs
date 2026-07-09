@@ -60,4 +60,13 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             .Select(p => p.Name)
             .FirstOrDefaultAsync(ct);
     }
+
+    public async Task<string?> GetCreatorSlugByIdAsync(int creatorId, CancellationToken ct)
+    {
+        return await _context.Set<Creator>()
+            .AsNoTracking()
+            .Where(c => c.Id == creatorId)
+            .Select(c => c.Slug)
+            .FirstOrDefaultAsync(ct);
+    }
 }
