@@ -62,4 +62,9 @@ public sealed class PageViewService : IPageViewService
             Currency = null
         };
     }
+
+    public Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        return _repository.GetViewsSummaryByCreatorAsync(creatorSlug, ownerUserId, ct);
+    }
 }

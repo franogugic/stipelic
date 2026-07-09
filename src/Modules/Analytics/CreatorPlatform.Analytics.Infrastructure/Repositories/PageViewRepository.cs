@@ -1,3 +1,4 @@
+using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.PageViews;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -75,6 +76,26 @@ public sealed class PageViewRepository : IPageViewRepository
                 AND date_trunc({bucketUnit}, pv."ViewedAt") = b.bucket_start
             GROUP BY b.bucket_start
             ORDER BY b.bucket_start
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorAsync(
+        string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        // One aggregate query for every landing page of the creator, so the landing-pages list needs a single
+        // request instead of one /analytics call per page. Scoped by creator slug + owner (same as OrderRepository).
+        return await _context.Database.SqlQuery<LandingPageViewsSummaryDto>($"""
+            SELECT
+                lp."PublicId"                                AS "PublicId",
+                COALESCE(COUNT(pv."Id"), 0)                  AS "TotalViews",
+                COALESCE(COUNT(DISTINCT pv."VisitorId"), 0)  AS "UniqueVisitors"
+            FROM landing_pages.landing_pages lp
+            JOIN creators.creators c ON c."Id" = lp."CreatorId"
+            LEFT JOIN analytics.page_views pv ON pv."LandingPageId" = lp."Id"
+            WHERE c."Slug" = {creatorSlug} AND c."OwnerUserId" = {ownerUserId}
+            GROUP BY lp."PublicId"
             """)
             .AsNoTracking()
             .ToListAsync(ct);

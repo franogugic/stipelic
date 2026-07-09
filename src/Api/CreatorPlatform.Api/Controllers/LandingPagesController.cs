@@ -112,6 +112,16 @@ public sealed class LandingPagesController : ControllerBase
         var page = await _landingPageService.SaveEditorAsync(slug, pageId, user.Id, request, ct);
         return Ok(ApiResponse<LandingPageWithSectionsResponseDto>.Success(StatusCodes.Status200OK, "Landing page saved.", page));
     }
+    
+    [HttpGet("views-summary")]
+    public async Task<ActionResult<ApiResponse<List<LandingPageViewsSummaryDto>>>> GetViewsSummary(
+        string slug,
+        CancellationToken ct)
+    {
+        var user = GetAuthenticatedUser();
+        var summary = await _pageViewService.GetViewsSummaryByCreatorAsync(slug, user.Id, ct);
+        return Ok(ApiResponse<List<LandingPageViewsSummaryDto>>.Success(StatusCodes.Status200OK, "Views summary loaded.", summary));
+    }
 
     [HttpGet("{pageId:guid}/analytics")]
     public async Task<ActionResult<ApiResponse<LandingPageAnalyticsResponseDto>>> GetAnalytics(

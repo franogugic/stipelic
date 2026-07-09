@@ -6,4 +6,5 @@ public interface IPageViewService
 {
     Task RecordAsync(int landingPageId, Guid visitorId, CancellationToken ct);
     Task<LandingPageAnalyticsResponseDto> GetLandingPageStatsAsync(int landingPageId, CancellationToken ct);
+    Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 }
