@@ -150,7 +150,12 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(ct);
 
         if (creator is null)
-            return new HomeSummaryDto(0, 0, null, 0, 0, []);
+            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend());
+
+        var now = DateTimeOffset.UtcNow;
+        var todayMidnight = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
+        var trendStart = todayMidnight.AddDays(-(TrendDays - 1));
+        var monthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
 
         var orderStats = await _context.Set<Order>()
             .AsNoTracking()
@@ -160,6 +165,7 @@ public sealed class OrderRepository : IOrderRepository
             {
                 PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
                 TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0),
+                ThisMonthRevenueCents = g.Sum(o => o.Status == OrderStatus.Paid && o.PaidAt >= monthStart ? o.AmountCents : 0),
             })
             .FirstOrDefaultAsync(ct);
 
@@ -188,12 +194,52 @@ public sealed class OrderRepository : IOrderRepository
                 o.PaidAt)
         ).Take(5).ToListAsync(ct);
 
+        // Top product by paid revenue (all-time).
+        var topRow = await (
+            from o in _context.Set<Order>().AsNoTracking()
+            join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
+            where o.CreatorId == creator.Id && o.Status == OrderStatus.Paid
+            group new { o, p } by new { o.ProductId, p.Name } into g
+            select new { g.Key.Name, Total = g.Sum(x => x.o.AmountCents) }
+        ).OrderByDescending(x => x.Total).FirstOrDefaultAsync(ct);
+
+        var topProduct = topRow is null ? null : new TopProductDto(topRow.Name, topRow.Total);
+
+        // Daily revenue for the last TrendDays days. Bounded window (14 days of one creator's paid orders),
+        // so we pull the rows and bucket in memory rather than doing SQL date bucketing.
+        var trendRows = await _context.Set<Order>()
+            .AsNoTracking()
+            .Where(o => o.CreatorId == creator.Id && o.Status == OrderStatus.Paid && o.PaidAt >= trendStart)
+            .Select(o => new { o.PaidAt, o.AmountCents })
+            .ToListAsync(ct);
+
+        var revenueTrend = new int[TrendDays];
+        foreach (var row in trendRows)
+        {
+            if (row.PaidAt is not DateTimeOffset paidAt)
+                continue;
+
+            var paidUtc = paidAt.UtcDateTime;
+            var paidMidnight = new DateTimeOffset(paidUtc.Year, paidUtc.Month, paidUtc.Day, 0, 0, 0, TimeSpan.Zero);
+            var diffDays = (int)Math.Round((todayMidnight - paidMidnight).TotalDays);
+            var index = TrendDays - 1 - diffDays;
+            if (index >= 0 && index < TrendDays)
+                revenueTrend[index] += row.AmountCents;
+        }
+
         return new HomeSummaryDto(
             orderStats?.TotalPaidAmountCents ?? 0,
             orderStats?.PaidOrderCount ?? 0,
             creator.DefaultCurrency.ToString(),
             productCount,
             landingPageCount,
-            recentOrders);
+            recentOrders,
+            orderStats?.ThisMonthRevenueCents ?? 0,
+            topProduct,
+            [.. revenueTrend]);
     }
+
+    private const int TrendDays = 14;
+
+    private static List<int> ZeroTrend() => [.. new int[TrendDays]];
 }
