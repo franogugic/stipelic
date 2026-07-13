@@ -55,7 +55,19 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetAuthenticatedUser();
         var pages = await _landingPageService.ListAsync(slug, user.Id, ct);
-        return Ok(ApiResponse<List<LandingPageResponseDto>>.Success(StatusCodes.Status200OK, "Landing pages loaded.", pages));
+
+        // Merge in (cached) view counts so the list page needs a single request instead of a second
+        // round trip to a standalone views-summary endpoint.
+        var viewsByPage = (await _pageViewService.GetViewsSummaryByCreatorAsync(slug, user.Id, ct))
+            .ToDictionary(v => v.PublicId);
+
+        var merged = pages
+            .Select(p => viewsByPage.TryGetValue(p.PublicId, out var views)
+                ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
+                : p)
+            .ToList();
+
+        return Ok(ApiResponse<List<LandingPageResponseDto>>.Success(StatusCodes.Status200OK, "Landing pages loaded.", merged));
     }
 
     
@@ -124,17 +136,6 @@ public sealed class LandingPagesController : ControllerBase
         var page = await _landingPageService.SaveEditorAsync(slug, pageId, user.Id, request, ct);
         return Ok(ApiResponse<LandingPageWithSectionsResponseDto>.Success(StatusCodes.Status200OK, "Landing page saved.", page));
     }
-    
-    [HttpGet("views-summary")]
-    public async Task<ActionResult<ApiResponse<List<LandingPageViewsSummaryDto>>>> GetViewsSummary(
-        string slug,
-        CancellationToken ct)
-    {
-        var user = GetAuthenticatedUser();
-        var summary = await _pageViewService.GetViewsSummaryByCreatorAsync(slug, user.Id, ct);
-        return Ok(ApiResponse<List<LandingPageViewsSummaryDto>>.Success(StatusCodes.Status200OK, "Views summary loaded.", summary));
-    }
-
     [HttpGet("{pageId:guid}/analytics")]
     public async Task<ActionResult<ApiResponse<LandingPageAnalyticsResponseDto>>> GetAnalytics(
         string slug,
