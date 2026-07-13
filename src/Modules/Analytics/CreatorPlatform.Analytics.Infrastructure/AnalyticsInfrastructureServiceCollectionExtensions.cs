@@ -16,6 +16,7 @@ public static class AnalyticsInfrastructureServiceCollectionExtensions
         services.AddScoped<IEmailCaptureRepository, EmailCaptureRepository>();
         services.AddScoped<ILandingPageInsightsService, LandingPageInsightsService>();
         services.AddSingleton<ILandingPageTimeSeriesCache, LandingPageTimeSeriesCache>();
+        services.AddSingleton<IViewsSummaryCache, ViewsSummaryCache>();
 
         return services;
     }
