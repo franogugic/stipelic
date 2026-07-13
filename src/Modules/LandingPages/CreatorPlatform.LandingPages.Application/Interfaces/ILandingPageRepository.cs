@@ -8,6 +8,10 @@ public interface ILandingPageRepository
 
     Task<LandingPage?> GetByPublicIdAndCreatorIdForUpdateAsync(Guid publicId, int creatorId, CancellationToken ct);
 
+    // Read-only counterpart of the above — no tracking, used where the caller only needs to resolve the
+    // page's internal id/metadata (analytics, timeseries, captures) rather than mutate it.
+    Task<LandingPage?> GetByPublicIdAndCreatorIdAsync(Guid publicId, int creatorId, CancellationToken ct);
+
     Task<bool> SlugExistsForCreatorAsync(int creatorId, string slug, CancellationToken ct);
 
     Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct);

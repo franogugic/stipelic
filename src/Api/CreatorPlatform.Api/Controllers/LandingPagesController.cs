@@ -82,6 +82,19 @@ public sealed class LandingPagesController : ControllerBase
         return Ok(ApiResponse<LandingPageWithSectionsResponseDto>.Success(StatusCodes.Status200OK, "Landing page loaded.", page));
     }
 
+    // Lightweight page header (title/slug/status) — used by the analytics view, which doesn't render
+    // sections and shouldn't pay for the editor's full with-sections fetch.
+    [HttpGet("{pageId:guid}/summary")]
+    public async Task<ActionResult<ApiResponse<LandingPageResponseDto>>> GetSummary(
+        string slug,
+        Guid pageId,
+        CancellationToken ct)
+    {
+        var user = GetAuthenticatedUser();
+        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
+        return Ok(ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status200OK, "Landing page summary loaded.", page));
+    }
+
     [HttpPost]
     [EnableRateLimiting("CreateLandingPage")]
     public async Task<ActionResult<ApiResponse<LandingPageResponseDto>>> Create(
@@ -143,7 +156,7 @@ public sealed class LandingPagesController : ControllerBase
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
-        var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
+        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
 
         var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
         var captureCount = await _emailCaptureService.GetCaptureCountAsync(page.Id, ct);
@@ -171,7 +184,7 @@ public sealed class LandingPagesController : ControllerBase
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
-        var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
+        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
 
         if (_timeSeriesCache.TryGet(page.Id, period, out var cached) && cached is not null)
             return Ok(ApiResponse<TimeSeriesResponseDto>.Success(StatusCodes.Status200OK, "Time series loaded.", cached));
@@ -189,7 +202,7 @@ public sealed class LandingPagesController : ControllerBase
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
-        var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
+        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
         var captures = await _emailCaptureService.ListCapturesAsync(page.Id, ct);
         return Ok(ApiResponse<List<EmailCaptureResponseDto>>.Success(StatusCodes.Status200OK, "Captures loaded.", captures));
     }

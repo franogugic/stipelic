@@ -100,6 +100,21 @@ public sealed partial class LandingPageService : ILandingPageService
         return MapToWithSectionsDto(landingPage, sections);
     }
 
+    public async Task<LandingPageResponseDto> GetSummaryAsync(
+        string creatorSlug,
+        Guid landingPagePublicId,
+        int ownerUserId,
+        CancellationToken ct)
+    {
+        var (creatorId, _, _) = await GetCreatorContextAsync(creatorSlug, ownerUserId, ct);
+
+        var landingPage = await _landingPageRepository.GetByPublicIdAndCreatorIdAsync(landingPagePublicId, creatorId, ct);
+        if (landingPage is null)
+            throw new NotFoundException("Landing page not found.");
+
+        return MapToDto(landingPage);
+    }
+
     public async Task PublishAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct)
     {
         var (creatorId, _, _) = await GetCreatorContextAsync(creatorSlug, ownerUserId, ct);
@@ -338,6 +353,7 @@ public sealed partial class LandingPageService : ILandingPageService
 
     private static LandingPageResponseDto MapToDto(LandingPage lp) => new()
     {
+        Id = lp.Id,
         PublicId = lp.PublicId,
         Title = lp.Title,
         Slug = lp.Slug,

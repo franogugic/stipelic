@@ -21,6 +21,14 @@ public interface ILandingPageService
         int ownerUserId,
         CancellationToken ct);
 
+    // Lightweight lookup (no sections, no section repository round trip) for callers that only need the
+    // page's metadata/internal id — e.g. analytics, timeseries and captures endpoints.
+    Task<LandingPageResponseDto> GetSummaryAsync(
+        string creatorSlug,
+        Guid landingPagePublicId,
+        int ownerUserId,
+        CancellationToken ct);
+
     Task PublishAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct);
 
     Task UnpublishAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct);
