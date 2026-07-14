@@ -38,6 +38,11 @@ public sealed class PageViewService : IPageViewService
 
         return new LandingPageAnalyticsResponseDto
         {
+            // Title/Slug/Status/captures/purchases are irrelevant here — the controller only reads the
+            // period stats off this object and builds the real response DTO itself.
+            Title = string.Empty,
+            Slug = string.Empty,
+            Status = string.Empty,
             AllTime = new PeriodStatsDto
             {
                 TotalViews = stats.TotalViews,

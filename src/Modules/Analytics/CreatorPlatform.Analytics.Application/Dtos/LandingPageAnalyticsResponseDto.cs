@@ -2,6 +2,11 @@ namespace CreatorPlatform.Analytics.Application.Dtos;
 
 public sealed class LandingPageAnalyticsResponseDto
 {
+    // Page header fields — merged in here so the analytics view needs one request instead of a
+    // separate lightweight summary call just to render the title/slug/status.
+    public required string Title { get; init; }
+    public required string Slug { get; init; }
+    public required string Status { get; init; }
     public required PeriodStatsDto AllTime { get; init; }
     public required PeriodStatsDto Today { get; init; }
     public required PeriodStatsDto Last7Days { get; init; }

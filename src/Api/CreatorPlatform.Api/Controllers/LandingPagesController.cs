@@ -82,19 +82,6 @@ public sealed class LandingPagesController : ControllerBase
         return Ok(ApiResponse<LandingPageWithSectionsResponseDto>.Success(StatusCodes.Status200OK, "Landing page loaded.", page));
     }
 
-    // Lightweight page header (title/slug/status) — used by the analytics view, which doesn't render
-    // sections and shouldn't pay for the editor's full with-sections fetch.
-    [HttpGet("{pageId:guid}/summary")]
-    public async Task<ActionResult<ApiResponse<LandingPageResponseDto>>> GetSummary(
-        string slug,
-        Guid pageId,
-        CancellationToken ct)
-    {
-        var user = GetAuthenticatedUser();
-        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
-        return Ok(ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status200OK, "Landing page summary loaded.", page));
-    }
-
     [HttpPost]
     [EnableRateLimiting("CreateLandingPage")]
     public async Task<ActionResult<ApiResponse<LandingPageResponseDto>>> Create(
@@ -164,6 +151,9 @@ public sealed class LandingPagesController : ControllerBase
 
         var analytics = new LandingPageAnalyticsResponseDto
         {
+            Title = page.Title,
+            Slug = page.Slug,
+            Status = page.Status,
             AllTime = stats.AllTime,
             Today = stats.Today,
             Last7Days = stats.Last7Days,
