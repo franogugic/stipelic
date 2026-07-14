@@ -18,6 +18,9 @@ public sealed class Order
         int amountCents,
         Currency currency,
         OrderStatus status,
+        int platformFeeBasisPoints,
+        int platformFeeCents,
+        string payoutMode,
         string stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
@@ -30,6 +33,9 @@ public sealed class Order
         AmountCents = amountCents;
         Currency = currency;
         Status = status;
+        PlatformFeeBasisPoints = platformFeeBasisPoints;
+        PlatformFeeCents = platformFeeCents;
+        PayoutMode = payoutMode;
         StripeCheckoutSessionId = stripeCheckoutSessionId;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -43,6 +49,9 @@ public sealed class Order
         string? name,
         int amountCents,
         Currency currency,
+        int platformFeeBasisPoints,
+        int platformFeeCents,
+        string payoutMode,
         string stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
@@ -56,6 +65,9 @@ public sealed class Order
             amountCents,
             currency,
             OrderStatus.Pending,
+            platformFeeBasisPoints,
+            platformFeeCents,
+            payoutMode,
             stripeCheckoutSessionId,
             createdAt);
     }
@@ -99,6 +111,15 @@ public sealed class Order
     public Currency Currency { get; private set; }
 
     public OrderStatus Status { get; private set; }
+
+    /// <summary>Snapshot of the creator plan's fee at the time of purchase — never recomputed later.</summary>
+    public int PlatformFeeBasisPoints { get; private set; }
+
+    /// <summary>Snapshot of <see cref="PlatformFeeBasisPoints"/> applied to <see cref="AmountCents"/> — see PlatformFee.Calculate.</summary>
+    public int PlatformFeeCents { get; private set; }
+
+    /// <summary>Snapshot of the creator's payout mode at purchase time ("StripeConnect" / "BankTransfer").</summary>
+    public string PayoutMode { get; private set; } = string.Empty;
 
     public string StripeCheckoutSessionId { get; private set; } = string.Empty;
 

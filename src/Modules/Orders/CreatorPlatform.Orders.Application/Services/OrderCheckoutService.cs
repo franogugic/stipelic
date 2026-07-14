@@ -59,6 +59,9 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
             metadata,
             ct);
 
+        // TASK 1: fee/payout-mode branching lands in Task 3 (checkout gating + destination charges).
+        // Until then every order snapshots a zero fee and BankTransfer, matching today's behavior
+        // (single platform-charge checkout, no split) so this task changes nothing observable.
         var order = Order.Create(
             productInfo.CreatorId,
             productInfo.ProductId,
@@ -67,6 +70,9 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
             name: null,
             productInfo.PriceCents,
             productInfo.Currency,
+            platformFeeBasisPoints: 0,
+            platformFeeCents: 0,
+            payoutMode: "BankTransfer",
             session.SessionId,
             DateTimeOffset.UtcNow);
 

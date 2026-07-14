@@ -64,6 +64,34 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
             .IsUnique()
             .HasFilter("\"StripeCustomerId\" IS NOT NULL");
 
+        builder.Property(creator => creator.CountryCode)
+            .HasMaxLength(2)
+            .IsRequired();
+
+        builder.Property(creator => creator.PayoutMode)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(creator => creator.StripeConnectAccountId)
+            .HasMaxLength(255);
+
+        builder.HasIndex(creator => creator.StripeConnectAccountId)
+            .IsUnique()
+            .HasFilter("\"StripeConnectAccountId\" IS NOT NULL");
+
+        builder.Property(creator => creator.StripeConnectDetailsSubmitted)
+            .HasDefaultValue(false)
+            .IsRequired();
+
+        builder.Property(creator => creator.StripeConnectChargesEnabled)
+            .HasDefaultValue(false)
+            .IsRequired();
+
+        builder.Property(creator => creator.StripeConnectPayoutsEnabled)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(creator => creator.CreatedAt)
             .IsRequired();
 

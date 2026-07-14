@@ -17,6 +17,7 @@ public static class CreatorsInfrastructureServiceCollectionExtensions
         services.AddScoped<ICreatorMemberRepository, CreatorMemberRepository>();
         services.AddScoped<ICreatorPlanRepository, CreatorPlanRepository>();
         services.AddScoped<ICreatorSettingsRepository, CreatorSettingsRepository>();
+        services.AddScoped<ICreatorPayoutProfileRepository, CreatorPayoutProfileRepository>();
         services.AddScoped<ICreatorSubscriptionRepository, CreatorSubscriptionRepository>();
         services.AddScoped<ICreatorsUnitOfWork, CreatorsUnitOfWork>();
 

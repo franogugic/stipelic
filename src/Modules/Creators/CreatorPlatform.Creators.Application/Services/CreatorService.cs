@@ -85,12 +85,18 @@ public sealed partial class CreatorService : ICreatorService
             : CreatorStatus.Active;
 
         var createdAt = DateTimeOffset.UtcNow;
+        // TASK 1 decision: CreateCreatorRequestDto doesn't carry a country yet (added in Task 2.5, which
+        // makes it a required field validated against PayoutCountries). Until then, default new creators
+        // to the same country/mode used to backfill existing rows (see the Task 1 migration) so behavior
+        // is unchanged — checkout still ignores PayoutMode until Task 3.
         var creator = Creator.Create(
             ownerUserId,
             name,
             slug,
             defaultCurrency,
             creatorStatus,
+            countryCode: "HR",
+            payoutMode: PayoutMode.BankTransfer,
             createdAt);
 
         CreatorSubscription? createdSubscription = null;
