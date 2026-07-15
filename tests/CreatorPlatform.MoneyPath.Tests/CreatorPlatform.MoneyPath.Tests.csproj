@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\Modules\Orders\CreatorPlatform.Orders.Application\CreatorPlatform.Orders.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\LandingPages\CreatorPlatform.LandingPages.Domain\CreatorPlatform.LandingPages.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\LandingPages\CreatorPlatform.LandingPages.Application\CreatorPlatform.LandingPages.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Auth\CreatorPlatform.Auth.Application\CreatorPlatform.Auth.Application.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,3 +1,4 @@
+using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Payouts.Application.Dtos;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using CreatorPlatform.Payouts.Domain.Payouts;
@@ -34,6 +35,37 @@ public sealed class LedgerEntryRepository : ILedgerEntryRepository
             .Where(e => e.CreatorId == creatorId)
             .GroupBy(e => e.Currency)
             .Select(g => new CreatorBalanceDto(g.Key, g.Sum(e => e.AmountCents)))
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<CreatorBalanceSummaryDto>> GetBalancesForPayoutAsync(int minCents, int limit, CancellationToken ct)
+    {
+        var query =
+            from le in _context.Set<LedgerEntry>().AsNoTracking()
+            join c in _context.Set<Creator>().AsNoTracking() on le.CreatorId equals c.Id
+            where c.PayoutMode == PayoutMode.BankTransfer && c.Status != CreatorStatus.Disabled
+            group le by new { c.Id, c.PublicId, c.Name, c.Slug, le.Currency } into g
+            select new
+            {
+                g.Key.Id,
+                g.Key.PublicId,
+                g.Key.Name,
+                g.Key.Slug,
+                g.Key.Currency,
+                BalanceCents = g.Sum(e => e.AmountCents)
+            };
+
+        return await query
+            .Where(x => x.BalanceCents >= minCents)
+            .OrderByDescending(x => x.BalanceCents)
+            .Take(limit)
+            .Select(x => new CreatorBalanceSummaryDto(
+                x.PublicId,
+                x.Name,
+                x.Slug,
+                x.Currency,
+                x.BalanceCents,
+                _context.Set<CreatorPayoutProfile>().Any(p => p.CreatorId == x.Id)))
             .ToListAsync(ct);
     }
 }

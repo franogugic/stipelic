@@ -25,6 +25,29 @@ public sealed class CreatorRepository : ICreatorRepository
                 ct);
     }
 
+    public async Task<Creator?> GetBySlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Creator>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(creator =>
+                creator.Slug == slug
+                && creator.OwnerUserId == ownerUserId
+                && creator.Status != CreatorStatus.Disabled,
+                ct);
+    }
+
+    public async Task<Creator?> GetForUpdateBySlugAndOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Creator>()
+            .FirstOrDefaultAsync(creator =>
+                creator.Slug == slug
+                && creator.OwnerUserId == ownerUserId
+                && creator.Status != CreatorStatus.Disabled,
+                ct);
+    }
+
     public async Task<Creator?> GetByIdForUpdateAsync(int id, CancellationToken ct)
     {
         return await _context

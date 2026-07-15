@@ -38,6 +38,16 @@ public sealed class FakeCreatorRepository : ICreatorRepository
         return Task.FromResult(CreatorByOwner);
     }
 
+    public Task<Creator?> GetBySlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        return Task.FromResult(CreatorByOwner);
+    }
+
+    public Task<Creator?> GetForUpdateBySlugAndOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        return Task.FromResult(CreatorByOwner);
+    }
+
     public Task<Creator?> GetByIdForUpdateAsync(int id, CancellationToken ct)
     {
         return Task.FromResult(CreatorByOwner);

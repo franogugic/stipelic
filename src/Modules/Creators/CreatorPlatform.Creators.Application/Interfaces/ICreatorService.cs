@@ -26,6 +26,15 @@ public interface ICreatorService
 
     Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 
+    /// <summary>Null when the creator has not saved payout bank details yet.</summary>
+    Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct);
+
+    Task<PayoutProfileResponseDto> UpdatePayoutProfileAsync(
+        string slug,
+        int ownerUserId,
+        UpdatePayoutProfileRequestDto request,
+        CancellationToken ct);
+
     /// <summary>Static registry data — no I/O, so synchronous (same style as other section-template style lookups).</summary>
     List<PayoutCountryDto> GetPayoutCountries();
 }

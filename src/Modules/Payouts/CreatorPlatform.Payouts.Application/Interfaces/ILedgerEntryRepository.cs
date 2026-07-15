@@ -13,4 +13,9 @@ public interface ILedgerEntryRepository
 
     /// <summary>Current balance per currency for a creator — one grouped SQL SUM, never summed in application code.</summary>
     Task<List<CreatorBalanceDto>> GetBalanceByCreatorIdAsync(int creatorId, CancellationToken ct);
+
+    /// <summary>BankTransfer creators whose balance is at least <paramref name="minCents"/>, one currency per
+    /// row, sorted by balance descending — one grouped SQL SUM joined against creators/payout profiles,
+    /// never summed in application code.</summary>
+    Task<List<CreatorBalanceSummaryDto>> GetBalancesForPayoutAsync(int minCents, int limit, CancellationToken ct);
 }

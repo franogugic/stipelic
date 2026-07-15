@@ -23,6 +23,7 @@ public class CreatorServiceCreateAsyncTests
             planRepository,
             new FakeCreatorSettingsRepository(),
             new FakeCreatorSubscriptionRepository(),
+            new FakeCreatorPayoutProfileRepository(),
             new FakeCreatorsUnitOfWork(),
             new FakeSubscriptionCheckoutSessionService(),
             new FakeSubscriptionCancellationService(),

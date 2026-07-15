@@ -41,6 +41,12 @@ public sealed class GlobalExceptionMiddleware
             _logger.LogWarning(e, "Forbidden: {Message}", e.Message);
             await HandleExceptionAsync(context, statusCode, e.Message, "EMAIL_NOT_VERIFIED");
         }
+        catch (ForbiddenException e)
+        {
+            var statusCode = StatusCodes.Status403Forbidden;
+            _logger.LogWarning(e, "Forbidden: {Message}", e.Message);
+            await HandleExceptionAsync(context, statusCode, e.Message, "FORBIDDEN");
+        }
         catch (TooManyLoginAttemptsException e)
         {
             var statusCode = StatusCodes.Status429TooManyRequests;

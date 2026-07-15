@@ -10,4 +10,5 @@ public sealed record CurrentUserDto
     public string Email { get; init; } = string.Empty;
     public bool IsEmailVerified { get; init; }
     public string Status { get; init; } = string.Empty;
+    public IReadOnlyList<string> Roles { get; init; } = [];
 }
