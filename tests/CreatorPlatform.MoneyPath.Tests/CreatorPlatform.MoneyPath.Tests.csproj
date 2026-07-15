@@ -25,6 +25,8 @@
     <ProjectReference Include="..\..\src\Modules\Creators\CreatorPlatform.Creators.Application\CreatorPlatform.Creators.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Payments\CreatorPlatform.Payments.Application\CreatorPlatform.Payments.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Payouts\CreatorPlatform.Payouts.Domain\CreatorPlatform.Payouts.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payouts\CreatorPlatform.Payouts.Application\CreatorPlatform.Payouts.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Email\CreatorPlatform.Email.Application\CreatorPlatform.Email.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Orders\CreatorPlatform.Orders.Domain\CreatorPlatform.Orders.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Orders\CreatorPlatform.Orders.Application\CreatorPlatform.Orders.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\LandingPages\CreatorPlatform.LandingPages.Domain\CreatorPlatform.LandingPages.Domain.csproj" />

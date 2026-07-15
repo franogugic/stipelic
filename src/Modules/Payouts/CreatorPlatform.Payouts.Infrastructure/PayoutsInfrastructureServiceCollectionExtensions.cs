@@ -1,4 +1,5 @@
 using CreatorPlatform.Payouts.Application.Interfaces;
+using CreatorPlatform.Payouts.Application.Services;
 using CreatorPlatform.Payouts.Infrastructure.Persistence;
 using CreatorPlatform.Payouts.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,7 @@ public static class PayoutsInfrastructureServiceCollectionExtensions
         services.AddScoped<ILedgerEntryRepository, LedgerEntryRepository>();
         services.AddScoped<IPayoutRepository, PayoutRepository>();
         services.AddScoped<IPayoutsUnitOfWork, PayoutsUnitOfWork>();
+        services.AddScoped<IPayoutLedgerService, PayoutLedgerService>();
 
         return services;
     }

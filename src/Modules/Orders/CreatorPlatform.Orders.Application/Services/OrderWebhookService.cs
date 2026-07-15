@@ -1,7 +1,9 @@
+using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Options;
 using CreatorPlatform.Orders.Domain.Orders;
+using CreatorPlatform.Payouts.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -14,6 +16,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IEmailOutboxService _emailOutboxService;
     private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly IPayoutLedgerService _payoutLedgerService;
     private readonly OrdersOptions _options;
     private readonly ILogger<OrderWebhookService> _logger;
 
@@ -23,6 +26,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
         ICreatorContextProvider creatorContextProvider,
         IEmailOutboxService emailOutboxService,
         IHomeSummaryCache homeSummaryCache,
+        IPayoutLedgerService payoutLedgerService,
         IOptions<OrdersOptions> options,
         ILogger<OrderWebhookService> logger)
     {
@@ -31,6 +35,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
         _creatorContextProvider = creatorContextProvider;
         _emailOutboxService = emailOutboxService;
         _homeSummaryCache = homeSummaryCache;
+        _payoutLedgerService = payoutLedgerService;
         _options = options.Value;
         _logger = logger;
     }
@@ -59,7 +64,16 @@ public sealed class OrderWebhookService : IOrderWebhookService
                 return;
             }
 
-            order.MarkPaid(data.PaymentIntentId ?? string.Empty, DateTimeOffset.UtcNow);
+            var paidAt = DateTimeOffset.UtcNow;
+            order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt);
+
+            // Connect orders never touch the ledger — the money already left via the destination-charge
+            // split, so there is no platform-held balance to track for them.
+            if (order.PayoutMode == nameof(PayoutMode.BankTransfer))
+            {
+                await _payoutLedgerService.AppendSaleAsync(
+                    order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.Currency, paidAt, ct);
+            }
 
             var productName = await _creatorContextProvider.GetProductNameAsync(order.ProductId, ct) ?? "your purchase";
             var accessUrl = $"{_options.ApiBaseUrl.TrimEnd('/')}/api/access/{order.PublicId}";
@@ -99,7 +113,16 @@ public sealed class OrderWebhookService : IOrderWebhookService
                 return;
             }
 
-            order.MarkRefunded(DateTimeOffset.UtcNow);
+            var refundedAt = DateTimeOffset.UtcNow;
+            order.MarkRefunded(refundedAt);
+
+            // Partial refunds are not modeled (same limitation as MarkRefunded) — a refund always reverses
+            // the full sale + fee for a BankTransfer order.
+            if (order.PayoutMode == nameof(PayoutMode.BankTransfer))
+            {
+                await _payoutLedgerService.AppendRefundAsync(
+                    order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.Currency, refundedAt, ct);
+            }
 
             await _unitOfWork.SaveChangesAsync(ct);
 
