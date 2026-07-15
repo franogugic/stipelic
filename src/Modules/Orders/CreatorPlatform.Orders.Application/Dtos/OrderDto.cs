@@ -9,4 +9,6 @@ public sealed record OrderDto(
     string Currency,
     string Status,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? PaidAt);
+    DateTimeOffset? PaidAt,
+    int PlatformFeeCents,
+    int NetAmountCents);

@@ -68,7 +68,9 @@ public sealed class OrderRepository : IOrderRepository
                 o.Currency.ToString(),
                 o.Status.ToString(),
                 o.CreatedAt,
-                o.PaidAt)
+                o.PaidAt,
+                o.PlatformFeeCents,
+                o.AmountCents - o.PlatformFeeCents)
         ).ToListAsync(ct);
     }
 
@@ -191,7 +193,9 @@ public sealed class OrderRepository : IOrderRepository
                 o.Currency.ToString(),
                 o.Status.ToString(),
                 o.CreatedAt,
-                o.PaidAt)
+                o.PaidAt,
+                o.PlatformFeeCents,
+                o.AmountCents - o.PlatformFeeCents)
         ).Take(5).ToListAsync(ct);
 
         // Top product by paid revenue (all-time).

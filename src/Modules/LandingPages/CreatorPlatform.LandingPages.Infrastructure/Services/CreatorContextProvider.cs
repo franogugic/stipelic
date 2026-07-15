@@ -27,7 +27,13 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         var creator = await _context.Set<Creator>()
             .AsNoTracking()
             .Where(c => c.Slug == slug && c.OwnerUserId == ownerUserId && c.Status != CreatorStatus.Disabled)
-            .Select(c => new { c.Id })
+            .Select(c => new
+            {
+                c.Id,
+                c.PayoutMode,
+                c.StripeConnectPayoutsEnabled,
+                HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(pp => pp.CreatorId == c.Id)
+            })
             .FirstOrDefaultAsync(ct);
 
         if (creator is null)
@@ -46,7 +52,12 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             .AsNoTracking()
             .CountAsync(lp => lp.CreatorId == creator.Id && lp.Status != LandingPageStatus.Archived, ct);
 
-        return new CreatorContext(creator.Id, maxLandingPages, activeLandingPageCount);
+        return new CreatorContext(creator.Id, maxLandingPages, activeLandingPageCount)
+        {
+            PayoutMode = creator.PayoutMode,
+            StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled,
+            HasPayoutProfile = creator.HasPayoutProfile
+        };
     }
 
     public async Task<int?> GetProductIdForCreatorAsync(int creatorId, Guid productPublicId, CancellationToken ct)

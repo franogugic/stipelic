@@ -1,3 +1,4 @@
+using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
 using CreatorPlatform.LandingPages.Application.Templates;
@@ -117,9 +118,9 @@ public sealed partial class LandingPageService : ILandingPageService
 
     public async Task PublishAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct)
     {
-        var (creatorId, _, _) = await GetCreatorContextAsync(creatorSlug, ownerUserId, ct);
+        var context = await GetCreatorContextAsync(creatorSlug, ownerUserId, ct);
 
-        var landingPage = await _landingPageRepository.GetByPublicIdAndCreatorIdForUpdateAsync(landingPagePublicId, creatorId, ct);
+        var landingPage = await _landingPageRepository.GetByPublicIdAndCreatorIdForUpdateAsync(landingPagePublicId, context.CreatorId, ct);
         if (landingPage is null)
             throw new NotFoundException("Landing page not found.");
 
@@ -128,6 +129,21 @@ public sealed partial class LandingPageService : ILandingPageService
 
         if (landingPage.Status == LandingPageStatus.Published)
             return;
+
+        if (landingPage.Type == LandingPageType.Sales)
+        {
+            var payoutReady = context.PayoutMode == PayoutMode.StripeConnect
+                ? context.StripeConnectPayoutsEnabled
+                : context.HasPayoutProfile;
+
+            if (!payoutReady)
+            {
+                var missing = context.PayoutMode == PayoutMode.StripeConnect
+                    ? "Stripe Connect onboarding"
+                    : "bank account details";
+                throw new ConflictException($"Complete your payout setup ({missing}) before publishing a Sales page.");
+            }
+        }
 
         landingPage.Publish(DateTimeOffset.UtcNow);
         await _unitOfWork.SaveChangesAsync(ct);
