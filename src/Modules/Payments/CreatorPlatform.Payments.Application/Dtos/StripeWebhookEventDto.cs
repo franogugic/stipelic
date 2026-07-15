@@ -17,6 +17,10 @@ public sealed class AccountUpdatedData
     public bool DetailsSubmitted { get; init; }
     public bool ChargesEnabled { get; init; }
     public bool PayoutsEnabled { get; init; }
+
+    /// <summary>The Stripe event's own timestamp (not when we received it) — Stripe does not guarantee
+    /// delivery order, so this is used to reject a stale/out-of-order replay of an older account state.</summary>
+    public DateTimeOffset OccurredAt { get; init; }
 }
 
 public sealed class CheckoutSessionCompletedData

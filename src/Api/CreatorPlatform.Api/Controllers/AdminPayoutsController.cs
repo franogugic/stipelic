@@ -55,10 +55,12 @@ public sealed class AdminPayoutsController : ControllerBase
 
         var payout = await _payoutAdminService.CreatePayoutAsync(request, ct);
 
-        return Ok(ApiResponse<PayoutDto>.Success(
+        var apiResponse = ApiResponse<PayoutDto>.Success(
             StatusCodes.Status201Created,
             "Payout created.",
-            payout));
+            payout);
+
+        return Created($"/api/admin/payouts/{payout.PublicId}", apiResponse);
     }
 
     [HttpPost("{publicId}/mark-paid")]

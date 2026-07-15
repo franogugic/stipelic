@@ -54,7 +54,10 @@ public sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<LedgerEn
             .IsUnique()
             .HasFilter("\"OrderId\" IS NOT NULL");
 
-        builder.HasIndex(e => e.PayoutId)
+        // Idempotency guard: a given payout can have at most one entry of a given type (PayoutDebit on
+        // create, Adjustment on mark-failed) — protects against a racing duplicate admin request.
+        builder.HasIndex(e => new { e.PayoutId, e.Type })
+            .IsUnique()
             .HasFilter("\"PayoutId\" IS NOT NULL");
 
         builder.ToTable(t => t.HasCheckConstraint("CK_ledger_entries_AmountCents_NotZero", "\"AmountCents\" <> 0"));

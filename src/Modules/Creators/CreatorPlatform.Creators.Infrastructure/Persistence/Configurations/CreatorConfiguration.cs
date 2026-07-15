@@ -92,6 +92,8 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
             .HasDefaultValue(false)
             .IsRequired();
 
+        builder.Property(creator => creator.StripeConnectStatusEventAt);
+
         builder.Property(creator => creator.CreatedAt)
             .IsRequired();
 

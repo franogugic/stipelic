@@ -96,15 +96,25 @@ public sealed class Creator
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>
+    /// Applies Stripe's reported Connect account state. <paramref name="eventOccurredAt"/> is the Stripe
+    /// event's own timestamp — Stripe does not guarantee delivery order, so an event older than the last
+    /// one we already applied is a no-op (protects against a delayed/replayed event overwriting newer state).
+    /// </summary>
     public void UpdateStripeConnectStatus(
         bool detailsSubmitted,
         bool chargesEnabled,
         bool payoutsEnabled,
+        DateTimeOffset eventOccurredAt,
         DateTimeOffset updatedAt)
     {
+        if (StripeConnectStatusEventAt is { } lastEventAt && eventOccurredAt <= lastEventAt)
+            return;
+
         StripeConnectDetailsSubmitted = detailsSubmitted;
         StripeConnectChargesEnabled = chargesEnabled;
         StripeConnectPayoutsEnabled = payoutsEnabled;
+        StripeConnectStatusEventAt = eventOccurredAt;
         UpdatedAt = updatedAt;
     }
 
@@ -135,6 +145,8 @@ public sealed class Creator
     public bool StripeConnectChargesEnabled { get; private set; }
 
     public bool StripeConnectPayoutsEnabled { get; private set; }
+
+    public DateTimeOffset? StripeConnectStatusEventAt { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

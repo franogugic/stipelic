@@ -47,6 +47,43 @@ public class CreatorWebhookServiceTests
     }
 
     [Fact]
+    public async Task HandleAccountUpdated_StaleEventAfterNewer_IsNoOp()
+    {
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        creator.SetStripeConnectAccountId("acct_123", Now);
+        var repo = new FakeCreatorRepository { CreatorByStripeConnectAccountId = creator };
+        var uow = new FakeCreatorsUnitOfWork();
+        var service = BuildService(repo, uow);
+
+        var newerEvent = new AccountUpdatedData
+        {
+            AccountId = "acct_123",
+            DetailsSubmitted = true,
+            ChargesEnabled = true,
+            PayoutsEnabled = true,
+            OccurredAt = Now,
+        };
+        await service.HandleAccountUpdatedAsync(newerEvent, CancellationToken.None);
+
+        // A delayed/replayed event reporting an earlier (falsy) state, timestamped before the one
+        // already applied — must not overwrite the newer, already-applied state.
+        var staleEvent = new AccountUpdatedData
+        {
+            AccountId = "acct_123",
+            DetailsSubmitted = false,
+            ChargesEnabled = false,
+            PayoutsEnabled = false,
+            OccurredAt = Now.AddHours(-1),
+        };
+        await service.HandleAccountUpdatedAsync(staleEvent, CancellationToken.None);
+
+        Assert.True(creator.StripeConnectDetailsSubmitted);
+        Assert.True(creator.StripeConnectChargesEnabled);
+        Assert.True(creator.StripeConnectPayoutsEnabled);
+        Assert.Equal(Now, creator.StripeConnectStatusEventAt);
+    }
+
+    [Fact]
     public async Task HandleAccountUpdated_UnknownAccount_NoOpWithoutException()
     {
         var repo = new FakeCreatorRepository { CreatorByStripeConnectAccountId = null };

@@ -310,9 +310,10 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            // Idempotent by nature — Stripe always reports the account's current state, so replaying
-            // the same (or an older) event just re-applies the same or a no-op update.
-            creator.UpdateStripeConnectStatus(data.DetailsSubmitted, data.ChargesEnabled, data.PayoutsEnabled, now);
+            // Stripe does not guarantee event delivery order — UpdateStripeConnectStatus no-ops if
+            // data.OccurredAt is not newer than the last event we already applied.
+            creator.UpdateStripeConnectStatus(
+                data.DetailsSubmitted, data.ChargesEnabled, data.PayoutsEnabled, data.OccurredAt, now);
             await _unitOfWork.SaveChangesAsync(ct);
 
             _logger.LogInformation(

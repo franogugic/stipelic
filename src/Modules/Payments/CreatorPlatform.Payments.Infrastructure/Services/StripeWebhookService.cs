@@ -173,7 +173,8 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 AccountId = account.Id,
                 DetailsSubmitted = account.DetailsSubmitted,
                 ChargesEnabled = account.ChargesEnabled,
-                PayoutsEnabled = account.PayoutsEnabled
+                PayoutsEnabled = account.PayoutsEnabled,
+                OccurredAt = stripeEvent.Created
             }
         };
     }
