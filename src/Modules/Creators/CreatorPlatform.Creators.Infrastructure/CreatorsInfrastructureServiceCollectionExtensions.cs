@@ -11,6 +11,7 @@ public static class CreatorsInfrastructureServiceCollectionExtensions
     public static IServiceCollection AddCreatorsInfrastructure(this IServiceCollection services)
     {
         services.AddScoped<ICreatorService, CreatorService>();
+        services.AddScoped<ICreatorConnectService, CreatorConnectService>();
         services.AddScoped<ICreatorPlanService, CreatorPlanService>();
         services.AddScoped<ICreatorWebhookService, CreatorWebhookService>();
         services.AddScoped<ICreatorRepository, CreatorRepository>();

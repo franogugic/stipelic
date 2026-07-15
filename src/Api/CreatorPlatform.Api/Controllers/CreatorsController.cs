@@ -15,13 +15,16 @@ namespace CreatorPlatform.Api.Controllers;
 public sealed class CreatorsController : ControllerBase
 {
     private readonly ICreatorService _creatorService;
+    private readonly ICreatorConnectService _creatorConnectService;
     private readonly ICurrentUserContext _currentUserContext;
 
     public CreatorsController(
         ICreatorService creatorService,
+        ICreatorConnectService creatorConnectService,
         ICurrentUserContext currentUserContext)
     {
         _creatorService = creatorService;
+        _creatorConnectService = creatorConnectService;
         _currentUserContext = currentUserContext;
     }
 
@@ -37,6 +40,19 @@ public sealed class CreatorsController : ControllerBase
             StatusCodes.Status200OK,
             "Creator loaded.",
             response));
+    }
+
+    [HttpGet("payout-countries")]
+    public ActionResult<ApiResponse<List<PayoutCountryDto>>> PayoutCountries()
+    {
+        _ = GetAuthenticatedUser();
+
+        var countries = _creatorService.GetPayoutCountries();
+
+        return Ok(ApiResponse<List<PayoutCountryDto>>.Success(
+            StatusCodes.Status200OK,
+            "Payout countries loaded.",
+            countries));
     }
 
     [HttpGet("{slug}/settings")]
@@ -126,6 +142,20 @@ public sealed class CreatorsController : ControllerBase
             StatusCodes.Status200OK,
             "Subscription scheduled for cancellation at the end of the current billing period.",
             null));
+    }
+
+    [HttpPost("current/connect/onboarding-link")]
+    [EnableRateLimiting("ConnectOnboarding")]
+    public async Task<ActionResult<ApiResponse<ConnectOnboardingLinkResponseDto>>> ConnectOnboardingLink(CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var response = await _creatorConnectService.StartConnectOnboardingAsync(currentUser.Id, currentUser.Email, ct);
+
+        return Ok(ApiResponse<ConnectOnboardingLinkResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Connect onboarding link created.",
+            response));
     }
 
     [HttpPost("current/subscription/checkout")]

@@ -62,6 +62,7 @@ public sealed partial class CreatorService : ICreatorService
         var slug = NormalizeSlug(request.Slug, name);
         var planCode = NormalizePlanCode(request.PlanCode);
         var defaultCurrency = ParseCurrency(request.DefaultCurrency);
+        var countryCode = NormalizeCountryCode(request.CountryCode);
         var supportEmail = NormalizeOptionalEmail(request.SupportEmail);
         var brandName = NormalizeOptionalText(request.BrandName, BrandNameMaxLength) ?? name;
         var logoUrl = NormalizeOptionalUrl(request.LogoUrl);
@@ -84,19 +85,17 @@ public sealed partial class CreatorService : ICreatorService
             ? CreatorStatus.PendingPayment
             : CreatorStatus.Active;
 
+        var payoutMode = PayoutCountries.ResolveMode(countryCode);
+
         var createdAt = DateTimeOffset.UtcNow;
-        // TASK 1 decision: CreateCreatorRequestDto doesn't carry a country yet (added in Task 2.5, which
-        // makes it a required field validated against PayoutCountries). Until then, default new creators
-        // to the same country/mode used to backfill existing rows (see the Task 1 migration) so behavior
-        // is unchanged — checkout still ignores PayoutMode until Task 3.
         var creator = Creator.Create(
             ownerUserId,
             name,
             slug,
             defaultCurrency,
             creatorStatus,
-            countryCode: "HR",
-            payoutMode: PayoutMode.BankTransfer,
+            countryCode,
+            payoutMode,
             createdAt);
 
         CreatorSubscription? createdSubscription = null;
@@ -132,7 +131,8 @@ public sealed partial class CreatorService : ICreatorService
 
         return new CreateCreatorResponseDto
         {
-            Creator = ToResponse(creator, createdSubscription),
+            // Freshly created — a payout profile can't exist yet.
+            Creator = ToResponse(creator, createdSubscription, hasPayoutProfile: false),
             RequiresPayment = requiresPayment,
             PaymentStatus = requiresPayment
                 ? CreatorSubscriptionStatus.PendingPayment.ToString()
@@ -143,13 +143,13 @@ public sealed partial class CreatorService : ICreatorService
 
     public async Task<CreatorResponseDto?> GetCurrentForOwnerAsync(int ownerUserId, CancellationToken ct)
     {
-        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
+        var (creator, hasPayoutProfile) = await _creatorRepository.GetByOwnerUserIdWithPayoutProfileAsync(ownerUserId, ct);
         if (creator is null)
             return null;
 
         var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
 
-        return ToResponse(creator, subscription);
+        return ToResponse(creator, subscription, hasPayoutProfile);
     }
 
     public async Task<CreatorSettingsResponseDto> GetSettingsAsync(
@@ -255,6 +255,16 @@ public sealed partial class CreatorService : ICreatorService
         var wasDisabled = await _creatorRepository.DisableByOwnerUserIdAsync(ownerUserId, disabledAt, ct);
         if (!wasDisabled)
             throw new NotFoundException("Creator workspace does not exist.");
+    }
+
+    public List<PayoutCountryDto> GetPayoutCountries()
+    {
+        var connect = PayoutCountries.ConnectCountries
+            .Select(code => new PayoutCountryDto(code, PayoutMode.StripeConnect.ToString()));
+        var bankTransfer = PayoutCountries.BankTransferCountries
+            .Select(code => new PayoutCountryDto(code, PayoutMode.BankTransfer.ToString()));
+
+        return connect.Concat(bankTransfer).OrderBy(c => c.Code, StringComparer.Ordinal).ToList();
     }
 
     public async Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
@@ -369,6 +379,16 @@ public sealed partial class CreatorService : ICreatorService
         };
     }
 
+    private static string NormalizeCountryCode(string countryCode)
+    {
+        var normalized = countryCode.Trim().ToUpperInvariant();
+
+        if (!PayoutCountries.IsSupported(normalized))
+            throw new BadRequestException("Country is not supported yet.");
+
+        return normalized;
+    }
+
     private static string? NormalizeOptionalEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -467,8 +487,12 @@ public sealed partial class CreatorService : ICreatorService
         return normalized;
     }
 
-    private static CreatorResponseDto ToResponse(Creator creator, CreatorSubscription? subscription)
+    private static CreatorResponseDto ToResponse(Creator creator, CreatorSubscription? subscription, bool hasPayoutProfile)
     {
+        var payoutReady = creator.PayoutMode == PayoutMode.StripeConnect
+            ? creator.StripeConnectPayoutsEnabled
+            : hasPayoutProfile;
+
         return new CreatorResponseDto
         {
             PublicId = creator.PublicId,
@@ -478,6 +502,12 @@ public sealed partial class CreatorService : ICreatorService
             DefaultCurrency = creator.DefaultCurrency.ToString(),
             PlanCode = subscription?.Plan.Code ?? string.Empty,
             CancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false,
+            CountryCode = creator.CountryCode,
+            PayoutMode = creator.PayoutMode.ToString(),
+            StripeConnectDetailsSubmitted = creator.StripeConnectDetailsSubmitted,
+            StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled,
+            HasPayoutProfile = hasPayoutProfile,
+            PayoutReady = payoutReady,
         };
     }
 

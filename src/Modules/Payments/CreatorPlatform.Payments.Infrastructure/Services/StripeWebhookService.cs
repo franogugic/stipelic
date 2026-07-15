@@ -24,7 +24,17 @@ public sealed class StripeWebhookService : IStripeWebhookService
 
     public StripeWebhookEventDto ParseAndVerify(string payload, string stripeSignature)
     {
-        if (string.IsNullOrWhiteSpace(_options.WebhookSecret))
+        return ParseAndVerifyCore(payload, stripeSignature, _options.WebhookSecret);
+    }
+
+    public StripeWebhookEventDto ParseAndVerifyConnect(string payload, string stripeSignature)
+    {
+        return ParseAndVerifyCore(payload, stripeSignature, _options.ConnectWebhookSecret);
+    }
+
+    private StripeWebhookEventDto ParseAndVerifyCore(string payload, string stripeSignature, string webhookSecret)
+    {
+        if (string.IsNullOrWhiteSpace(webhookSecret))
         {
             _logger.LogError("Stripe webhook secret is not configured.");
             throw new BadRequestException("Stripe webhook secret is not configured.");
@@ -36,7 +46,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
             stripeEvent = EventUtility.ConstructEvent(
                 payload,
                 stripeSignature,
-                _options.WebhookSecret,
+                webhookSecret,
                 throwOnApiVersionMismatch: false);
         }
         catch (StripeException ex)
@@ -57,6 +67,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
             StripeEventTypes.CustomerSubscriptionDeleted => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.InvoicePaymentFailed => MapInvoicePaymentFailed(stripeEvent),
             StripeEventTypes.ChargeRefunded => MapChargeRefunded(stripeEvent),
+            StripeEventTypes.AccountUpdated => MapAccountUpdated(stripeEvent),
             _ => new StripeWebhookEventDto
             {
                 EventId = stripeEvent.Id,
@@ -143,6 +154,26 @@ public sealed class StripeWebhookService : IStripeWebhookService
             {
                 StripeSubscriptionId = stripeSubscriptionId,
                 StripeCustomerId = invoice.CustomerId ?? string.Empty
+            }
+        };
+    }
+
+    private static StripeWebhookEventDto MapAccountUpdated(Event stripeEvent)
+    {
+        var account = stripeEvent.Data.Object as Account
+            ?? throw new InvalidOperationException(
+                $"Expected Account object in account.updated event. EventId: {stripeEvent.Id}");
+
+        return new StripeWebhookEventDto
+        {
+            EventId = stripeEvent.Id,
+            EventType = stripeEvent.Type,
+            AccountUpdated = new AccountUpdatedData
+            {
+                AccountId = account.Id,
+                DetailsSubmitted = account.DetailsSubmitted,
+                ChargesEnabled = account.ChargesEnabled,
+                PayoutsEnabled = account.PayoutsEnabled
             }
         };
     }

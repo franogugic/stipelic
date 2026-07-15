@@ -8,6 +8,15 @@ public sealed class StripeWebhookEventDto
     public SubscriptionChangedData? SubscriptionChanged { get; init; }
     public InvoicePaymentFailedData? InvoicePaymentFailed { get; init; }
     public ChargeRefundedData? ChargeRefunded { get; init; }
+    public AccountUpdatedData? AccountUpdated { get; init; }
+}
+
+public sealed class AccountUpdatedData
+{
+    public required string AccountId { get; init; }
+    public bool DetailsSubmitted { get; init; }
+    public bool ChargesEnabled { get; init; }
+    public bool PayoutsEnabled { get; init; }
 }
 
 public sealed class CheckoutSessionCompletedData
@@ -52,4 +61,5 @@ public static class StripeEventTypes
     public const string CustomerSubscriptionDeleted = "customer.subscription.deleted";
     public const string InvoicePaymentFailed = "invoice.payment_failed";
     public const string ChargeRefunded = "charge.refunded";
+    public const string AccountUpdated = "account.updated";
 }

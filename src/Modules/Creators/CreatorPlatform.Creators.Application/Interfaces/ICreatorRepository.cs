@@ -8,6 +8,14 @@ public interface ICreatorRepository
 
     Task<Creator?> GetByIdForUpdateAsync(int id, CancellationToken ct);
 
+    Task<Creator?> GetByOwnerUserIdForUpdateAsync(int ownerUserId, CancellationToken ct);
+
+    /// <summary>Same scope as <see cref="GetByOwnerUserIdAsync"/>, but also reports whether a payout
+    /// profile row exists — one query (correlated EXISTS), no extra roundtrip.</summary>
+    Task<(Creator? Creator, bool HasPayoutProfile)> GetByOwnerUserIdWithPayoutProfileAsync(int ownerUserId, CancellationToken ct);
+
+    Task<Creator?> GetByStripeConnectAccountIdForUpdateAsync(string stripeConnectAccountId, CancellationToken ct);
+
     Task<bool> ExistsByOwnerUserIdAsync(int ownerUserId, CancellationToken ct);
 
     Task<bool> SlugExistsAsync(string slug, CancellationToken ct);

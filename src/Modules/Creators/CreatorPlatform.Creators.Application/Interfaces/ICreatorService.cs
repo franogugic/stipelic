@@ -25,4 +25,7 @@ public interface ICreatorService
     Task<string> GetBillingPortalUrlAsync(int ownerUserId, CancellationToken ct);
 
     Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
+
+    /// <summary>Static registry data — no I/O, so synchronous (same style as other section-template style lookups).</summary>
+    List<PayoutCountryDto> GetPayoutCountries();
 }

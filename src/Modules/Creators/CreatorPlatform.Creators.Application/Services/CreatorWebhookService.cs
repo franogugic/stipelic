@@ -294,4 +294,30 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                 data.StripeSubscriptionId);
         }, ct);
     }
+
+    public async Task HandleAccountUpdatedAsync(AccountUpdatedData data, CancellationToken ct)
+    {
+        var creator = await _creatorRepository.GetByStripeConnectAccountIdForUpdateAsync(data.AccountId, ct);
+        if (creator is null)
+        {
+            _logger.LogInformation(
+                "No creator found for account.updated. StripeConnectAccountId: {StripeConnectAccountId} — ignoring.",
+                data.AccountId);
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            // Idempotent by nature — Stripe always reports the account's current state, so replaying
+            // the same (or an older) event just re-applies the same or a no-op update.
+            creator.UpdateStripeConnectStatus(data.DetailsSubmitted, data.ChargesEnabled, data.PayoutsEnabled, now);
+            await _unitOfWork.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Creator Connect status updated. CreatorId: {CreatorId}, DetailsSubmitted: {DetailsSubmitted}, ChargesEnabled: {ChargesEnabled}, PayoutsEnabled: {PayoutsEnabled}",
+                creator.Id, data.DetailsSubmitted, data.ChargesEnabled, data.PayoutsEnabled);
+        }, ct);
+    }
 }

@@ -32,6 +32,40 @@ public sealed class CreatorRepository : ICreatorRepository
             .FirstOrDefaultAsync(creator => creator.Id == id, ct);
     }
 
+    public async Task<Creator?> GetByOwnerUserIdForUpdateAsync(int ownerUserId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Creator>()
+            .FirstOrDefaultAsync(creator =>
+                creator.OwnerUserId == ownerUserId
+                && creator.Status != CreatorStatus.Disabled,
+                ct);
+    }
+
+    public async Task<(Creator? Creator, bool HasPayoutProfile)> GetByOwnerUserIdWithPayoutProfileAsync(
+        int ownerUserId, CancellationToken ct)
+    {
+        var result = await _context
+            .Set<Creator>()
+            .AsNoTracking()
+            .Where(creator => creator.OwnerUserId == ownerUserId && creator.Status != CreatorStatus.Disabled)
+            .Select(creator => new
+            {
+                Creator = creator,
+                HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(p => p.CreatorId == creator.Id)
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return result is null ? (null, false) : (result.Creator, result.HasPayoutProfile);
+    }
+
+    public async Task<Creator?> GetByStripeConnectAccountIdForUpdateAsync(string stripeConnectAccountId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Creator>()
+            .FirstOrDefaultAsync(creator => creator.StripeConnectAccountId == stripeConnectAccountId, ct);
+    }
+
     public async Task<bool> ExistsByOwnerUserIdAsync(int ownerUserId, CancellationToken ct)
     {
         return await _context

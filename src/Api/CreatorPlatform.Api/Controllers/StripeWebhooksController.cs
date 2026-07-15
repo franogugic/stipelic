@@ -82,6 +82,73 @@ public sealed class StripeWebhooksController : ControllerBase
         return Ok();
     }
 
+    // Connect events (connected-account lifecycle, e.g. account.updated) are registered as a separate
+    // webhook endpoint in Stripe with their own signing secret — hence a dedicated route + verify call.
+    [HttpPost("connect")]
+    public async Task<IActionResult> HandleConnect(CancellationToken ct)
+    {
+        string payload;
+        using (var reader = new StreamReader(HttpContext.Request.Body))
+        {
+            payload = await reader.ReadToEndAsync(ct);
+        }
+
+        var stripeSignature = Request.Headers["Stripe-Signature"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(stripeSignature))
+        {
+            _logger.LogWarning("Stripe Connect webhook received without Stripe-Signature header.");
+            return BadRequest("Missing Stripe-Signature header.");
+        }
+
+        StripeWebhookEventDto webhookEvent;
+        try
+        {
+            webhookEvent = _stripeWebhookService.ParseAndVerifyConnect(payload, stripeSignature);
+        }
+        catch (BadRequestException ex)
+        {
+            _logger.LogWarning(ex, "Stripe Connect webhook verification failed.");
+            return BadRequest(ex.Message);
+        }
+
+        try
+        {
+            await DispatchConnectAsync(webhookEvent, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Stripe Connect webhook handler failed. EventId: {EventId}, EventType: {EventType}",
+                webhookEvent.EventId,
+                webhookEvent.EventType);
+
+            await PersistFailureAsync(webhookEvent, payload, ex, ct);
+
+            // Vraćamo 200 da Stripe ne retryja — event je zapisan u bazu za ručni reprocessing
+            return Ok();
+        }
+
+        return Ok();
+    }
+
+    private async Task DispatchConnectAsync(StripeWebhookEventDto webhookEvent, CancellationToken ct)
+    {
+        switch (webhookEvent.EventType)
+        {
+            case StripeEventTypes.AccountUpdated when webhookEvent.AccountUpdated is not null:
+                await _creatorWebhookService.HandleAccountUpdatedAsync(webhookEvent.AccountUpdated, ct);
+                break;
+
+            default:
+                _logger.LogInformation(
+                    "Unhandled Stripe Connect event type received, ignoring. EventId: {EventId}, EventType: {EventType}",
+                    webhookEvent.EventId,
+                    webhookEvent.EventType);
+                break;
+        }
+    }
+
     private async Task DispatchAsync(StripeWebhookEventDto webhookEvent, CancellationToken ct)
     {
         switch (webhookEvent.EventType)
