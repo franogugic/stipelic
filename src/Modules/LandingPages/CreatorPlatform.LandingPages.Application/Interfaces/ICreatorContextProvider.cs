@@ -4,6 +4,7 @@ namespace CreatorPlatform.LandingPages.Application.Interfaces;
 
 public sealed record CreatorContext(int CreatorId, int MaxLandingPages, int ActiveLandingPageCount)
 {
+    public CreatorStatus Status { get; init; }
     public PayoutMode PayoutMode { get; init; }
     public bool StripeConnectPayoutsEnabled { get; init; }
     public bool HasPayoutProfile { get; init; }

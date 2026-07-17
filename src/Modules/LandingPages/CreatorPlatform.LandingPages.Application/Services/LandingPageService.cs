@@ -130,6 +130,9 @@ public sealed partial class LandingPageService : ILandingPageService
         if (landingPage.Status == LandingPageStatus.Published)
             return;
 
+        if (context.Status != CreatorStatus.Active)
+            throw new ConflictException("Complete your subscription payment before publishing.");
+
         if (landingPage.Type == LandingPageType.Sales)
         {
             var payoutReady = context.PayoutMode == PayoutMode.StripeConnect

@@ -30,6 +30,7 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             .Select(c => new
             {
                 c.Id,
+                c.Status,
                 c.PayoutMode,
                 c.StripeConnectPayoutsEnabled,
                 HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(pp => pp.CreatorId == c.Id)
@@ -54,6 +55,7 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
 
         return new CreatorContext(creator.Id, maxLandingPages, activeLandingPageCount)
         {
+            Status = creator.Status,
             PayoutMode = creator.PayoutMode,
             StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled,
             HasPayoutProfile = creator.HasPayoutProfile

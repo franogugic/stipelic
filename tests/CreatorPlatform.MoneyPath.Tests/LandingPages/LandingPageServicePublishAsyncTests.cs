@@ -29,7 +29,7 @@ public class LandingPageServicePublishAsyncTests
     [Fact]
     public async Task PublishAsync_SalesNotPayoutReady_StripeConnect_Throws()
     {
-        var context = new CreatorContext(1, 5, 1) { PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = false };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = false };
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         await Assert.ThrowsAsync<ConflictException>(
@@ -41,7 +41,7 @@ public class LandingPageServicePublishAsyncTests
     [Fact]
     public async Task PublishAsync_SalesNotPayoutReady_BankTransfer_Throws()
     {
-        var context = new CreatorContext(1, 5, 1) { PayoutMode = PayoutMode.BankTransfer, HasPayoutProfile = false };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer, HasPayoutProfile = false };
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         await Assert.ThrowsAsync<ConflictException>(
@@ -51,7 +51,7 @@ public class LandingPageServicePublishAsyncTests
     [Fact]
     public async Task PublishAsync_SalesPayoutReady_Publishes()
     {
-        var context = new CreatorContext(1, 5, 1) { PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = true };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = true };
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         await service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None);
@@ -62,11 +62,41 @@ public class LandingPageServicePublishAsyncTests
     [Fact]
     public async Task PublishAsync_LeadGenNotPayoutReady_Publishes()
     {
-        var context = new CreatorContext(1, 5, 1) { PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = false };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = false };
         var (service, repository) = BuildService(context, LandingPageType.LeadGen);
 
         await service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None);
 
         Assert.Equal(LandingPageStatus.Published, repository.PageForUpdate!.Status);
+    }
+
+    [Fact]
+    public async Task PublishAsync_PendingPayment_LeadGen_Throws()
+    {
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.PendingPayment };
+        var (service, repository) = BuildService(context, LandingPageType.LeadGen);
+
+        var exception = await Assert.ThrowsAsync<ConflictException>(
+            () => service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None));
+
+        Assert.Equal("Complete your subscription payment before publishing.", exception.Message);
+        Assert.NotEqual(LandingPageStatus.Published, repository.PageForUpdate!.Status);
+    }
+
+    [Fact]
+    public async Task PublishAsync_PendingPayment_Sales_Throws()
+    {
+        var context = new CreatorContext(1, 5, 1)
+        {
+            Status = CreatorStatus.PendingPayment,
+            PayoutMode = PayoutMode.StripeConnect,
+            StripeConnectPayoutsEnabled = true,
+        };
+        var (service, repository) = BuildService(context, LandingPageType.Sales);
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None));
+
+        Assert.NotEqual(LandingPageStatus.Published, repository.PageForUpdate!.Status);
     }
 }
