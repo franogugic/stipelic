@@ -34,6 +34,13 @@ public sealed class PayoutRepository : IPayoutRepository
             .SumAsync(p => p.AmountCents, ct);
     }
 
+    public async Task<bool> HasPendingPayoutAsync(int creatorId, CancellationToken ct)
+    {
+        return await _context.Set<Payout>()
+            .AsNoTracking()
+            .AnyAsync(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Pending, ct);
+    }
+
     public async Task<List<PayoutDto>> ListRecentByCreatorIdAsync(int creatorId, int limit, CancellationToken ct)
     {
         return await _context.Set<Payout>()

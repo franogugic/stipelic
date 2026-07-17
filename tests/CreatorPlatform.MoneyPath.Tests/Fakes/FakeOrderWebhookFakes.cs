@@ -43,6 +43,7 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
 public sealed class FakeEmailOutboxService : IEmailOutboxService
 {
     public int OrderAccessQueuedCount { get; private set; }
+    public int PayoutRequestedQueuedCount { get; private set; }
 
     public Task QueueEmailVerificationAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
         => Task.CompletedTask;
@@ -53,6 +54,19 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
     public Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct)
     {
         OrderAccessQueuedCount++;
+        return Task.CompletedTask;
+    }
+
+    public Task QueuePayoutRequestedAsync(
+        string toEmail,
+        string payoutPublicId,
+        string creatorName,
+        string creatorSlug,
+        int amountCents,
+        string currency,
+        CancellationToken ct)
+    {
+        PayoutRequestedQueuedCount++;
         return Task.CompletedTask;
     }
 }

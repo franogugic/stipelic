@@ -56,6 +56,13 @@ public sealed class PayoutConfiguration : IEntityTypeConfiguration<Payout>
 
         builder.HasIndex(p => p.Status);
 
+        // DB-level backstop for "max one active payout request per creator" — the app also checks this
+        // under the creator's advisory lock before inserting, but a unique index survives even if that
+        // check is ever bypassed by a bug or a second app instance.
+        builder.HasIndex(p => p.CreatorId)
+            .IsUnique()
+            .HasFilter("\"Status\" = 'Pending'");
+
         builder.ToTable(t => t.HasCheckConstraint("CK_payouts_AmountCents_Positive", "\"AmountCents\" > 0"));
 
         builder.HasOne<Creator>()

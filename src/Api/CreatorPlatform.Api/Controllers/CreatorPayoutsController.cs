@@ -8,6 +8,7 @@ using CreatorPlatform.Payouts.Application.Dtos;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
@@ -53,6 +54,41 @@ public sealed class CreatorPayoutsController : ControllerBase
             StatusCodes.Status200OK,
             "Payout history loaded.",
             payouts));
+    }
+
+    [HttpPost("payouts/request")]
+    [EnableRateLimiting("RequestPayout")]
+    public async Task<ActionResult<ApiResponse<PayoutDto>>> RequestPayout(
+        string slug,
+        [FromBody] RequestPayoutRequestDto request,
+        CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var payout = await _creatorPayoutService.RequestPayoutAsync(slug, currentUser.Id, request.AmountCents, ct);
+
+        var apiResponse = ApiResponse<PayoutDto>.Success(
+            StatusCodes.Status201Created,
+            "Payout requested.",
+            payout);
+
+        return Created($"/api/creators/{slug}/payouts/{payout.PublicId}", apiResponse);
+    }
+
+    [HttpDelete("payouts/{payoutPublicId:guid}")]
+    public async Task<ActionResult<ApiResponse<PayoutDto>>> CancelPayoutRequest(
+        string slug,
+        Guid payoutPublicId,
+        CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var payout = await _creatorPayoutService.CancelPayoutRequestAsync(slug, currentUser.Id, payoutPublicId, ct);
+
+        return Ok(ApiResponse<PayoutDto>.Success(
+            StatusCodes.Status200OK,
+            "Payout request cancelled.",
+            payout));
     }
 
     [HttpGet("payout-profile")]

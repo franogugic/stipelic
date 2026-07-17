@@ -38,8 +38,9 @@ public class PayoutAdminServiceTests
         var payoutRepository = new FakePayoutRepository();
         var unitOfWork = new FakePayoutsUnitOfWork();
         var options = Options.Create(new PayoutsOptions { MinPayoutCents = 5000 });
+        var payoutCreationService = new PayoutCreationService(ledgerRepository, payoutRepository, unitOfWork, options);
 
-        var service = new PayoutAdminService(contextProvider, ledgerRepository, payoutRepository, unitOfWork, options);
+        var service = new PayoutAdminService(contextProvider, ledgerRepository, payoutRepository, unitOfWork, payoutCreationService, options);
 
         return (service, ledgerRepository, payoutRepository, unitOfWork);
     }

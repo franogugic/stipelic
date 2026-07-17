@@ -16,6 +16,7 @@ public static class PayoutsInfrastructureServiceCollectionExtensions
         services.AddScoped<IPayoutsUnitOfWork, PayoutsUnitOfWork>();
         services.AddScoped<IPayoutLedgerService, PayoutLedgerService>();
         services.AddScoped<ICreatorPayoutContextProvider, CreatorPayoutContextProvider>();
+        services.AddScoped<IPayoutCreationService, PayoutCreationService>();
         services.AddScoped<IPayoutAdminService, PayoutAdminService>();
         services.AddScoped<ICreatorPayoutService, CreatorPayoutService>();
 

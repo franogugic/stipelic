@@ -57,6 +57,18 @@ public sealed class Payout
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>Creator-initiated cancellation of their own still-pending request. Same "only Pending"
+    /// guard as <see cref="MarkFailed"/> — the caller is responsible for the compensating ledger
+    /// <c>Adjustment</c> that restores the reserved balance, in the same transaction.</summary>
+    public void Cancel(DateTimeOffset updatedAt)
+    {
+        if (Status != PayoutStatus.Pending)
+            throw new InvalidOperationException($"Cannot cancel a {Status} payout — only Pending payouts can be.");
+
+        Status = PayoutStatus.Cancelled;
+        UpdatedAt = updatedAt;
+    }
+
     public int Id { get; private set; }
 
     public Guid PublicId { get; private set; }

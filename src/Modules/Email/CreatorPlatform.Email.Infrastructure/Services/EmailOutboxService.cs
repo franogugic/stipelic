@@ -65,6 +65,30 @@ public sealed class EmailOutboxService : IEmailOutboxService
         await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
     }
 
+    public async Task QueuePayoutRequestedAsync(
+        string toEmail,
+        string payoutPublicId,
+        string creatorName,
+        string creatorSlug,
+        int amountCents,
+        string currency,
+        CancellationToken ct)
+    {
+        var formattedAmount = $"{amountCents / 100.0:0.00} {currency.ToUpperInvariant()}";
+        var adminPayoutsUrl = $"{_options.FrontendBaseUrl.TrimEnd('/')}/admin/payouts";
+
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.PayoutRequested,
+            payoutPublicId,
+            toEmail,
+            PayoutRequestedTemplate.BuildSubject(creatorName, formattedAmount),
+            PayoutRequestedTemplate.BuildHtml(creatorName, creatorSlug, formattedAmount, adminPayoutsUrl),
+            PayoutRequestedTemplate.BuildPlainText(creatorName, creatorSlug, formattedAmount, adminPayoutsUrl),
+            DateTimeOffset.UtcNow);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
     private string BuildVerificationUrl(string token)
     {
         var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');

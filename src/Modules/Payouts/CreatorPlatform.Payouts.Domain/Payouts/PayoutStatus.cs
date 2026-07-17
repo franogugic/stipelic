@@ -4,5 +4,6 @@ public enum PayoutStatus
 {
     Pending,
     Paid,
-    Failed
+    Failed,
+    Cancelled
 }

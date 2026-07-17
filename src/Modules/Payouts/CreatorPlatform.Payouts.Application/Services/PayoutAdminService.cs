@@ -1,4 +1,3 @@
-using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Payouts.Application.Dtos;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using CreatorPlatform.Payouts.Application.Options;
@@ -17,6 +16,7 @@ public sealed class PayoutAdminService : IPayoutAdminService
     private readonly ILedgerEntryRepository _ledgerEntryRepository;
     private readonly IPayoutRepository _payoutRepository;
     private readonly IPayoutsUnitOfWork _unitOfWork;
+    private readonly IPayoutCreationService _payoutCreationService;
     private readonly PayoutsOptions _options;
 
     public PayoutAdminService(
@@ -24,12 +24,14 @@ public sealed class PayoutAdminService : IPayoutAdminService
         ILedgerEntryRepository ledgerEntryRepository,
         IPayoutRepository payoutRepository,
         IPayoutsUnitOfWork unitOfWork,
+        IPayoutCreationService payoutCreationService,
         IOptions<PayoutsOptions> options)
     {
         _creatorPayoutContextProvider = creatorPayoutContextProvider;
         _ledgerEntryRepository = ledgerEntryRepository;
         _payoutRepository = payoutRepository;
         _unitOfWork = unitOfWork;
+        _payoutCreationService = payoutCreationService;
         _options = options.Value;
     }
 
@@ -47,44 +49,14 @@ public sealed class PayoutAdminService : IPayoutAdminService
         if (creatorContext is null)
             throw new NotFoundException("Creator not found.");
 
-        if (creatorContext.PayoutMode != PayoutMode.BankTransfer)
-            throw new BadRequestException("Only BankTransfer creators can receive payouts.");
-
-        if (!creatorContext.HasPayoutProfile)
-            throw new BadRequestException("Creator has not set up a payout profile.");
-
-        var amountCents = request.AmountCents;
-        if (amountCents < _options.MinPayoutCents)
-            throw new BadRequestException($"Payout amount must be at least {_options.MinPayoutCents} cents.");
-
         var currency = ParseCurrency(request.Currency);
         if (currency != creatorContext.Currency)
             throw new BadRequestException("Currency does not match the creator's default currency.");
 
-        var note = request.Note;
-        Payout? payout = null;
+        var payout = await _payoutCreationService.CreatePayoutAsync(
+            creatorContext, request.AmountCents, request.Note, onCreatedInTransaction: null, ct);
 
-        await _unitOfWork.ExecuteInTransactionAsync(async () =>
-        {
-            await _unitOfWork.AcquireCreatorPayoutLockAsync(creatorContext.CreatorId, ct);
-
-            var balances = await _ledgerEntryRepository.GetBalanceByCreatorIdAsync(creatorContext.CreatorId, ct);
-            var balanceCents = balances.FirstOrDefault(b => b.Currency == currency)?.BalanceCents ?? 0;
-
-            if (balanceCents < amountCents)
-                throw new ConflictException("Creator's balance is insufficient for this payout.");
-
-            var now = DateTimeOffset.UtcNow;
-            payout = Payout.Create(creatorContext.CreatorId, amountCents, currency, note, now);
-            await _payoutRepository.AddAsync(payout, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
-
-            await _ledgerEntryRepository.AddAsync(
-                LedgerEntry.CreatePayoutDebit(creatorContext.CreatorId, payout.Id, -amountCents, currency, now), ct);
-            await _unitOfWork.SaveChangesAsync(ct);
-        }, ct);
-
-        return ToDto(payout!);
+        return ToDto(payout);
     }
 
     public async Task<PayoutDto> MarkPaidAsync(Guid payoutPublicId, MarkPayoutPaidRequestDto request, CancellationToken ct)
