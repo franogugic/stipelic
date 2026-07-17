@@ -79,7 +79,8 @@ public sealed class AuthController : ControllerBase
             LastName = currentUser.LastName,
             Email = currentUser.Email,
             IsEmailVerified = currentUser.IsEmailVerified,
-            Status = currentUser.Status
+            Status = currentUser.Status,
+            Roles = currentUser.Roles
         });
     }
 
