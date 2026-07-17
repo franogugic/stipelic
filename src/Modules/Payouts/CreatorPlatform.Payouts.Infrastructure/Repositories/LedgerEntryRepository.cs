@@ -55,17 +55,32 @@ public sealed class LedgerEntryRepository : ILedgerEntryRepository
                 BalanceCents = g.Sum(e => e.AmountCents)
             };
 
-        return await query
+        var rows = await query
             .Where(x => x.BalanceCents >= minCents)
             .OrderByDescending(x => x.BalanceCents)
             .Take(limit)
-            .Select(x => new CreatorBalanceSummaryDto(
+            .Select(x => new
+            {
+                x.Id,
                 x.PublicId,
                 x.Name,
                 x.Slug,
                 x.Currency,
                 x.BalanceCents,
-                _context.Set<CreatorPayoutProfile>().Any(p => p.CreatorId == x.Id)))
+                HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(p => p.CreatorId == x.Id)
+            })
             .ToListAsync(ct);
+
+        // Currency.ToString() is not reliably translatable to SQL, so it's applied in-memory after
+        // materializing the (limit-bounded) result set, not inside the query above.
+        return rows
+            .Select(r => new CreatorBalanceSummaryDto(
+                r.PublicId,
+                r.Name,
+                r.Slug,
+                r.Currency.ToString(),
+                r.BalanceCents,
+                r.HasPayoutProfile))
+            .ToList();
     }
 }
