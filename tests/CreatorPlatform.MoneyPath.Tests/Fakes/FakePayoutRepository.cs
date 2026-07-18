@@ -12,6 +12,7 @@ public sealed class FakePayoutRepository : IPayoutRepository
     public Payout? PayoutByPublicId { get; set; }
     public int PendingAmountCents { get; set; }
     public List<PayoutDto> RecentPayouts { get; set; } = [];
+    public List<AdminPayoutQueueItemDto> QueueItems { get; set; } = [];
 
     /// <summary>Overrides <see cref="HasPendingPayoutAsync"/>'s result when set; otherwise it's derived
     /// from <see cref="Added"/> so a real Pending payout added earlier in the same test is honored
@@ -37,4 +38,7 @@ public sealed class FakePayoutRepository : IPayoutRepository
 
     public Task<bool> HasPendingPayoutAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(HasPendingPayoutOverride ?? Added.Any(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Pending));
+
+    public Task<List<AdminPayoutQueueItemDto>> ListForQueueAsync(PayoutStatus? status, int limit, CancellationToken ct)
+        => Task.FromResult(status is null ? QueueItems : QueueItems.Where(q => q.Status == status.Value.ToString()).ToList());
 }

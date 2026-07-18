@@ -7,6 +7,11 @@ public interface IPayoutRepository
 {
     Task AddAsync(Payout payout, CancellationToken ct);
 
+    /// <summary>Admin queue: payouts joined with creator name/slug and full (unmasked) bank details, one
+    /// query, no N+1. Pending is ordered oldest-first (FIFO processing); every other status/filter is
+    /// ordered newest-first.</summary>
+    Task<List<AdminPayoutQueueItemDto>> ListForQueueAsync(PayoutStatus? status, int limit, CancellationToken ct);
+
     /// <summary>Tracked — for mark-paid/mark-failed transitions.</summary>
     Task<Payout?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct);
 

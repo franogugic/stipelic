@@ -142,4 +142,61 @@ public class PayoutAdminServiceTests
         await Assert.ThrowsAsync<ConflictException>(
             () => service.MarkPaidAsync(payout.PublicId, new MarkPayoutPaidRequestDto { BankReference = "REF-2" }, CancellationToken.None));
     }
+
+    [Fact]
+    public async Task ListQueueAsync_UnknownStatus_ThrowsBadRequest()
+    {
+        var (service, _, _, _) = BuildService(BuildContext());
+
+        await Assert.ThrowsAsync<BadRequestException>(
+            () => service.ListQueueAsync("NotAStatus", 50, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ListQueueAsync_NullStatus_ReturnsAllQueueItems()
+    {
+        var (service, _, payoutRepository, _) = BuildService(BuildContext());
+        payoutRepository.QueueItems =
+        [
+            BuildQueueItem(PayoutStatus.Pending),
+            BuildQueueItem(PayoutStatus.Paid),
+        ];
+
+        var result = await service.ListQueueAsync(null, 50, CancellationToken.None);
+
+        Assert.Equal(2, result.Count);
+    }
+
+    [Fact]
+    public async Task ListQueueAsync_PendingStatus_ReturnsOnlyPendingWithFullIban()
+    {
+        var (service, _, payoutRepository, _) = BuildService(BuildContext());
+        payoutRepository.QueueItems =
+        [
+            BuildQueueItem(PayoutStatus.Pending),
+            BuildQueueItem(PayoutStatus.Paid),
+        ];
+
+        var result = await service.ListQueueAsync("Pending", 50, CancellationToken.None);
+
+        var item = Assert.Single(result);
+        Assert.Equal(nameof(PayoutStatus.Pending), item.Status);
+        Assert.Equal("RS35260005601001611379", item.Iban);
+    }
+
+    private static AdminPayoutQueueItemDto BuildQueueItem(PayoutStatus status) => new(
+        Guid.NewGuid(),
+        CreatorPublicId,
+        "Acme",
+        "acme",
+        10_000,
+        "Eur",
+        status.ToString(),
+        null,
+        null,
+        Now,
+        null,
+        "Acme Holder",
+        "RS35260005601001611379",
+        "RS");
 }

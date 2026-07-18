@@ -28,6 +28,23 @@ public sealed class AdminPayoutsController : ControllerBase
         _currentUserContext = currentUserContext;
     }
 
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<List<AdminPayoutQueueItemDto>>>> List(
+        [FromQuery] string? status,
+        [FromQuery] int limit,
+        CancellationToken ct)
+    {
+        _ = GetPlatformAdmin();
+
+        var effectiveLimit = limit <= 0 ? 50 : limit;
+        var queue = await _payoutAdminService.ListQueueAsync(status, effectiveLimit, ct);
+
+        return Ok(ApiResponse<List<AdminPayoutQueueItemDto>>.Success(
+            StatusCodes.Status200OK,
+            "Payout queue loaded.",
+            queue));
+    }
+
     [HttpGet("balances")]
     public async Task<ActionResult<ApiResponse<List<CreatorBalanceSummaryDto>>>> Balances(
         [FromQuery] int? minCents,

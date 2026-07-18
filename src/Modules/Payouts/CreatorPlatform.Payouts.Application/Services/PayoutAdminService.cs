@@ -11,6 +11,7 @@ namespace CreatorPlatform.Payouts.Application.Services;
 public sealed class PayoutAdminService : IPayoutAdminService
 {
     private const int DefaultBalancesLimit = 100;
+    private const int DefaultQueueLimit = 50;
 
     private readonly ICreatorPayoutContextProvider _creatorPayoutContextProvider;
     private readonly ILedgerEntryRepository _ledgerEntryRepository;
@@ -41,6 +42,20 @@ public sealed class PayoutAdminService : IPayoutAdminService
         var effectiveLimit = limit <= 0 ? DefaultBalancesLimit : limit;
 
         return await _ledgerEntryRepository.GetBalancesForPayoutAsync(effectiveMinCents, effectiveLimit, ct);
+    }
+
+    public async Task<List<AdminPayoutQueueItemDto>> ListQueueAsync(string? status, int limit, CancellationToken ct)
+    {
+        PayoutStatus? parsedStatus = null;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse<PayoutStatus>(status, ignoreCase: true, out var parsed))
+                throw new BadRequestException("Unknown payout status. Expected one of: Pending, Paid, Failed, Cancelled.");
+            parsedStatus = parsed;
+        }
+
+        var effectiveLimit = limit <= 0 ? DefaultQueueLimit : limit;
+        return await _payoutRepository.ListForQueueAsync(parsedStatus, effectiveLimit, ct);
     }
 
     public async Task<PayoutDto> CreatePayoutAsync(CreatePayoutRequestDto request, CancellationToken ct)
