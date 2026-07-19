@@ -152,7 +152,7 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(ct);
 
         if (creator is null)
-            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend());
+            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend(), 0, 0);
 
         var now = DateTimeOffset.UtcNow;
         var todayMidnight = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
@@ -209,6 +209,26 @@ public sealed class OrderRepository : IOrderRepository
 
         var topProduct = topRow is null ? null : new TopProductDto(topRow.Name, topRow.Total);
 
+        const string emailSendsLimitKey = "max_email_sends_per_month";
+
+        var emailsMonthlyLimit = await (
+            from cs in _context.Set<CreatorSubscription>().AsNoTracking()
+            join limit in _context.Set<CreatorPlanLimit>().AsNoTracking()
+                on cs.PlanId equals limit.PlanId
+            where cs.CreatorId == creator.Id
+                && cs.Status == CreatorSubscriptionStatus.Active
+                && limit.LimitKey == emailSendsLimitKey
+            select (int?)limit.LimitValue
+        ).FirstOrDefaultAsync(ct) ?? 0;
+
+        // Same calendar-month boundary as UsagePeriodResolver.Resolve(CalendarMonth, now) — matches
+        // monthStart exactly, so this reads the same counter row ICreatorUsageService writes to.
+        var emailsSentThisMonth = await _context.Set<CreatorUsageCounter>()
+            .AsNoTracking()
+            .Where(c => c.CreatorId == creator.Id && c.UsageKey == emailSendsLimitKey && c.PeriodStart == monthStart)
+            .Select(c => (int?)c.UsedValue)
+            .FirstOrDefaultAsync(ct) ?? 0;
+
         // Daily revenue for the last TrendDays days. Bounded window (14 days of one creator's paid orders),
         // so we pull the rows and bucket in memory rather than doing SQL date bucketing.
         var trendRows = await _context.Set<Order>()
@@ -240,7 +260,9 @@ public sealed class OrderRepository : IOrderRepository
             recentOrders,
             orderStats?.ThisMonthRevenueCents ?? 0,
             topProduct,
-            [.. revenueTrend]);
+            [.. revenueTrend],
+            emailsSentThisMonth,
+            emailsMonthlyLimit);
     }
 
     private const int TrendDays = 14;

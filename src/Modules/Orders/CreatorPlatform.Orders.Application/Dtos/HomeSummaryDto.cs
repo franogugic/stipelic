@@ -9,6 +9,8 @@ public sealed record HomeSummaryDto(
     List<OrderDto> RecentOrders,
     int ThisMonthRevenueCents,
     TopProductDto? TopProduct,
-    List<int> RevenueTrend);
+    List<int> RevenueTrend,
+    int EmailsSentThisMonth,
+    int EmailsMonthlyLimit);
 
 public sealed record TopProductDto(string Name, int TotalCents);
