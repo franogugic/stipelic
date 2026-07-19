@@ -19,6 +19,9 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<IAudienceService, AudienceService>();
         services.AddScoped<ICampaignService, CampaignService>();
+        services.AddScoped<ICampaignSendService, CampaignSendService>();
+        services.AddScoped<ICampaignProgressProvider, CampaignProgressProvider>();
+        services.AddSingleton<ICampaignEmailRenderer, CampaignEmailRenderer>();
 
         return services;
     }

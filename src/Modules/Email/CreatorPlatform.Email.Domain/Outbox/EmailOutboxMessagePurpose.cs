@@ -4,5 +4,6 @@ public enum EmailOutboxMessagePurpose
 {
     EmailVerification = 1,
     OrderAccess = 2,
-    PayoutRequested = 3
+    PayoutRequested = 3,
+    CampaignBroadcast = 4
 }

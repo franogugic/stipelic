@@ -15,7 +15,7 @@ public class CampaignServiceTests
     private static readonly Guid TargetPublicId = Guid.NewGuid();
 
     private static MarketingCreatorContext BuildContext() =>
-        new(CreatorId, CreatorPublicId, "Acme", Slug, "support@acme.test");
+        new(CreatorId, CreatorPublicId, "Acme", Slug, "support@acme.test", "Acme", null, "#111111", "owner@acme.test");
 
     private static (CampaignService Service, FakeMarketingCreatorContextProvider ContextProvider, FakeAudienceService AudienceService, FakeCreatorUsageService UsageService)
         BuildService()
@@ -23,8 +23,11 @@ public class CampaignServiceTests
         var contextProvider = new FakeMarketingCreatorContextProvider { Context = BuildContext(), LandingPageId = 10, PlanLimit = 500 };
         var audienceService = new FakeAudienceService { Count = 42 };
         var usageService = new FakeCreatorUsageService();
+        var campaignRepository = new FakeCampaignRepository();
+        var progressProvider = new FakeCampaignProgressProvider();
+        var unitOfWork = new FakeMarketingUnitOfWork();
 
-        var service = new CampaignService(contextProvider, audienceService, usageService);
+        var service = new CampaignService(contextProvider, audienceService, usageService, campaignRepository, progressProvider, unitOfWork);
 
         return (service, contextProvider, audienceService, usageService);
     }

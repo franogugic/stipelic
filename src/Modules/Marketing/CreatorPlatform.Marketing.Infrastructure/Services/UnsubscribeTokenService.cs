@@ -12,10 +12,18 @@ namespace CreatorPlatform.Marketing.Infrastructure.Services;
 public sealed class UnsubscribeTokenService : IUnsubscribeTokenService
 {
     private readonly byte[] _secretBytes;
+    private readonly string _apiBaseUrl;
 
     public UnsubscribeTokenService(IOptions<MarketingOptions> options)
     {
         _secretBytes = Encoding.UTF8.GetBytes(options.Value.UnsubscribeTokenSecret);
+        _apiBaseUrl = options.Value.ApiBaseUrl.TrimEnd('/');
+    }
+
+    public string BuildUnsubscribeUrl(int creatorId, string email)
+    {
+        var token = Create(creatorId, email);
+        return $"{_apiBaseUrl}/api/public/unsubscribe/{token}";
     }
 
     public string Create(int creatorId, string email)

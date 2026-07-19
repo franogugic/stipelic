@@ -89,6 +89,30 @@ public sealed class EmailOutboxService : IEmailOutboxService
         await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
     }
 
+    public async Task QueueCampaignAsync(
+        string toEmail,
+        string subject,
+        string htmlBody,
+        string plainTextBody,
+        string? replyTo,
+        string listUnsubscribeUrl,
+        string correlationKey,
+        CancellationToken ct)
+    {
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.CampaignBroadcast,
+            correlationKey,
+            toEmail,
+            subject,
+            htmlBody,
+            plainTextBody,
+            DateTimeOffset.UtcNow,
+            replyTo,
+            listUnsubscribeUrl);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
     private string BuildVerificationUrl(string token)
     {
         var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');

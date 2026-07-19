@@ -1,3 +1,4 @@
+using CreatorPlatform.Auth.Domain.Users;
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Application.Interfaces;
@@ -29,8 +30,48 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
                 _context.Set<CreatorSettings>()
                     .Where(s => s.CreatorId == c.Id)
                     .Select(s => s.SupportEmail)
-                    .FirstOrDefault()))
+                    .FirstOrDefault(),
+                _context.Set<CreatorSettings>()
+                    .Where(s => s.CreatorId == c.Id)
+                    .Select(s => s.BrandName)
+                    .FirstOrDefault() ?? c.Name,
+                _context.Set<CreatorSettings>()
+                    .Where(s => s.CreatorId == c.Id)
+                    .Select(s => s.LogoUrl)
+                    .FirstOrDefault(),
+                _context.Set<CreatorSettings>()
+                    .Where(s => s.CreatorId == c.Id)
+                    .Select(s => s.PrimaryColor)
+                    .FirstOrDefault() ?? "#111111",
+                _context.Set<User>()
+                    .Where(u => u.Id == c.OwnerUserId)
+                    .Select(u => u.Email)
+                    .First()))
             .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<Dictionary<int, Guid>> GetLandingPagePublicIdsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)
+    {
+        if (landingPageIds.Count == 0)
+            return new Dictionary<int, Guid>();
+
+        return await _context.Set<LandingPage>()
+            .AsNoTracking()
+            .Where(lp => landingPageIds.Contains(lp.Id))
+            .Select(lp => new { lp.Id, lp.PublicId })
+            .ToDictionaryAsync(x => x.Id, x => x.PublicId, ct);
+    }
+
+    public async Task<Dictionary<int, Guid>> GetProductPublicIdsAsync(IReadOnlyCollection<int> productIds, CancellationToken ct)
+    {
+        if (productIds.Count == 0)
+            return new Dictionary<int, Guid>();
+
+        return await _context.Set<Product>()
+            .AsNoTracking()
+            .Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.PublicId })
+            .ToDictionaryAsync(x => x.Id, x => x.PublicId, ct);
     }
 
     public async Task<int?> ResolveLandingPageIdAsync(int creatorId, Guid landingPagePublicId, CancellationToken ct)

@@ -13,4 +13,8 @@ public interface IUnsubscribeTokenService
     /// Returns null for any malformed, tampered, or unparseable token — never throws, since this is
     /// called on public, unauthenticated input.</summary>
     UnsubscribeTokenPayload? TryParse(string token);
+
+    /// <summary>Full one-click unsubscribe URL (API base + <see cref="Create"/> token) for a recipient —
+    /// the exact link embedded in campaign emails, so callers never need to know the API's base URL.</summary>
+    string BuildUnsubscribeUrl(int creatorId, string email);
 }

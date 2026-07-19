@@ -24,4 +24,26 @@ public sealed class CampaignRepository : ICampaignRepository
         return await _context.Set<Campaign>()
             .FirstOrDefaultAsync(c => c.PublicId == publicId, ct);
     }
+
+    public async Task<Campaign?> GetByPublicIdAsync(Guid publicId, CancellationToken ct)
+    {
+        return await _context.Set<Campaign>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.PublicId == publicId, ct);
+    }
+
+    public async Task<List<Campaign>> GetRecentByCreatorIdAsync(int creatorId, int take, CancellationToken ct)
+    {
+        return await _context.Set<Campaign>()
+            .AsNoTracking()
+            .Where(c => c.CreatorId == creatorId)
+            .OrderByDescending(c => c.CreatedAt)
+            .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public void Remove(Campaign campaign)
+    {
+        _context.Set<Campaign>().Remove(campaign);
+    }
 }

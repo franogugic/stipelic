@@ -5,7 +5,11 @@ public sealed record MarketingCreatorContext(
     Guid CreatorPublicId,
     string Name,
     string Slug,
-    string? SupportEmail);
+    string? SupportEmail,
+    string BrandName,
+    string? LogoUrl,
+    string PrimaryColor,
+    string OwnerEmail);
 
 public interface ICreatorContextProvider
 {
@@ -22,4 +26,11 @@ public interface ICreatorContextProvider
     /// <summary>Plan limit for <paramref name="limitKey"/> from the creator's active subscription. Null
     /// when the creator has no active subscription (caller decides how to treat that — e.g. reject).</summary>
     Task<int?> GetActivePlanLimitAsync(int creatorId, string limitKey, CancellationToken ct);
+
+    /// <summary>Batch-resolves internal landing page ids to their public ids — one query for the whole
+    /// set, not one per campaign, so list/detail rendering never does N+1.</summary>
+    Task<Dictionary<int, Guid>> GetLandingPagePublicIdsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct);
+
+    /// <summary>Same batch contract as <see cref="GetLandingPagePublicIdsAsync"/>, for products.</summary>
+    Task<Dictionary<int, Guid>> GetProductPublicIdsAsync(IReadOnlyCollection<int> productIds, CancellationToken ct);
 }
