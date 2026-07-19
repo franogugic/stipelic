@@ -55,16 +55,31 @@ public sealed class EmailOutboxWorker(
             return;
 
         logger.LogInformation(
-            "Processing {MessageCount} pending email outbox message(s).",
-            messages.Count);
+            "Processing {MessageCount} pending email outbox message(s): {Purposes}.",
+            messages.Count,
+            string.Join(", ", messages
+                .GroupBy(m => m.Purpose)
+                .Select(g => $"{g.Key}={g.Count()}")));
 
-        
         var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+
+        var sentCount = 0;
+        var failedOrRetryingCount = 0;
 
         foreach (var message in messages)
         {
-            await ProcessMessageAsync(dbContext, emailSender, message, ct);
+            var sent = await ProcessMessageAsync(dbContext, emailSender, message, ct);
+            if (sent)
+                sentCount++;
+            else
+                failedOrRetryingCount++;
         }
+
+        logger.LogInformation(
+            "Batch complete: {SentCount} sent, {FailedOrRetryingCount} failed/retrying out of {Total}.",
+            sentCount,
+            failedOrRetryingCount,
+            messages.Count);
     }
 
     private static async Task<List<EmailOutboxMessage>> ClaimReadyMessagesAsync(
@@ -101,16 +116,25 @@ public sealed class EmailOutboxWorker(
         return messages;
     }
 
-    private async Task ProcessMessageAsync(
+    private async Task<bool> ProcessMessageAsync(
         CreatorPlatformDbContext dbContext,
         IEmailSender emailSender,
         EmailOutboxMessage message,
         CancellationToken ct)
     {
+        var sent = false;
+
         try
         {
             if (await TrySkipCancelledMessageAsync(dbContext, message, ct))
-                return;
+                return false;
+
+            logger.LogInformation(
+                "Sending email outbox message {MessageId}. Purpose: {Purpose}. To: {ToEmail}. CorrelationKey: {CorrelationKey}.",
+                message.Id,
+                message.Purpose,
+                message.ToEmail,
+                message.CorrelationKey);
 
             await emailSender.SendAsync(
                 message.ToEmail,
@@ -122,14 +146,17 @@ public sealed class EmailOutboxWorker(
                 ct);
 
             message.MarkAsSent(DateTimeOffset.UtcNow);
+            sent = true;
             logger.LogInformation(
-                "Sent email outbox message {MessageId}.",
-                message.Id);
+                "Sent email outbox message {MessageId}. Purpose: {Purpose}. To: {ToEmail}.",
+                message.Id,
+                message.Purpose,
+                message.ToEmail);
         }
         catch (Exception exception)
         {
             if (await TrySkipCancelledMessageAsync(dbContext, message, ct))
-                return;
+                return false;
 
             var nextAttemptAt = DateTimeOffset.UtcNow.Add(GetRetryDelay(message.RetryCount + 1));
             message.MarkAsFailed(exception.Message, nextAttemptAt, MaxRetryCount);
@@ -169,6 +196,7 @@ public sealed class EmailOutboxWorker(
         }
 
         await dbContext.SaveChangesAsync(ct);
+        return sent;
     }
 
     private async Task<bool> TrySkipCancelledMessageAsync(
