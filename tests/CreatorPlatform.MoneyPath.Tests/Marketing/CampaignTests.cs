@@ -92,6 +92,31 @@ public class CampaignTests
     }
 
     [Fact]
+    public void CreateDraft_CtaUrlIsJavascriptScheme_Throws()
+    {
+        // The web preview (Task 5) renders CtaUrl straight into an href — a "javascript:" URL must never
+        // pass validation, even though real mail clients treat it as inert.
+        Assert.Throws<ArgumentException>(() => Campaign.CreateDraft(
+            1, "Subject", "Body", "Buy now", "javascript:alert(1)", CampaignAudienceType.LandingPage, 10, null, Now));
+    }
+
+    [Fact]
+    public void CreateDraft_CtaUrlIsRelative_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => Campaign.CreateDraft(
+            1, "Subject", "Body", "Buy now", "/checkout", CampaignAudienceType.LandingPage, 10, null, Now));
+    }
+
+    [Fact]
+    public void CreateDraft_CtaUrlIsHttp_Succeeds()
+    {
+        var campaign = Campaign.CreateDraft(
+            1, "Subject", "Body", "Buy now", "http://example.com/buy", CampaignAudienceType.LandingPage, 10, null, Now);
+
+        Assert.Equal("http://example.com/buy", campaign.CtaUrl);
+    }
+
+    [Fact]
     public void CreateDraft_LandingPageAudienceWithProductIdSet_Throws()
     {
         Assert.Throws<ArgumentException>(() => Campaign.CreateDraft(

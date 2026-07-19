@@ -39,21 +39,6 @@ public sealed class CreatorUsageCounter
         UpdatedAt = updatedAt;
     }
 
-    /// <summary>Attempts to add <paramref name="amount"/> under <paramref name="limit"/> (negative limit
-    /// = unlimited, always succeeds). Returns false — with no state change — if it would exceed the
-    /// limit. This is the pure money-path decision; the surrounding fetch-or-create-counter-row I/O
-    /// lives in ICreatorUsageService, which must be called under the caller's creator-scoped advisory
-    /// lock (see IMarketingUnitOfWork.AcquireCreatorCampaignLockAsync).</summary>
-    public bool TryAddUsage(int amount, int limit, DateTimeOffset updatedAt)
-    {
-        if (limit >= 0 && UsedValue + amount > limit)
-            return false;
-
-        UsedValue += amount;
-        UpdatedAt = updatedAt;
-        return true;
-    }
-
     public int Id { get; private set; }
 
     public int CreatorId { get; private set; }

@@ -14,29 +14,31 @@ public sealed class CreatorUsageService : ICreatorUsageService
         _context = context;
     }
 
+    /// <summary>Single atomic UPSERT, safe under concurrent callers with no additional locking (unlike the
+    /// campaign send path, the public capture path does NOT hold a creator-scoped advisory lock — two
+    /// parallel captures must not be able to race past the limit or clobber each other's increment). The
+    /// insert branch is itself conditioned on the limit (via the SELECT ... WHERE), and the conflict branch
+    /// re-checks the limit against the row's current value — so a rowcount of 0 always means "exceeded",
+    /// whichever branch would have fired.</summary>
     public async Task<bool> TryConsumeAsync(int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
         var (periodStart, periodEnd) = UsagePeriodResolver.Resolve(period, now);
 
-        var counter = await _context.Set<CreatorUsageCounter>()
-            .FirstOrDefaultAsync(c =>
-                c.CreatorId == creatorId &&
-                c.UsageKey == usageKey &&
-                c.PeriodStart == periodStart &&
-                c.PeriodEnd == periodEnd, ct);
+        var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO creators.creator_usage_counters
+                ("CreatorId", "UsageKey", "UsedValue", "PeriodStart", "PeriodEnd", "CreatedAt", "UpdatedAt")
+            SELECT {creatorId}, {usageKey}, {amount}, {periodStart}, {periodEnd}, {now}, {now}
+            WHERE {limit} < 0 OR {amount} <= {limit}
+            ON CONFLICT ("CreatorId", "UsageKey", "PeriodStart", "PeriodEnd")
+            DO UPDATE SET
+                "UsedValue" = creator_usage_counters."UsedValue" + {amount},
+                "UpdatedAt" = {now}
+            WHERE {limit} < 0 OR creator_usage_counters."UsedValue" + {amount} <= {limit}
+            """, ct);
 
-        if (counter is null)
-        {
-            var creator = await _context.Set<Creator>().FirstAsync(c => c.Id == creatorId, ct);
-            counter = CreatorUsageCounter.Create(creator, usageKey, periodStart, periodEnd, now);
-        }
-
-        var succeeded = counter.TryAddUsage(amount, limit, now);
-        if (succeeded && _context.Entry(counter).State == EntityState.Detached)
-            await _context.Set<CreatorUsageCounter>().AddAsync(counter, ct);
-
-        return succeeded;
+        return rowsAffected > 0;
     }
 
     public async Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct)

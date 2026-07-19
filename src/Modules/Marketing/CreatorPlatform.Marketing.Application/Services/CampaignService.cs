@@ -91,16 +91,24 @@ public sealed class CampaignService : ICampaignService
         var audienceType = ParseAudienceType(request.AudienceType);
         var (landingPageId, productId) = await ResolveTargetAsync(context.CreatorId, audienceType, request.TargetPublicId, ct);
 
-        var campaign = Campaign.CreateDraft(
-            context.CreatorId,
-            request.Subject,
-            request.BodyText,
-            request.CtaLabel,
-            request.CtaUrl,
-            audienceType,
-            landingPageId,
-            productId,
-            DateTimeOffset.UtcNow);
+        Campaign campaign;
+        try
+        {
+            campaign = Campaign.CreateDraft(
+                context.CreatorId,
+                request.Subject,
+                request.BodyText,
+                request.CtaLabel,
+                request.CtaUrl,
+                audienceType,
+                landingPageId,
+                productId,
+                DateTimeOffset.UtcNow);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new BadRequestException(ex.Message);
+        }
 
         await _campaignRepository.AddAsync(campaign, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -132,6 +140,10 @@ public sealed class CampaignService : ICampaignService
         catch (InvalidOperationException ex)
         {
             throw new ConflictException(ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new BadRequestException(ex.Message);
         }
 
         await _unitOfWork.SaveChangesAsync(ct);

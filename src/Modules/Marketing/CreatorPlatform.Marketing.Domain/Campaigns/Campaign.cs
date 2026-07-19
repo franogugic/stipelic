@@ -136,8 +136,21 @@ public sealed class Campaign
             throw new ArgumentException("CTA label and URL must both be set, or both be empty.");
         if (hasCtaLabel && ctaLabel!.Trim().Length > MaxCtaLabelLength)
             throw new ArgumentException($"CTA label must be at most {MaxCtaLabelLength} characters.", nameof(ctaLabel));
-        if (hasCtaUrl && ctaUrl!.Trim().Length > MaxCtaUrlLength)
-            throw new ArgumentException($"CTA URL must be at most {MaxCtaUrlLength} characters.", nameof(ctaUrl));
+        if (hasCtaUrl)
+        {
+            var trimmedCtaUrl = ctaUrl!.Trim();
+            if (trimmedCtaUrl.Length > MaxCtaUrlLength)
+                throw new ArgumentException($"CTA URL must be at most {MaxCtaUrlLength} characters.", nameof(ctaUrl));
+
+            // Must be an absolute http/https URL — a "javascript:" or relative URL is inert in real mail
+            // clients, but the web preview (Task 5) renders CtaUrl straight into an href, so it must never
+            // carry an unvalidated scheme.
+            var isAbsoluteHttpUrl =
+                Uri.TryCreate(trimmedCtaUrl, UriKind.Absolute, out var parsedCtaUrl) &&
+                (parsedCtaUrl.Scheme == Uri.UriSchemeHttp || parsedCtaUrl.Scheme == Uri.UriSchemeHttps);
+            if (!isAbsoluteHttpUrl)
+                throw new ArgumentException("CTA URL must be an absolute http:// or https:// URL.", nameof(ctaUrl));
+        }
 
         switch (audienceType)
         {

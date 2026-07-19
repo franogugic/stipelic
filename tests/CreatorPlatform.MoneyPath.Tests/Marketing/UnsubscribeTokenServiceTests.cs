@@ -100,4 +100,14 @@ public class UnsubscribeTokenServiceTests
 
         Assert.Null(service.TryParse(malformedToken));
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void Constructor_BlankSecret_ThrowsInvalidOperationException(string? blankSecret)
+    {
+        Assert.Throws<InvalidOperationException>(
+            () => new UnsubscribeTokenService(Options.Create(new MarketingOptions { UnsubscribeTokenSecret = blankSecret! })));
+    }
 }

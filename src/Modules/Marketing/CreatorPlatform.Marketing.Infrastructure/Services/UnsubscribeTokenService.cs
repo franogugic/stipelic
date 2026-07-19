@@ -16,6 +16,11 @@ public sealed class UnsubscribeTokenService : IUnsubscribeTokenService
 
     public UnsubscribeTokenService(IOptions<MarketingOptions> options)
     {
+        if (string.IsNullOrWhiteSpace(options.Value.UnsubscribeTokenSecret))
+            throw new InvalidOperationException(
+                "Marketing:UnsubscribeTokenSecret is required — an empty secret would let anyone forge " +
+                "unsubscribe tokens for any creator/email pair (mass-unsubscribe attack).");
+
         _secretBytes = Encoding.UTF8.GetBytes(options.Value.UnsubscribeTokenSecret);
         _apiBaseUrl = options.Value.ApiBaseUrl.TrimEnd('/');
     }
