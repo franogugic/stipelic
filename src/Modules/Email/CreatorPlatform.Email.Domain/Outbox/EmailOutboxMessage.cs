@@ -14,6 +14,8 @@ public sealed class EmailOutboxMessage
         string subject,
         string htmlBody,
         string plainTextBody,
+        string? replyTo,
+        string? listUnsubscribeUrl,
         DateTimeOffset createdAt)
     {
         Id = id;
@@ -23,6 +25,8 @@ public sealed class EmailOutboxMessage
         Subject = subject;
         HtmlBody = htmlBody;
         PlainTextBody = plainTextBody;
+        ReplyTo = replyTo;
+        ListUnsubscribeUrl = listUnsubscribeUrl;
         Status = EmailOutboxMessageStatus.Pending;
         RetryCount = 0;
         NextAttemptAt = createdAt;
@@ -36,7 +40,9 @@ public sealed class EmailOutboxMessage
         string subject,
         string htmlBody,
         string plainTextBody,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string? replyTo = null,
+        string? listUnsubscribeUrl = null)
     {
         return new EmailOutboxMessage(
             Guid.NewGuid(),
@@ -46,6 +52,8 @@ public sealed class EmailOutboxMessage
             subject,
             htmlBody,
             plainTextBody,
+            replyTo,
+            listUnsubscribeUrl,
             createdAt);
     }
 
@@ -106,6 +114,14 @@ public sealed class EmailOutboxMessage
     public string HtmlBody { get; private set; } = string.Empty;
 
     public string PlainTextBody { get; private set; } = string.Empty;
+
+    /// <summary>Reply-To address for this message (e.g. a creator's SupportEmail) — null for transactional
+    /// mail that doesn't need it (verification, order access).</summary>
+    public string? ReplyTo { get; private set; }
+
+    /// <summary>Per-recipient unsubscribe URL. When set, the sender attaches List-Unsubscribe +
+    /// List-Unsubscribe-Post headers (RFC 8058 one-click) — null for transactional mail.</summary>
+    public string? ListUnsubscribeUrl { get; private set; }
 
     public EmailOutboxMessageStatus Status { get; private set; }
 

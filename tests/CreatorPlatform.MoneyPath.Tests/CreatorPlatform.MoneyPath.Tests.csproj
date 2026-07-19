@@ -34,6 +34,7 @@
     <ProjectReference Include="..\..\src\Modules\Auth\CreatorPlatform.Auth.Application\CreatorPlatform.Auth.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Marketing\CreatorPlatform.Marketing.Domain\CreatorPlatform.Marketing.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Marketing\CreatorPlatform.Marketing.Application\CreatorPlatform.Marketing.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Marketing\CreatorPlatform.Marketing.Infrastructure\CreatorPlatform.Marketing.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

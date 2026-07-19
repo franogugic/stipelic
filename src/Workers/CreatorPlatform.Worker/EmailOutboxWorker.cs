@@ -117,6 +117,8 @@ public sealed class EmailOutboxWorker(
                 message.Subject,
                 message.HtmlBody,
                 message.PlainTextBody,
+                message.ReplyTo,
+                message.ListUnsubscribeUrl,
                 ct);
 
             message.MarkAsSent(DateTimeOffset.UtcNow);

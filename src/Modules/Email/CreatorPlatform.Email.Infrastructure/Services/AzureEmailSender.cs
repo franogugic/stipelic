@@ -22,6 +22,8 @@ public sealed class AzureEmailSender : IEmailSender
         string subject,
         string htmlBody,
         string plainTextBody,
+        string? replyTo,
+        string? listUnsubscribeUrl,
         CancellationToken ct)
     {
         var emailMessage = new EmailMessage(
@@ -35,6 +37,15 @@ public sealed class AzureEmailSender : IEmailSender
             {
                 new(toEmail)
             }));
+
+        if (!string.IsNullOrWhiteSpace(replyTo))
+            emailMessage.ReplyTo.Add(new EmailAddress(replyTo));
+
+        if (!string.IsNullOrWhiteSpace(listUnsubscribeUrl))
+        {
+            emailMessage.Headers["List-Unsubscribe"] = $"<{listUnsubscribeUrl}>";
+            emailMessage.Headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+        }
 
         await _emailClient.SendAsync(WaitUntil.Completed, emailMessage, ct);
     }
