@@ -1,5 +1,6 @@
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Application.Services;
+using CreatorPlatform.Analytics.Infrastructure.Persistence;
 using CreatorPlatform.Analytics.Infrastructure.Repositories;
 using CreatorPlatform.Analytics.Infrastructure.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,8 @@ public static class AnalyticsInfrastructureServiceCollectionExtensions
         services.AddScoped<ILandingPageInsightsService, LandingPageInsightsService>();
         services.AddSingleton<ILandingPageTimeSeriesCache, LandingPageTimeSeriesCache>();
         services.AddSingleton<IViewsSummaryCache, ViewsSummaryCache>();
+        services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
+        services.AddScoped<IAnalyticsUnitOfWork, AnalyticsUnitOfWork>();
 
         return services;
     }

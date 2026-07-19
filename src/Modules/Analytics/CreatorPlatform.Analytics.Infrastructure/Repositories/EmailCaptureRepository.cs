@@ -14,15 +14,17 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
         _context = context;
     }
 
-    public async Task AddAsync(EmailCapture capture, CancellationToken ct)
+    public async Task<bool> AddAsync(EmailCapture capture, CancellationToken ct)
     {
-        await _context.Database.ExecuteSqlAsync(
+        var rowsAffected = await _context.Database.ExecuteSqlAsync(
             $"""
              INSERT INTO analytics.email_captures ("Id", "LandingPageId", "ProductId", "Email", "CapturedAt")
              VALUES ({capture.Id}, {capture.LandingPageId}, {capture.ProductId}, {capture.Email}, {capture.CapturedAt})
              ON CONFLICT ("LandingPageId", "Email") DO NOTHING
              """,
             ct);
+
+        return rowsAffected > 0;
     }
 
     public async Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct)

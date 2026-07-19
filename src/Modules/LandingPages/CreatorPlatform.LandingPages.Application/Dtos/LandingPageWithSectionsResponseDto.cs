@@ -8,6 +8,9 @@ public sealed class LandingPageWithSectionsResponseDto
     public int Id { get; init; }
 
     [JsonIgnore]
+    public int CreatorId { get; init; }
+
+    [JsonIgnore]
     public int? ProductId { get; init; }
 
     public string? ProductName { get; init; }
