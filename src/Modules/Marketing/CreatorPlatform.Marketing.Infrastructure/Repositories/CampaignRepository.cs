@@ -19,12 +19,6 @@ public sealed class CampaignRepository : ICampaignRepository
         await _context.Set<Campaign>().AddAsync(campaign, ct);
     }
 
-    public async Task<Campaign?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
-    {
-        return await _context.Set<Campaign>()
-            .FirstOrDefaultAsync(c => c.PublicId == publicId, ct);
-    }
-
     public async Task<Campaign?> GetByPublicIdAsync(Guid publicId, CancellationToken ct)
     {
         return await _context.Set<Campaign>()
@@ -40,10 +34,5 @@ public sealed class CampaignRepository : ICampaignRepository
             .OrderByDescending(c => c.CreatedAt)
             .Take(take)
             .ToListAsync(ct);
-    }
-
-    public void Remove(Campaign campaign)
-    {
-        _context.Set<Campaign>().Remove(campaign);
     }
 }

@@ -1,16 +1,14 @@
+using CreatorPlatform.Marketing.Domain.Mail;
+
 namespace CreatorPlatform.Marketing.Domain.Campaigns;
 
-/// <summary>A promotional email campaign sent by a creator to an audience of their own captured emails
-/// (one landing page, or the union of a product's landing pages). Draft until <see cref="MarkQueued"/>,
-/// after which it's immutable (send is a one-shot fan-out into the email outbox — see Marketing.Application
-/// Task 4's send pipeline).</summary>
+/// <summary>A record of one send — content is a snapshot of an <see cref="Templates.EmailTemplate"/> taken
+/// at the moment of send (editing or archiving the template afterward never changes this row). Created
+/// directly as <see cref="CampaignStatus.Queued"/> by <see cref="CreateQueuedFromTemplate"/> inside the
+/// send transaction; <see cref="CampaignStatus.Draft"/> remains in the enum only for pre-rework history —
+/// nothing constructs one anymore.</summary>
 public sealed class Campaign
 {
-    public const int MaxSubjectLength = 200;
-    public const int MaxBodyTextLength = 10_000;
-    public const int MaxCtaLabelLength = 100;
-    public const int MaxCtaUrlLength = 2000;
-
     private Campaign()
     {
     }
@@ -18,6 +16,7 @@ public sealed class Campaign
     private Campaign(
         Guid publicId,
         int creatorId,
+        int templateId,
         string subject,
         string bodyText,
         string? ctaLabel,
@@ -25,10 +24,12 @@ public sealed class Campaign
         CampaignAudienceType audienceType,
         int? landingPageId,
         int? productId,
-        DateTimeOffset createdAt)
+        int recipientCount,
+        DateTimeOffset queuedAt)
     {
         PublicId = publicId;
         CreatorId = creatorId;
+        TemplateId = templateId;
         Subject = subject;
         BodyText = bodyText;
         CtaLabel = ctaLabel;
@@ -36,14 +37,21 @@ public sealed class Campaign
         AudienceType = audienceType;
         LandingPageId = landingPageId;
         ProductId = productId;
-        Status = CampaignStatus.Draft;
-        RecipientCount = 0;
-        CreatedAt = createdAt;
-        UpdatedAt = createdAt;
+        Status = CampaignStatus.Queued;
+        RecipientCount = recipientCount;
+        QueuedAt = queuedAt;
+        CreatedAt = queuedAt;
+        UpdatedAt = queuedAt;
     }
 
-    public static Campaign CreateDraft(
+    /// <summary>Snapshots <paramref name="subject"/>/<paramref name="bodyText"/>/CTA (the template's
+    /// current content, read by the caller just before this call) and creates the send record directly in
+    /// <see cref="CampaignStatus.Queued"/> — there is no Draft step anymore; the send pipeline resolves
+    /// the audience and consumes the usage limit before ever calling this, so <paramref name="recipientCount"/>
+    /// is already known and final.</summary>
+    public static Campaign CreateQueuedFromTemplate(
         int creatorId,
+        int templateId,
         string subject,
         string bodyText,
         string? ctaLabel,
@@ -51,13 +59,19 @@ public sealed class Campaign
         CampaignAudienceType audienceType,
         int? landingPageId,
         int? productId,
-        DateTimeOffset createdAt)
+        int recipientCount,
+        DateTimeOffset queuedAt)
     {
-        ValidateFields(subject, bodyText, ctaLabel, ctaUrl, audienceType, landingPageId, productId);
+        MailContentRules.Validate(subject, bodyText, ctaLabel, ctaUrl);
+        ValidateAudience(audienceType, landingPageId, productId);
+
+        if (recipientCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(recipientCount), recipientCount, "Recipient count must be positive.");
 
         return new Campaign(
             Guid.NewGuid(),
             creatorId,
+            templateId,
             subject.Trim(),
             bodyText,
             ctaLabel?.Trim(),
@@ -65,93 +79,12 @@ public sealed class Campaign
             audienceType,
             landingPageId,
             productId,
-            createdAt);
+            recipientCount,
+            queuedAt);
     }
 
-    public void UpdateDraft(
-        string subject,
-        string bodyText,
-        string? ctaLabel,
-        string? ctaUrl,
-        CampaignAudienceType audienceType,
-        int? landingPageId,
-        int? productId,
-        DateTimeOffset updatedAt)
+    private static void ValidateAudience(CampaignAudienceType audienceType, int? landingPageId, int? productId)
     {
-        if (Status != CampaignStatus.Draft)
-            throw new InvalidOperationException($"Cannot update a {Status} campaign — only Draft campaigns can be edited.");
-
-        ValidateFields(subject, bodyText, ctaLabel, ctaUrl, audienceType, landingPageId, productId);
-
-        Subject = subject.Trim();
-        BodyText = bodyText;
-        CtaLabel = ctaLabel?.Trim();
-        CtaUrl = ctaUrl?.Trim();
-        AudienceType = audienceType;
-        LandingPageId = landingPageId;
-        ProductId = productId;
-        UpdatedAt = updatedAt;
-    }
-
-    /// <summary>Transitions Draft -> Queued once the send pipeline has resolved the audience and is
-    /// about to fan out into the outbox. <paramref name="recipientCount"/> is a snapshot, not a live
-    /// count — it does not change afterward even if the underlying audience later shrinks (e.g. someone
-    /// unsubscribes after the send).</summary>
-    public void MarkQueued(int recipientCount, DateTimeOffset queuedAt)
-    {
-        if (Status != CampaignStatus.Draft)
-            throw new InvalidOperationException($"Cannot queue a {Status} campaign — only Draft campaigns can be queued.");
-
-        if (recipientCount <= 0)
-            throw new ArgumentOutOfRangeException(nameof(recipientCount), recipientCount, "Recipient count must be positive.");
-
-        Status = CampaignStatus.Queued;
-        RecipientCount = recipientCount;
-        QueuedAt = queuedAt;
-        UpdatedAt = queuedAt;
-    }
-
-    private static void ValidateFields(
-        string subject,
-        string bodyText,
-        string? ctaLabel,
-        string? ctaUrl,
-        CampaignAudienceType audienceType,
-        int? landingPageId,
-        int? productId)
-    {
-        if (string.IsNullOrWhiteSpace(subject))
-            throw new ArgumentException("Subject is required.", nameof(subject));
-        if (subject.Trim().Length > MaxSubjectLength)
-            throw new ArgumentException($"Subject must be at most {MaxSubjectLength} characters.", nameof(subject));
-
-        if (string.IsNullOrWhiteSpace(bodyText))
-            throw new ArgumentException("Body text is required.", nameof(bodyText));
-        if (bodyText.Length > MaxBodyTextLength)
-            throw new ArgumentException($"Body text must be at most {MaxBodyTextLength} characters.", nameof(bodyText));
-
-        var hasCtaLabel = !string.IsNullOrWhiteSpace(ctaLabel);
-        var hasCtaUrl = !string.IsNullOrWhiteSpace(ctaUrl);
-        if (hasCtaLabel != hasCtaUrl)
-            throw new ArgumentException("CTA label and URL must both be set, or both be empty.");
-        if (hasCtaLabel && ctaLabel!.Trim().Length > MaxCtaLabelLength)
-            throw new ArgumentException($"CTA label must be at most {MaxCtaLabelLength} characters.", nameof(ctaLabel));
-        if (hasCtaUrl)
-        {
-            var trimmedCtaUrl = ctaUrl!.Trim();
-            if (trimmedCtaUrl.Length > MaxCtaUrlLength)
-                throw new ArgumentException($"CTA URL must be at most {MaxCtaUrlLength} characters.", nameof(ctaUrl));
-
-            // Must be an absolute http/https URL — a "javascript:" or relative URL is inert in real mail
-            // clients, but the web preview (Task 5) renders CtaUrl straight into an href, so it must never
-            // carry an unvalidated scheme.
-            var isAbsoluteHttpUrl =
-                Uri.TryCreate(trimmedCtaUrl, UriKind.Absolute, out var parsedCtaUrl) &&
-                (parsedCtaUrl.Scheme == Uri.UriSchemeHttp || parsedCtaUrl.Scheme == Uri.UriSchemeHttps);
-            if (!isAbsoluteHttpUrl)
-                throw new ArgumentException("CTA URL must be an absolute http:// or https:// URL.", nameof(ctaUrl));
-        }
-
         switch (audienceType)
         {
             case CampaignAudienceType.LandingPage:
@@ -172,6 +105,9 @@ public sealed class Campaign
     public Guid PublicId { get; private set; }
 
     public int CreatorId { get; private set; }
+
+    /// <summary>Null only for pre-rework rows sent before templates existed ("legacy inline send").</summary>
+    public int? TemplateId { get; private set; }
 
     public string Subject { get; private set; } = string.Empty;
 

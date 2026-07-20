@@ -1,7 +1,9 @@
+using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Options;
 using CreatorPlatform.Marketing.Application.Services;
 using CreatorPlatform.Marketing.Domain.Campaigns;
+using CreatorPlatform.Marketing.Domain.Templates;
 using CreatorPlatform.Marketing.Infrastructure.Services;
 using CreatorPlatform.MoneyPath.Tests.Fakes;
 using CreatorPlatform.Shared.Application.Exceptions;
@@ -14,12 +16,13 @@ public class CampaignSendServiceTests
     private const string Slug = "acme";
     private const int OwnerUserId = 1;
     private const int CreatorId = 1;
-    private const string LimitKey = "max_email_sends_per_month";
     private static readonly Guid CreatorPublicId = Guid.NewGuid();
+    private static readonly Guid LandingPagePublicId = Guid.NewGuid();
 
     private sealed record Harness(
         CampaignSendService Service,
         FakeMarketingCreatorContextProvider ContextProvider,
+        FakeEmailTemplateRepository TemplateRepository,
         FakeCampaignRepository CampaignRepository,
         FakeCampaignRecipientRepository RecipientRepository,
         FakeAudienceService AudienceService,
@@ -37,8 +40,10 @@ public class CampaignSendServiceTests
         {
             Context = context,
             PlanLimit = 500,
-            LandingPagePublicIds = { [10] = Guid.NewGuid() }
+            LandingPageId = 10,
+            LandingPagePublicIds = { [10] = LandingPagePublicId }
         };
+        var templateRepository = new FakeEmailTemplateRepository();
         var campaignRepository = new FakeCampaignRepository();
         var recipientRepository = new FakeCampaignRecipientRepository();
         var audienceService = new FakeAudienceService();
@@ -52,6 +57,7 @@ public class CampaignSendServiceTests
 
         var service = new CampaignSendService(
             contextProvider,
+            templateRepository,
             campaignRepository,
             recipientRepository,
             audienceService,
@@ -63,31 +69,39 @@ public class CampaignSendServiceTests
             unitOfWork);
 
         return new Harness(
-            service, contextProvider, campaignRepository, recipientRepository,
+            service, contextProvider, templateRepository, campaignRepository, recipientRepository,
             audienceService, usageService, emailOutboxService, unitOfWork, tokenService);
     }
 
-    private static Campaign BuildDraftCampaign(DateTimeOffset now) => Campaign.CreateDraft(
-        CreatorId, "Big sale!", "Check it out.", null, null, CampaignAudienceType.LandingPage, 10, null, now);
+    private static EmailTemplate BuildActiveTemplate(DateTimeOffset now) => EmailTemplate.Create(
+        CreatorId, "Summer sale", "Big sale!", "Check it out.", null, null, now);
+
+    private static SendCampaignRequestDto BuildRequest(Guid templatePublicId) => new()
+    {
+        TemplatePublicId = templatePublicId,
+        AudienceType = "LandingPage",
+        TargetPublicId = LandingPagePublicId,
+    };
 
     [Fact]
     public async Task SendAsync_CreatesExactlyNRecipientsAndNOutboxMessages_WithCorrectPurposeAndCorrelation()
     {
         var h = BuildHarness();
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = ["a@test.com", "b@test.com", "c@test.com"];
 
-        var result = await h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None);
+        var result = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
 
         Assert.Equal(3, h.RecipientRepository.Recipients.Count);
         Assert.Equal(3, h.EmailOutboxService.QueuedCampaignMessages.Count);
         Assert.Equal("Queued", result.Status);
         Assert.Equal(3, result.RecipientCount);
 
+        var sentCampaign = Assert.Single(h.CampaignRepository.Campaigns);
         foreach (var recipient in h.RecipientRepository.Recipients)
         {
-            var expectedKey = $"{campaign.PublicId}:{recipient.Id}";
+            var expectedKey = $"{sentCampaign.PublicId}:{recipient.Id}";
             Assert.Contains(h.EmailOutboxService.QueuedCampaignMessages, m => m.CorrelationKey == expectedKey && m.ToEmail == recipient.Email);
         }
 
@@ -96,14 +110,70 @@ public class CampaignSendServiceTests
     }
 
     [Fact]
+    public async Task SendAsync_SnapshotsTemplateContent_LaterTemplateEditDoesNotChangeTheSend()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+
+        var result = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+        Assert.Equal("Big sale!", result.Subject);
+
+        template.Update("Renamed", "Changed subject", "Changed body", null, null, DateTimeOffset.UtcNow);
+
+        var sentCampaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.Equal("Big sale!", sentCampaign.Subject);
+        Assert.Equal("Check it out.", sentCampaign.BodyText);
+    }
+
+    [Fact]
+    public async Task SendAsync_ArchivedTemplate_ThrowsConflict()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        template.Archive(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None));
+
+        Assert.Empty(h.CampaignRepository.Campaigns);
+        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task SendAsync_TemplateOwnedByAnotherCreator_ThrowsNotFound()
+    {
+        var h = BuildHarness();
+        var foreignTemplate = EmailTemplate.Create(999, "Not yours", "Subject", "Body", null, null, DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(foreignTemplate);
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(foreignTemplate.PublicId), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SendAsync_UnknownTemplate_ThrowsNotFound()
+    {
+        var h = BuildHarness();
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(Guid.NewGuid()), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task SendAsync_DuplicateEmailInAudience_DedupesToOneRecipient()
     {
         var h = BuildHarness();
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = ["dup@test.com", "dup@test.com", "other@test.com"];
 
-        var result = await h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None);
+        var result = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
 
         Assert.Equal(2, h.RecipientRepository.Recipients.Count);
         Assert.Equal(2, h.EmailOutboxService.QueuedCampaignMessages.Count);
@@ -114,32 +184,17 @@ public class CampaignSendServiceTests
     public async Task SendAsync_LimitExceeded_NothingWritten()
     {
         var h = BuildHarness();
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = ["a@test.com", "b@test.com", "c@test.com"];
         h.ContextProvider.PlanLimit = 2;
 
         await Assert.ThrowsAsync<ConflictException>(
-            () => h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None));
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None));
 
         Assert.Empty(h.RecipientRepository.Recipients);
         Assert.Empty(h.EmailOutboxService.QueuedCampaignMessages);
-        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
-        Assert.Equal(CampaignStatus.Draft, campaign.Status);
-    }
-
-    [Fact]
-    public async Task SendAsync_QueuedCampaign_ThrowsConflict()
-    {
-        var h = BuildHarness();
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        campaign.MarkQueued(5, DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
-
-        await Assert.ThrowsAsync<ConflictException>(
-            () => h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None));
-
-        Assert.Empty(h.RecipientRepository.Recipients);
+        Assert.Empty(h.CampaignRepository.Campaigns);
         Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
     }
 
@@ -147,12 +202,12 @@ public class CampaignSendServiceTests
     public async Task SendAsync_EmptyAudience_ThrowsBadRequest()
     {
         var h = BuildHarness();
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = [];
 
         await Assert.ThrowsAsync<BadRequestException>(
-            () => h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None));
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None));
 
         Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
     }
@@ -161,11 +216,11 @@ public class CampaignSendServiceTests
     public async Task SendAsync_NoSupportEmail_FallsBackToOwnerEmail()
     {
         var h = BuildHarness(supportEmail: null);
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = ["a@test.com"];
 
-        await h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None);
+        await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
 
         Assert.Equal("owner@acme.test", h.EmailOutboxService.QueuedCampaignMessages.Single().ReplyTo);
     }
@@ -174,11 +229,11 @@ public class CampaignSendServiceTests
     public async Task SendAsync_WithSupportEmail_UsesSupportEmailAsReplyTo()
     {
         var h = BuildHarness(supportEmail: "support@acme.test");
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = ["a@test.com"];
 
-        await h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None);
+        await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
 
         Assert.Equal("support@acme.test", h.EmailOutboxService.QueuedCampaignMessages.Single().ReplyTo);
     }
@@ -187,11 +242,11 @@ public class CampaignSendServiceTests
     public async Task SendAsync_UnsubscribeUrlContainsValidTokenForThatExactRecipient()
     {
         var h = BuildHarness();
-        var campaign = BuildDraftCampaign(DateTimeOffset.UtcNow);
-        h.CampaignRepository.Campaigns.Add(campaign);
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = ["a@test.com", "b@test.com"];
 
-        await h.Service.SendAsync(Slug, OwnerUserId, campaign.PublicId, CancellationToken.None);
+        await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
 
         foreach (var message in h.EmailOutboxService.QueuedCampaignMessages)
         {

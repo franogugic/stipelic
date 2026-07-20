@@ -25,9 +25,8 @@ public class CampaignServiceTests
         var usageService = new FakeCreatorUsageService();
         var campaignRepository = new FakeCampaignRepository();
         var progressProvider = new FakeCampaignProgressProvider();
-        var unitOfWork = new FakeMarketingUnitOfWork();
 
-        var service = new CampaignService(contextProvider, audienceService, usageService, campaignRepository, progressProvider, unitOfWork);
+        var service = new CampaignService(contextProvider, audienceService, usageService, campaignRepository, progressProvider);
 
         return (service, contextProvider, audienceService, usageService);
     }

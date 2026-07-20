@@ -3,6 +3,7 @@ using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Domain.Campaigns;
+using CreatorPlatform.Marketing.Domain.Templates;
 using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Marketing.Application.Services;
@@ -12,6 +13,7 @@ public sealed class CampaignSendService : ICampaignSendService
     private const string MonthlyEmailSendsLimitKey = "max_email_sends_per_month";
 
     private readonly ICreatorContextProvider _creatorContextProvider;
+    private readonly IEmailTemplateRepository _templateRepository;
     private readonly ICampaignRepository _campaignRepository;
     private readonly ICampaignRecipientRepository _recipientRepository;
     private readonly IAudienceService _audienceService;
@@ -24,6 +26,7 @@ public sealed class CampaignSendService : ICampaignSendService
 
     public CampaignSendService(
         ICreatorContextProvider creatorContextProvider,
+        IEmailTemplateRepository templateRepository,
         ICampaignRepository campaignRepository,
         ICampaignRecipientRepository recipientRepository,
         IAudienceService audienceService,
@@ -35,6 +38,7 @@ public sealed class CampaignSendService : ICampaignSendService
         IMarketingUnitOfWork unitOfWork)
     {
         _creatorContextProvider = creatorContextProvider;
+        _templateRepository = templateRepository;
         _campaignRepository = campaignRepository;
         _recipientRepository = recipientRepository;
         _audienceService = audienceService;
@@ -46,33 +50,38 @@ public sealed class CampaignSendService : ICampaignSendService
         _unitOfWork = unitOfWork;
     }
 
-    public async Task<CampaignDetailDto> SendAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct)
+    public async Task<CampaignDetailDto> SendAsync(string slug, int ownerUserId, SendCampaignRequestDto request, CancellationToken ct)
     {
         var context = await _creatorContextProvider.GetBySlugForOwnerAsync(slug, ownerUserId, ct);
         if (context is null)
             throw new NotFoundException("Creator workspace not found.");
 
+        var audienceType = ParseAudienceType(request.AudienceType);
+        var templatePublicId = request.TemplatePublicId;
+        var targetPublicId = request.TargetPublicId;
+
         Campaign? campaign = null;
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            // Lock first, then re-fetch + check status — this is what actually makes a duplicate send
-            // impossible under concurrency; the ownership/Draft check alone (without the lock already
-            // held) would still race between two concurrent send requests.
+            // Lock first — audience resolution + usage-counter consumption must not race across two
+            // concurrent sends for the same creator.
             await _unitOfWork.AcquireCreatorCampaignLockAsync(context.CreatorId, ct);
 
-            campaign = await _campaignRepository.GetByPublicIdForUpdateAsync(campaignPublicId, ct);
-            if (campaign is null || campaign.CreatorId != context.CreatorId)
-                throw new NotFoundException("Campaign not found.");
+            var template = await _templateRepository.GetByPublicIdAsync(templatePublicId, ct);
+            if (template is null || template.CreatorId != context.CreatorId)
+                throw new NotFoundException("Template not found.");
 
-            if (campaign.Status != CampaignStatus.Draft)
-                throw new ConflictException($"Cannot send a {campaign.Status} campaign — only Draft campaigns can be sent.");
+            if (template.Status != EmailTemplateStatus.Active)
+                throw new ConflictException("This template is archived and can no longer be sent.");
+
+            var (landingPageId, productId) = await ResolveTargetAsync(context.CreatorId, audienceType, targetPublicId, ct);
 
             // Deduped/suppressed at the SQL layer already (see AudienceService), but the CampaignRecipient
             // unique index is (CampaignId, Email) — deduping again here is cheap insurance against ever
             // inserting the same recipient twice for one send, regardless of the audience source.
             var emails = (await _audienceService.GetAudienceEmailsAsync(
-                campaign.AudienceType, campaign.LandingPageId, campaign.ProductId, context.CreatorId, ct))
+                audienceType, landingPageId, productId, context.CreatorId, ct))
                 .Distinct()
                 .ToList();
 
@@ -90,19 +99,37 @@ public sealed class CampaignSendService : ICampaignSendService
                 var usedThisMonth = await _usageService.GetUsedAsync(context.CreatorId, MonthlyEmailSendsLimitKey, UsagePeriod.CalendarMonth, ct);
                 var remaining = monthlyLimit.Value < 0 ? int.MaxValue : Math.Max(0, monthlyLimit.Value - usedThisMonth);
                 throw new ConflictException(
-                    $"Sending this campaign ({emails.Count} recipients) would exceed your monthly email limit. {remaining} send(s) remaining this month.");
+                    $"Sending to this audience ({emails.Count} recipients) would exceed your monthly email limit. {remaining} send(s) remaining this month.");
             }
 
             var now = DateTimeOffset.UtcNow;
+
+            // Snapshot the template's current content into the send record — a later template edit or
+            // archive must never change what this send says it contained.
+            campaign = Campaign.CreateQueuedFromTemplate(
+                context.CreatorId,
+                template.Id,
+                template.Subject,
+                template.BodyText,
+                template.CtaLabel,
+                template.CtaUrl,
+                audienceType,
+                landingPageId,
+                productId,
+                emails.Count,
+                now);
+
+            await _campaignRepository.AddAsync(campaign, ct);
+
+            // Flush now so the campaign gets its DB-generated Id — recipients need it as their FK, and it
+            // doesn't exist client-side before this row lands.
+            await _unitOfWork.SaveChangesAsync(ct);
+
             var recipients = emails.Select(email => CampaignRecipient.Create(campaign.Id, email, now)).ToList();
             await _recipientRepository.AddRangeAsync(recipients, ct);
 
-            // Flush now so each recipient gets its DB-generated Id — CorrelationKey embeds that id, and
-            // it doesn't exist client-side before the row lands. Still one transaction/one advisory lock
-            // hold, just two round trips instead of the N a per-recipient save would take.
+            // Flush again so each recipient gets its own DB-generated Id — CorrelationKey embeds that id.
             await _unitOfWork.SaveChangesAsync(ct);
-
-            campaign.MarkQueued(emails.Count, now);
 
             var replyTo = context.SupportEmail ?? context.OwnerEmail;
             var rendered = _renderer.Render(
@@ -134,7 +161,7 @@ public sealed class CampaignSendService : ICampaignSendService
         }, ct);
 
         var sent = campaign!;
-        var targetPublicId = sent.LandingPageId is not null
+        var targetPublicIdResolved = sent.LandingPageId is not null
             ? (await _creatorContextProvider.GetLandingPagePublicIdsAsync([sent.LandingPageId.Value], ct))[sent.LandingPageId.Value]
             : (await _creatorContextProvider.GetProductPublicIdsAsync([sent.ProductId!.Value], ct))[sent.ProductId.Value];
 
@@ -147,7 +174,7 @@ public sealed class CampaignSendService : ICampaignSendService
             sent.CtaLabel,
             sent.CtaUrl,
             sent.AudienceType.ToString(),
-            targetPublicId,
+            targetPublicIdResolved,
             sent.Status.ToString(),
             sent.RecipientCount,
             sent.QueuedAt,
@@ -155,5 +182,32 @@ public sealed class CampaignSendService : ICampaignSendService
             sent.UpdatedAt,
             progress.SentCount,
             progress.FailedCount);
+    }
+
+    private static CampaignAudienceType ParseAudienceType(string value)
+    {
+        if (!Enum.TryParse<CampaignAudienceType>(value, ignoreCase: true, out var audienceType))
+            throw new BadRequestException($"Invalid audience type. Valid values: {string.Join(", ", Enum.GetNames<CampaignAudienceType>())}.");
+
+        return audienceType;
+    }
+
+    private async Task<(int? LandingPageId, int? ProductId)> ResolveTargetAsync(
+        int creatorId, CampaignAudienceType audienceType, Guid targetPublicId, CancellationToken ct)
+    {
+        if (audienceType == CampaignAudienceType.LandingPage)
+        {
+            var landingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, targetPublicId, ct);
+            if (landingPageId is null)
+                throw new NotFoundException("Landing page not found.");
+
+            return (landingPageId, null);
+        }
+
+        var productId = await _creatorContextProvider.ResolveProductIdAsync(creatorId, targetPublicId, ct);
+        if (productId is null)
+            throw new NotFoundException("Product not found.");
+
+        return (null, productId);
     }
 }

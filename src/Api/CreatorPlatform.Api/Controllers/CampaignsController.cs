@@ -46,6 +46,7 @@ public sealed class CampaignsController : ControllerBase
             preview));
     }
 
+    /// <summary>Send history — last 50 sends with progress.</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<CampaignListItemDto>>>> List(string slug, CancellationToken ct)
     {
@@ -72,57 +73,16 @@ public sealed class CampaignsController : ControllerBase
             campaign));
     }
 
-    [HttpPost]
-    [EnableRateLimiting("MutateCampaign")]
-    public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> Create(
-        string slug, [FromBody] CreateCampaignRequestDto request, CancellationToken ct)
-    {
-        var currentUser = GetVerifiedUser();
-
-        var campaign = await _campaignService.CreateAsync(slug, currentUser.Id, request, ct);
-
-        return StatusCode(StatusCodes.Status201Created, ApiResponse<CampaignDetailDto>.Success(
-            StatusCodes.Status201Created,
-            "Campaign created.",
-            campaign));
-    }
-
-    [HttpPut("{campaignPublicId:guid}")]
-    [EnableRateLimiting("MutateCampaign")]
-    public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> Update(
-        string slug, Guid campaignPublicId, [FromBody] UpdateCampaignRequestDto request, CancellationToken ct)
-    {
-        var currentUser = GetVerifiedUser();
-
-        var campaign = await _campaignService.UpdateAsync(slug, currentUser.Id, campaignPublicId, request, ct);
-
-        return Ok(ApiResponse<CampaignDetailDto>.Success(
-            StatusCodes.Status200OK,
-            "Campaign updated.",
-            campaign));
-    }
-
-    [HttpDelete("{campaignPublicId:guid}")]
-    [EnableRateLimiting("MutateCampaign")]
-    public async Task<ActionResult<ApiResponse<object>>> Delete(string slug, Guid campaignPublicId, CancellationToken ct)
-    {
-        var currentUser = GetVerifiedUser();
-
-        await _campaignService.DeleteAsync(slug, currentUser.Id, campaignPublicId, ct);
-
-        return Ok(ApiResponse<object>.Success(
-            StatusCodes.Status200OK,
-            "Campaign deleted.",
-            null));
-    }
-
-    [HttpPost("{campaignPublicId:guid}/send")]
+    /// <summary>Sends an Active template to an audience — creates a new Queued send record directly (no
+    /// Draft step; see 02R rework).</summary>
+    [HttpPost("send")]
     [EnableRateLimiting("SendCampaign")]
-    public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> Send(string slug, Guid campaignPublicId, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> Send(
+        string slug, [FromBody] SendCampaignRequestDto request, CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
-        var campaign = await _campaignSendService.SendAsync(slug, currentUser.Id, campaignPublicId, ct);
+        var campaign = await _campaignSendService.SendAsync(slug, currentUser.Id, request, ct);
 
         return Ok(ApiResponse<CampaignDetailDto>.Success(
             StatusCodes.Status200OK,

@@ -2,6 +2,7 @@ using System.Reflection;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Domain.Campaigns;
+using CreatorPlatform.Marketing.Domain.Templates;
 
 namespace CreatorPlatform.MoneyPath.Tests.Fakes;
 
@@ -75,18 +76,24 @@ public sealed class FakeCreatorUsageService : ICreatorUsageService
         => Task.FromResult(Used.GetValueOrDefault((creatorId, usageKey)));
 }
 
+/// <summary>Assigns a DB-generated-looking Id as soon as a campaign is added — approximating the real
+/// repository's post-flush behavior (the send pipeline reads campaign.Id right after the first
+/// SaveChanges, since recipients need it as their FK) without needing a real database or EF InMemory.</summary>
 public sealed class FakeCampaignRepository : ICampaignRepository
 {
+    private static readonly PropertyInfo IdProperty =
+        typeof(Campaign).GetProperty(nameof(Campaign.Id))!;
+
+    private int _nextId = 1;
+
     public List<Campaign> Campaigns { get; } = [];
 
     public Task AddAsync(Campaign campaign, CancellationToken ct)
     {
+        IdProperty.SetValue(campaign, _nextId++);
         Campaigns.Add(campaign);
         return Task.CompletedTask;
     }
-
-    public Task<Campaign?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
-        => Task.FromResult(Campaigns.FirstOrDefault(c => c.PublicId == publicId));
 
     public Task<Campaign?> GetByPublicIdAsync(Guid publicId, CancellationToken ct)
         => Task.FromResult(Campaigns.FirstOrDefault(c => c.PublicId == publicId));
@@ -97,9 +104,30 @@ public sealed class FakeCampaignRepository : ICampaignRepository
             .OrderByDescending(c => c.CreatedAt)
             .Take(take)
             .ToList());
+}
 
-    public void Remove(Campaign campaign)
-        => Campaigns.Remove(campaign);
+public sealed class FakeEmailTemplateRepository : IEmailTemplateRepository
+{
+    public List<EmailTemplate> Templates { get; } = [];
+
+    public Task AddAsync(EmailTemplate template, CancellationToken ct)
+    {
+        Templates.Add(template);
+        return Task.CompletedTask;
+    }
+
+    public Task<EmailTemplate?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
+        => Task.FromResult(Templates.FirstOrDefault(t => t.PublicId == publicId));
+
+    public Task<EmailTemplate?> GetByPublicIdAsync(Guid publicId, CancellationToken ct)
+        => Task.FromResult(Templates.FirstOrDefault(t => t.PublicId == publicId));
+
+    public Task<List<EmailTemplate>> ListByCreatorIdAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult(Templates
+            .Where(t => t.CreatorId == creatorId)
+            .OrderBy(t => t.Status)
+            .ThenBy(t => t.Name)
+            .ToList());
 }
 
 /// <summary>Assigns a DB-generated-looking Id to each recipient as soon as it's added — approximating the

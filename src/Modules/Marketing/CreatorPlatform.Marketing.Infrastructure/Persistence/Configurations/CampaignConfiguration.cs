@@ -1,6 +1,8 @@
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Domain.Campaigns;
+using CreatorPlatform.Marketing.Domain.Mail;
+using CreatorPlatform.Marketing.Domain.Templates;
 using CreatorPlatform.Products.Domain.Products;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -27,8 +29,10 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         builder.Property(c => c.CreatorId)
             .IsRequired();
 
+        builder.Property(c => c.TemplateId);
+
         builder.Property(c => c.Subject)
-            .HasMaxLength(Campaign.MaxSubjectLength)
+            .HasMaxLength(MailContentRules.MaxSubjectLength)
             .IsRequired();
 
         builder.Property(c => c.BodyText)
@@ -36,10 +40,10 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
             .IsRequired();
 
         builder.Property(c => c.CtaLabel)
-            .HasMaxLength(Campaign.MaxCtaLabelLength);
+            .HasMaxLength(MailContentRules.MaxCtaLabelLength);
 
         builder.Property(c => c.CtaUrl)
-            .HasMaxLength(Campaign.MaxCtaUrlLength);
+            .HasMaxLength(MailContentRules.MaxCtaUrlLength);
 
         builder.Property(c => c.AudienceType)
             .HasConversion<string>()
@@ -87,6 +91,11 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         builder.HasOne<Product>()
             .WithMany()
             .HasForeignKey(c => c.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<EmailTemplate>()
+            .WithMany()
+            .HasForeignKey(c => c.TemplateId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
