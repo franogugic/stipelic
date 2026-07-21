@@ -71,6 +71,16 @@ public sealed class EmailOutboxMessage
         ProcessingExpiresAt = processingExpiresAt;
     }
 
+    /// <summary>Provider-side throttling (e.g. ACS 429) is not a delivery failure — it means "try later",
+    /// not "this attempt failed". Pushes the processing lease out to <paramref name="nextAttemptAt"/> so
+    /// the claim query's existing "Processing AND ProcessingExpiresAt &lt;= now" reclaim path picks this
+    /// message back up, WITHOUT touching <see cref="RetryCount"/> or <see cref="Status"/> (still
+    /// Processing) — a throttled send must never count against the message's limited retry budget.</summary>
+    public void Reschedule(DateTimeOffset nextAttemptAt)
+    {
+        ProcessingExpiresAt = nextAttemptAt;
+    }
+
     public void Cancel()
     {
         if (Status is not EmailOutboxMessageStatus.Pending and

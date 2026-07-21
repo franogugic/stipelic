@@ -25,4 +25,14 @@ public interface ICreatorUsageService
     /// <summary>Read-only: how much of <paramref name="usageKey"/> has been used in the current period.
     /// Zero if no counter row exists yet (nothing consumed this period).</summary>
     Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct);
+
+    /// <summary>Gives back <paramref name="amount"/> units previously consumed via
+    /// <see cref="TryConsumeAsync"/> — e.g. a send that was counted against the monthly limit but then
+    /// permanently failed to deliver. <paramref name="asOf"/> resolves which period row to credit: pass
+    /// the timestamp the original consumption happened at (not "now"), since a late-arriving refund must
+    /// not credit whatever period happens to be current if it crosses a period boundary (e.g. a month
+    /// rollover) after the original send. Floors at zero — never goes negative. A no-op if no counter row
+    /// exists for that period (nothing to refund against). Does not call SaveChanges; the caller's unit
+    /// of work flushes it.</summary>
+    Task RefundAsync(int creatorId, string usageKey, int amount, UsagePeriod period, DateTimeOffset asOf, CancellationToken ct);
 }

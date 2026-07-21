@@ -83,6 +83,16 @@ public sealed class CampaignService : ICampaignService
         return ToDetailDto(campaign, targetPublicId, progress[campaign.PublicId]);
     }
 
+    public async Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+        var campaign = await _campaignRepository.GetByPublicIdAsync(campaignPublicId, ct);
+        if (campaign is null || campaign.CreatorId != context.CreatorId)
+            throw new NotFoundException("Campaign not found.");
+
+        return await _progressProvider.GetFailedRecipientsAsync(campaignPublicId, ct);
+    }
+
     private async Task<MarketingCreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)
     {
         var context = await _creatorContextProvider.GetBySlugForOwnerAsync(slug, ownerUserId, ct);

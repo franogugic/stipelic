@@ -58,6 +58,7 @@ public sealed class FakeCreatorUsageService : ICreatorUsageService
 {
     public Dictionary<(int CreatorId, string UsageKey), int> Used { get; } = [];
     public List<(int CreatorId, string UsageKey, int Amount, int Limit, UsagePeriod Period)> ConsumeCalls { get; } = [];
+    public List<(int CreatorId, string UsageKey, int Amount, UsagePeriod Period, DateTimeOffset AsOf)> RefundCalls { get; } = [];
 
     public Task<bool> TryConsumeAsync(int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct)
     {
@@ -74,6 +75,15 @@ public sealed class FakeCreatorUsageService : ICreatorUsageService
 
     public Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct)
         => Task.FromResult(Used.GetValueOrDefault((creatorId, usageKey)));
+
+    public Task RefundAsync(int creatorId, string usageKey, int amount, UsagePeriod period, DateTimeOffset asOf, CancellationToken ct)
+    {
+        RefundCalls.Add((creatorId, usageKey, amount, period, asOf));
+        var key = (creatorId, usageKey);
+        var current = Used.GetValueOrDefault(key);
+        Used[key] = Math.Max(0, current - amount);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Assigns a DB-generated-looking Id as soon as a campaign is added — approximating the real
@@ -182,10 +192,14 @@ public sealed class FakeMarketingUnitOfWork : IMarketingUnitOfWork
 public sealed class FakeCampaignProgressProvider : ICampaignProgressProvider
 {
     public Dictionary<Guid, CampaignProgressDto> Progress { get; set; } = [];
+    public Dictionary<Guid, List<FailedRecipientDto>> FailedRecipients { get; set; } = [];
 
     public Task<Dictionary<Guid, CampaignProgressDto>> GetProgressAsync(
         IReadOnlyCollection<Guid> campaignPublicIds, CancellationToken ct)
         => Task.FromResult(campaignPublicIds.ToDictionary(
             id => id,
             id => Progress.GetValueOrDefault(id, new CampaignProgressDto(0, 0))));
+
+    public Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(Guid campaignPublicId, CancellationToken ct)
+        => Task.FromResult(FailedRecipients.GetValueOrDefault(campaignPublicId, []));
 }

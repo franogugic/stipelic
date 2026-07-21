@@ -55,4 +55,18 @@ public sealed class CampaignProgressProvider : ICampaignProgressProvider
 
         return result;
     }
+
+    public async Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(Guid campaignPublicId, CancellationToken ct)
+    {
+        var prefix = campaignPublicId + ":%";
+
+        return await _context.Set<EmailOutboxMessage>()
+            .AsNoTracking()
+            .Where(m => m.Purpose == EmailOutboxMessagePurpose.CampaignBroadcast &&
+                        m.Status == EmailOutboxMessageStatus.Failed &&
+                        EF.Functions.Like(m.CorrelationKey, prefix))
+            .OrderBy(m => m.ToEmail)
+            .Select(m => new FailedRecipientDto(m.ToEmail, m.LastError))
+            .ToListAsync(ct);
+    }
 }

@@ -73,6 +73,20 @@ public sealed class CampaignsController : ControllerBase
             campaign));
     }
 
+    [HttpGet("{campaignPublicId:guid}/failed-recipients")]
+    public async Task<ActionResult<ApiResponse<List<FailedRecipientDto>>>> GetFailedRecipients(
+        string slug, Guid campaignPublicId, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var recipients = await _campaignService.GetFailedRecipientsAsync(slug, currentUser.Id, campaignPublicId, ct);
+
+        return Ok(ApiResponse<List<FailedRecipientDto>>.Success(
+            StatusCodes.Status200OK,
+            "Failed recipients loaded.",
+            recipients));
+    }
+
     /// <summary>Sends an Active template to an audience — creates a new Queued send record directly (no
     /// Draft step; see 02R rework).</summary>
     [HttpPost("send")]

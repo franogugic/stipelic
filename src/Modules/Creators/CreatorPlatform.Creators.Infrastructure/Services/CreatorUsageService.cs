@@ -55,4 +55,20 @@ public sealed class CreatorUsageService : ICreatorUsageService
             .Select(c => (int?)c.UsedValue)
             .FirstOrDefaultAsync(ct) ?? 0;
     }
+
+    /// <summary>Plain UPDATE, floored at zero via GREATEST — no INSERT branch, since refunding a period
+    /// that never consumed anything (no counter row) is a no-op, not a new row to create.</summary>
+    public async Task RefundAsync(int creatorId, string usageKey, int amount, UsagePeriod period, DateTimeOffset asOf, CancellationToken ct)
+    {
+        var (periodStart, periodEnd) = UsagePeriodResolver.Resolve(period, asOf);
+        var now = DateTimeOffset.UtcNow;
+
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE creators.creator_usage_counters
+            SET "UsedValue" = GREATEST(0, "UsedValue" - {amount}), "UpdatedAt" = {now}
+            WHERE "CreatorId" = {creatorId} AND "UsageKey" = {usageKey}
+              AND "PeriodStart" = {periodStart} AND "PeriodEnd" = {periodEnd}
+            """, ct);
+    }
 }

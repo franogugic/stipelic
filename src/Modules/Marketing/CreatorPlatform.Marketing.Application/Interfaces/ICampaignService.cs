@@ -15,4 +15,8 @@ public interface ICampaignService
     Task<List<CampaignListItemDto>> ListAsync(string slug, int ownerUserId, CancellationToken ct);
 
     Task<CampaignDetailDto> GetAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct);
+
+    /// <summary>Recipients whose delivery terminally failed for this send, with their last error —
+    /// ownership-checked the same way as <see cref="GetAsync"/>.</summary>
+    Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct);
 }

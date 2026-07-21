@@ -1,3 +1,4 @@
+using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Services;
 using CreatorPlatform.Marketing.Infrastructure.Persistence;
@@ -24,6 +25,7 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<IEmailTemplateService, EmailTemplateService>();
         services.AddScoped<ICampaignProgressProvider, CampaignProgressProvider>();
         services.AddSingleton<ICampaignEmailRenderer, CampaignEmailRenderer>();
+        services.AddScoped<IEmailSendFailureHandler, CampaignBroadcastFailureHandler>();
 
         return services;
     }
