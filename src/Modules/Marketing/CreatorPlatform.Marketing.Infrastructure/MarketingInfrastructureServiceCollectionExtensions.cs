@@ -26,6 +26,8 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<ICampaignProgressProvider, CampaignProgressProvider>();
         services.AddSingleton<ICampaignEmailRenderer, CampaignEmailRenderer>();
         services.AddScoped<IEmailSendFailureHandler, CampaignBroadcastFailureHandler>();
+        services.AddScoped<IContactsRepository, ContactsRepository>();
+        services.AddScoped<IContactsService, ContactsService>();
 
         return services;
     }
