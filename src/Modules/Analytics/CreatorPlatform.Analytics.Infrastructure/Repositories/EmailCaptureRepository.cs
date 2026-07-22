@@ -43,6 +43,24 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             .ToListAsync(ct);
     }
 
+    public async Task UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
+    {
+        await _context.Database.ExecuteSqlAsync(
+            $"""
+             INSERT INTO marketing.contact_summaries
+                 ("CreatorId", "Email", "FirstCapturedAt", "LastCapturedAt", "SourceLandingPageIds")
+             VALUES ({creatorId}, {email}, {capturedAt}, {capturedAt}, ARRAY[{landingPageId}])
+             ON CONFLICT ("CreatorId", "Email") DO UPDATE SET
+                 "LastCapturedAt" = {capturedAt},
+                 "SourceLandingPageIds" = CASE
+                     WHEN {landingPageId} = ANY(contact_summaries."SourceLandingPageIds")
+                         THEN contact_summaries."SourceLandingPageIds"
+                     ELSE array_append(contact_summaries."SourceLandingPageIds", {landingPageId})
+                 END
+             """,
+            ct);
+    }
+
     public async Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(
         int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
     {

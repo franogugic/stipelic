@@ -6,6 +6,7 @@ namespace CreatorPlatform.MoneyPath.Tests.Fakes;
 public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
 {
     public List<EmailCapture> Added { get; } = [];
+    public List<(int CreatorId, int LandingPageId, string Email, DateTimeOffset CapturedAt)> ContactSummaryUpserts { get; } = [];
 
     /// <summary>When set, forces the next AddAsync call's return value (simulates a duplicate hitting
     /// ON CONFLICT DO NOTHING) instead of inferring it from prior calls.</summary>
@@ -36,6 +37,12 @@ public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
 
     public Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<CapturesBucketRow>());
+
+    public Task UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
+    {
+        ContactSummaryUpserts.Add((creatorId, landingPageId, email, capturedAt));
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeAnalyticsCreatorContextProvider : ICreatorContextProvider

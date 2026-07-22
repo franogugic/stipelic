@@ -53,6 +53,7 @@ public sealed class EmailCaptureService : IEmailCaptureService
         if (inserted)
         {
             await _usageService.TryConsumeAsync(creatorId, MaxContactsLimitKey, 1, limit.Value, UsagePeriod.AllTime, ct);
+            await _repository.UpsertContactSummaryAsync(creatorId, landingPageId, capture.Email, capture.CapturedAt, ct);
             await _unitOfWork.SaveChangesAsync(ct);
         }
     }

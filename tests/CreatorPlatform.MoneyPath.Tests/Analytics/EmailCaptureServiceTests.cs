@@ -57,6 +57,11 @@ public class EmailCaptureServiceTests
         Assert.Equal("visitor@example.com", repository.Added[0].Email);
         Assert.Equal(101, usageService.Used[(CreatorId, "max_contacts")]);
         Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+
+        var upsert = Assert.Single(repository.ContactSummaryUpserts);
+        Assert.Equal(CreatorId, upsert.CreatorId);
+        Assert.Equal(LandingPageId, upsert.LandingPageId);
+        Assert.Equal("visitor@example.com", upsert.Email);
     }
 
     [Fact]
@@ -71,6 +76,7 @@ public class EmailCaptureServiceTests
         Assert.Empty(repository.Added);
         Assert.Equal(100, usageService.Used[(CreatorId, "max_contacts")]);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+        Assert.Empty(repository.ContactSummaryUpserts);
     }
 
     [Fact]

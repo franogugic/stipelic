@@ -1,11 +1,19 @@
+using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Marketing.Domain.Unsubscribes;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace CreatorPlatform.Marketing.Infrastructure.Repositories;
 
+/// <summary>Reads exclusively from the materialized <c>marketing.contact_summaries</c> table — never
+/// re-aggregates <c>analytics.email_captures</c> on a page load. Source landing page names and the
+/// unsubscribed flag are resolved in two extra queries bounded to the page being returned (≤ limit + 1
+/// rows), not per-row correlated subqueries.</summary>
 public sealed class ContactsRepository : IContactsRepository
 {
+    private sealed record SummaryRow(string Email, DateTimeOffset FirstCapturedAt, List<int> SourceLandingPageIds);
+
     private readonly CreatorPlatformDbContext _context;
 
     public ContactsRepository(CreatorPlatformDbContext context)
@@ -19,41 +27,59 @@ public sealed class ContactsRepository : IContactsRepository
         var after = afterEmail?.Trim().ToLowerInvariant() ?? string.Empty;
         var fetchLimit = limit + 1;
 
-        // Single query: dedupes captures per email across every landing page the creator owns, counts
-        // distinct sources, and names up to 3 of them via a correlated subquery with its own LIMIT
-        // (string_agg over a bounded inner SELECT, not the full source list). Keyset pagination on
-        // Email (already normalized lowercase at capture time) keeps page 2+ a plain indexable range
-        // scan instead of an OFFSET.
-        return await _context.Database.SqlQuery<ContactRow>($"""
+        // Plain keyset scan on the (CreatorId, Email) unique index — no aggregation over capture history.
+        var summaries = await _context.Database.SqlQuery<SummaryRow>($"""
             SELECT
-                ec."Email" AS "Email",
-                MIN(ec."CapturedAt") AS "FirstCapturedAt",
-                COUNT(DISTINCT ec."LandingPageId")::int AS "SourcesCount",
-                COALESCE((
-                    SELECT string_agg(t."Title", ', ')
-                    FROM (
-                        SELECT DISTINCT lp2."Title"
-                        FROM analytics.email_captures ec2
-                        JOIN landing_pages.landing_pages lp2 ON lp2."Id" = ec2."LandingPageId"
-                        WHERE ec2."Email" = ec."Email" AND lp2."CreatorId" = {creatorId}
-                        ORDER BY lp2."Title"
-                        LIMIT 3
-                    ) t
-                ), '') AS "Sources",
-                EXISTS (
-                    SELECT 1 FROM marketing.unsubscribes u
-                    WHERE u."CreatorId" = {creatorId} AND u."Email" = ec."Email"
-                ) AS "IsUnsubscribed"
-            FROM analytics.email_captures ec
-            JOIN landing_pages.landing_pages lp ON lp."Id" = ec."LandingPageId"
-            WHERE lp."CreatorId" = {creatorId}
-              AND ec."Email" > {after}
-              AND ({searchPrefix}::text IS NULL OR ec."Email" LIKE {searchPrefix}::text || '%')
-            GROUP BY ec."Email"
-            ORDER BY ec."Email"
+                "Email" AS "Email",
+                "FirstCapturedAt" AS "FirstCapturedAt",
+                "SourceLandingPageIds" AS "SourceLandingPageIds"
+            FROM marketing.contact_summaries
+            WHERE "CreatorId" = {creatorId}
+              AND "Email" > {after}
+              AND ({searchPrefix}::text IS NULL OR "Email" LIKE {searchPrefix}::text || '%')
+            ORDER BY "Email"
             LIMIT {fetchLimit}
             """)
             .AsNoTracking()
             .ToListAsync(ct);
+
+        if (summaries.Count == 0)
+            return [];
+
+        // Resolve source landing page titles only for ids that actually appear on this page (bounded by
+        // fetchLimit rows, not the creator's whole history) — one query, not one per contact.
+        var landingPageIds = summaries.SelectMany(s => s.SourceLandingPageIds).Distinct().ToList();
+        var titlesById = await _context.Set<LandingPage>()
+            .AsNoTracking()
+            .Where(lp => landingPageIds.Contains(lp.Id))
+            .Select(lp => new { lp.Id, lp.Title })
+            .ToDictionaryAsync(lp => lp.Id, lp => lp.Title, ct);
+
+        // Same bound: unsubscribed status resolved for just the emails on this page, one query.
+        var emails = summaries.Select(s => s.Email).ToList();
+        var unsubscribedEmails = (await _context.Set<Unsubscribe>()
+            .AsNoTracking()
+            .Where(u => u.CreatorId == creatorId && emails.Contains(u.Email))
+            .Select(u => u.Email)
+            .ToListAsync(ct))
+            .ToHashSet();
+
+        return summaries
+            .Select(s =>
+            {
+                var titles = s.SourceLandingPageIds
+                    .Select(id => titlesById.GetValueOrDefault(id))
+                    .Where(title => title is not null)
+                    .OrderBy(title => title, StringComparer.Ordinal)
+                    .Take(3);
+
+                return new ContactRow(
+                    s.Email,
+                    s.FirstCapturedAt,
+                    s.SourceLandingPageIds.Count,
+                    string.Join(", ", titles),
+                    unsubscribedEmails.Contains(s.Email));
+            })
+            .ToList();
     }
 }
