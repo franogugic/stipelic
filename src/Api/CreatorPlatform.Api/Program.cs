@@ -17,6 +17,8 @@ using CreatorPlatform.Payouts.Infrastructure;
 using CreatorPlatform.Marketing.Infrastructure;
 using CreatorPlatform.Analytics.Infrastructure;
 using CreatorPlatform.Products.Infrastructure;
+using CreatorPlatform.Media.Application.Options;
+using CreatorPlatform.Media.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -47,6 +49,7 @@ builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(Strip
 builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
 builder.Services.Configure<PayoutsOptions>(builder.Configuration.GetSection(PayoutsOptions.SectionName));
 builder.Services.Configure<MarketingOptions>(builder.Configuration.GetSection(MarketingOptions.SectionName));
+builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
@@ -265,6 +268,17 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
             }));
+
+    options.AddPolicy("RequestMediaUpload", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
 });
 
 builder.Services.AddAuthInfrastructure();
@@ -275,6 +289,7 @@ builder.Services.AddEmailInfrastructure(builder.Configuration);
 builder.Services.AddPaymentsInfrastructure();
 builder.Services.AddPayoutsInfrastructure();
 builder.Services.AddMarketingInfrastructure();
+builder.Services.AddMediaInfrastructure();
 builder.Services.AddAnalyticsInfrastructure();
 builder.Services.AddOrdersInfrastructure();
 builder.Services.AddAccessInfrastructure();
