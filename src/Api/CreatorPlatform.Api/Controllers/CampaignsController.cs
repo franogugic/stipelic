@@ -46,6 +46,26 @@ public sealed class CampaignsController : ControllerBase
             preview));
     }
 
+    [HttpGet("audience-preview/recipients")]
+    public async Task<ActionResult<ApiResponse<AudienceRecipientsPageDto>>> GetAudienceRecipients(
+        string slug,
+        [FromQuery] CampaignAudienceType audienceType,
+        [FromQuery] Guid targetPublicId,
+        [FromQuery] string? afterEmail,
+        [FromQuery] int limit,
+        CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var page = await _campaignService.GetAudienceRecipientsAsync(
+            slug, currentUser.Id, audienceType, targetPublicId, afterEmail, limit, ct);
+
+        return Ok(ApiResponse<AudienceRecipientsPageDto>.Success(
+            StatusCodes.Status200OK,
+            "Audience recipients loaded.",
+            page));
+    }
+
     /// <summary>Send history — last 50 sends with progress.</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<CampaignListItemDto>>>> List(string slug, CancellationToken ct)

@@ -10,6 +10,12 @@ public interface ICampaignService
     Task<AudiencePreviewDto> GetAudiencePreviewAsync(
         string slug, int ownerUserId, CampaignAudienceType audienceType, Guid targetPublicId, CancellationToken ct);
 
+    /// <summary>Keyset page of the actual audience emails for a not-yet-sent target — same ownership
+    /// resolution as <see cref="GetAudiencePreviewAsync"/>, paged 10/50-ish like Contacts, never OFFSET.</summary>
+    Task<AudienceRecipientsPageDto> GetAudienceRecipientsAsync(
+        string slug, int ownerUserId, CampaignAudienceType audienceType, Guid targetPublicId,
+        string? afterEmail, int limit, CancellationToken ct);
+
     /// <summary>Last 50 sends for the creator, each with its outbox send progress — resolved with one
     /// aggregate progress query for the whole page, never one per campaign.</summary>
     Task<List<CampaignListItemDto>> ListAsync(string slug, int ownerUserId, CancellationToken ct);

@@ -102,4 +102,102 @@ public class CampaignServiceTests
         Assert.Equal(0, preview.MonthlyLimit);
         Assert.Equal(0, preview.Remaining);
     }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_UnknownCreator_ThrowsNotFound()
+    {
+        var (service, contextProvider, _, _) = BuildService();
+        contextProvider.Context = null;
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => service.GetAudienceRecipientsAsync(Slug, OwnerUserId, CampaignAudienceType.LandingPage, TargetPublicId, null, 10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_TargetNotOwnedByCreator_ThrowsNotFound()
+    {
+        var (service, contextProvider, _, _) = BuildService();
+        contextProvider.LandingPageId = null;
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => service.GetAudienceRecipientsAsync(Slug, OwnerUserId, CampaignAudienceType.LandingPage, TargetPublicId, null, 10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_FirstPage_ReturnsExactlyLimitRowsAndHasMoreTrue()
+    {
+        var (service, _, audienceService, _) = BuildService();
+        audienceService.PageableEmails = ["a@x.test", "b@x.test", "c@x.test", "d@x.test", "e@x.test"];
+
+        var page = await service.GetAudienceRecipientsAsync(
+            Slug, OwnerUserId, CampaignAudienceType.LandingPage, TargetPublicId, null, 2, CancellationToken.None);
+
+        Assert.Equal(["a@x.test", "b@x.test"], page.Emails);
+        Assert.True(page.HasMore);
+    }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_AfterEmail_ContinuesWithoutRepeatingOrSkipping()
+    {
+        var (service, _, audienceService, _) = BuildService();
+        audienceService.PageableEmails = ["a@x.test", "b@x.test", "c@x.test", "d@x.test", "e@x.test"];
+
+        var page = await service.GetAudienceRecipientsAsync(
+            Slug, OwnerUserId, CampaignAudienceType.LandingPage, TargetPublicId, "b@x.test", 2, CancellationToken.None);
+
+        Assert.Equal(["c@x.test", "d@x.test"], page.Emails);
+        Assert.True(page.HasMore);
+    }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_LastPage_HasMoreFalse()
+    {
+        var (service, _, audienceService, _) = BuildService();
+        audienceService.PageableEmails = ["a@x.test", "b@x.test", "c@x.test"];
+
+        var page = await service.GetAudienceRecipientsAsync(
+            Slug, OwnerUserId, CampaignAudienceType.LandingPage, TargetPublicId, "b@x.test", 2, CancellationToken.None);
+
+        Assert.Equal(["c@x.test"], page.Emails);
+        Assert.False(page.HasMore);
+    }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_ZeroOrNegativeLimit_ClampsToDefault()
+    {
+        var (service, _, audienceService, _) = BuildService();
+        audienceService.PageableEmails = ["a@x.test"];
+
+        await service.GetAudienceRecipientsAsync(
+            Slug, OwnerUserId, CampaignAudienceType.LandingPage, TargetPublicId, null, 0, CancellationToken.None);
+
+        Assert.Equal(50, audienceService.GetPageCalls[0].Limit);
+    }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_LimitAboveMax_ClampsToMax()
+    {
+        var (service, _, audienceService, _) = BuildService();
+        audienceService.PageableEmails = ["a@x.test"];
+
+        await service.GetAudienceRecipientsAsync(
+            Slug, OwnerUserId, CampaignAudienceType.LandingPage, TargetPublicId, null, 500, CancellationToken.None);
+
+        Assert.Equal(100, audienceService.GetPageCalls[0].Limit);
+    }
+
+    [Fact]
+    public async Task GetAudienceRecipientsAsync_ProductAudience_ResolvesProductIdNotLandingPageId()
+    {
+        var (service, contextProvider, audienceService, _) = BuildService();
+        contextProvider.ProductId = 77;
+        audienceService.PageableEmails = ["a@x.test"];
+
+        await service.GetAudienceRecipientsAsync(
+            Slug, OwnerUserId, CampaignAudienceType.Product, TargetPublicId, null, 10, CancellationToken.None);
+
+        var call = audienceService.GetPageCalls[0];
+        Assert.Equal(77, call.ProductId);
+        Assert.Null(call.LandingPageId);
+    }
 }

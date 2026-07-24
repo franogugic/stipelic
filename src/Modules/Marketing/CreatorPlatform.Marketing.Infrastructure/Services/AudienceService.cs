@@ -29,6 +29,60 @@ public sealed class AudienceService : IAudienceService
         return await BuildAudienceQuery(audienceType, landingPageId, productId, creatorId).ToListAsync(ct);
     }
 
+    public async Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
+        string? afterEmail, int limit, CancellationToken ct)
+    {
+        var after = afterEmail?.Trim().ToLowerInvariant() ?? string.Empty;
+        var fetchLimit = limit + 1;
+
+        // Raw SQL keyset scan (same pattern as ContactsRepository.SearchAsync) — Npgsql's EF provider does
+        // not translate string comparison after a LINQ Distinct/Union, so this can't be a plain IQueryable
+        // WHERE+OrderBy tacked onto BuildAudienceQuery.
+        var rows = audienceType == CampaignAudienceType.LandingPage
+            ? await _context.Database.SqlQuery<EmailRow>($"""
+                SELECT DISTINCT ec."Email" AS "Email"
+                FROM analytics.email_captures ec
+                WHERE ec."LandingPageId" = {landingPageId}
+                  AND ec."Email" > {after}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM marketing.unsubscribes u
+                      WHERE u."CreatorId" = {creatorId} AND u."Email" = ec."Email"
+                  )
+                ORDER BY ec."Email"
+                LIMIT {fetchLimit}
+                """)
+                .AsNoTracking()
+                .ToListAsync(ct)
+            : await _context.Database.SqlQuery<EmailRow>($"""
+                SELECT "Email" FROM (
+                    SELECT ec."Email" AS "Email"
+                    FROM analytics.email_captures ec
+                    WHERE ec."ProductId" = {productId}
+                    UNION
+                    SELECT ec."Email" AS "Email"
+                    FROM analytics.email_captures ec
+                    JOIN landing_pages.landing_pages lp ON lp."Id" = ec."LandingPageId"
+                    WHERE lp."ProductId" = {productId}
+                ) AS combined
+                WHERE "Email" > {after}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM marketing.unsubscribes u
+                      WHERE u."CreatorId" = {creatorId} AND u."Email" = combined."Email"
+                  )
+                ORDER BY "Email"
+                LIMIT {fetchLimit}
+                """)
+                .AsNoTracking()
+                .ToListAsync(ct);
+
+        var hasMore = rows.Count > limit;
+        var emails = (hasMore ? rows.Take(limit) : rows).Select(r => r.Email).ToList();
+        return (emails, hasMore);
+    }
+
+    private sealed record EmailRow(string Email);
+
     private IQueryable<string> BuildAudienceQuery(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId)
     {

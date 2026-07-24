@@ -43,6 +43,12 @@ public sealed class FakeAudienceService : IAudienceService
     public int Count { get; set; }
     public List<string> Emails { get; set; } = [];
 
+    /// <summary>Source of truth for <see cref="GetAudiencePageAsync"/> — already deduplicated and
+    /// suppression-filtered, exactly as the real query would hand back rows before keyset slicing.</summary>
+    public List<string> PageableEmails { get; set; } = [];
+
+    public List<(CampaignAudienceType AudienceType, int? LandingPageId, int? ProductId, int CreatorId, string? AfterEmail, int Limit)> GetPageCalls { get; } = [];
+
     public Task<int> GetAudienceCountAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
         => Task.FromResult(Count);
@@ -50,6 +56,26 @@ public sealed class FakeAudienceService : IAudienceService
     public Task<List<string>> GetAudienceEmailsAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
         => Task.FromResult(Emails);
+
+    /// <summary>Faithful in-memory keyset reimplementation over <see cref="PageableEmails"/> — sorts
+    /// ordinally, slices strictly after <paramref name="afterEmail"/>, fetches one extra row to compute
+    /// <c>HasMore</c>, exactly like the real query.</summary>
+    public Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
+        string? afterEmail, int limit, CancellationToken ct)
+    {
+        GetPageCalls.Add((audienceType, landingPageId, productId, creatorId, afterEmail, limit));
+
+        var after = afterEmail ?? string.Empty;
+        var ordered = PageableEmails
+            .Where(e => string.CompareOrdinal(e, after) > 0)
+            .OrderBy(e => e, StringComparer.Ordinal)
+            .ToList();
+
+        var hasMore = ordered.Count > limit;
+        var page = ordered.Take(limit).ToList();
+        return Task.FromResult((page, hasMore));
+    }
 }
 
 /// <summary>Faithful in-memory reimplementation of the real limit-check semantics (not just a canned

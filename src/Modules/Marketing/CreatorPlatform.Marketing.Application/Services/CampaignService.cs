@@ -10,6 +10,8 @@ public sealed class CampaignService : ICampaignService
 {
     private const string MonthlyEmailSendsLimitKey = "max_email_sends_per_month";
     private const int ListPageSize = 50;
+    private const int DefaultRecipientsPageLimit = 50;
+    private const int MaxRecipientsPageLimit = 100;
 
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IAudienceService _audienceService;
@@ -48,6 +50,22 @@ public sealed class CampaignService : ICampaignService
         var remaining = monthlyLimit < 0 ? int.MaxValue : Math.Max(0, monthlyLimit - usedThisMonth);
 
         return new AudiencePreviewDto(recipientCount, monthlyLimit, usedThisMonth, remaining);
+    }
+
+    public async Task<AudienceRecipientsPageDto> GetAudienceRecipientsAsync(
+        string slug, int ownerUserId, CampaignAudienceType audienceType, Guid targetPublicId,
+        string? afterEmail, int limit, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var (landingPageId, productId) = await ResolveTargetAsync(context.CreatorId, audienceType, targetPublicId, ct);
+
+        var clampedLimit = limit <= 0 ? DefaultRecipientsPageLimit : Math.Min(limit, MaxRecipientsPageLimit);
+
+        var (emails, hasMore) = await _audienceService.GetAudiencePageAsync(
+            audienceType, landingPageId, productId, context.CreatorId, afterEmail, clampedLimit, ct);
+
+        return new AudienceRecipientsPageDto(emails, hasMore);
     }
 
     public async Task<List<CampaignListItemDto>> ListAsync(string slug, int ownerUserId, CancellationToken ct)

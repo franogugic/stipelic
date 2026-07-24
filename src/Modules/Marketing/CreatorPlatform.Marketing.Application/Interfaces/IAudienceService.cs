@@ -18,4 +18,10 @@ public interface IAudienceService
     /// actually about to send.</summary>
     Task<List<string>> GetAudienceEmailsAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct);
+
+    /// <summary>Keyset page over the same deduplicated, suppression-filtered audience — ordered by email,
+    /// never OFFSET. Fetches one row past <paramref name="limit"/> to detect <c>HasMore</c>.</summary>
+    Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
+        string? afterEmail, int limit, CancellationToken ct);
 }
