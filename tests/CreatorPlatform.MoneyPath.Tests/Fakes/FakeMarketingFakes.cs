@@ -249,6 +249,12 @@ public sealed class FakeCampaignProgressProvider : ICampaignProgressProvider
     public Dictionary<Guid, CampaignProgressDto> Progress { get; set; } = [];
     public Dictionary<Guid, List<FailedRecipientDto>> FailedRecipients { get; set; } = [];
 
+    /// <summary>How many Failed rows RequeueFailedAsync should report as requeued for a given campaign —
+    /// mirrors what the real EF-backed provider would count from the DB.</summary>
+    public Dictionary<Guid, int> FailedCountByCampaign { get; set; } = [];
+
+    public List<(Guid CampaignPublicId, DateTimeOffset NextAttemptAt)> RequeueFailedCalls { get; } = [];
+
     public Task<Dictionary<Guid, CampaignProgressDto>> GetProgressAsync(
         IReadOnlyCollection<Guid> campaignPublicIds, CancellationToken ct)
         => Task.FromResult(campaignPublicIds.ToDictionary(
@@ -257,4 +263,10 @@ public sealed class FakeCampaignProgressProvider : ICampaignProgressProvider
 
     public Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(Guid campaignPublicId, CancellationToken ct)
         => Task.FromResult(FailedRecipients.GetValueOrDefault(campaignPublicId, []));
+
+    public Task<int> RequeueFailedAsync(Guid campaignPublicId, DateTimeOffset nextAttemptAt, CancellationToken ct)
+    {
+        RequeueFailedCalls.Add((campaignPublicId, nextAttemptAt));
+        return Task.FromResult(FailedCountByCampaign.GetValueOrDefault(campaignPublicId, 0));
+    }
 }

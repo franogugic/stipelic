@@ -30,7 +30,8 @@ public class CampaignSendServiceTests
         FakeCreatorUsageService UsageService,
         FakeEmailOutboxService EmailOutboxService,
         FakeMarketingUnitOfWork UnitOfWork,
-        UnsubscribeTokenService TokenService);
+        UnsubscribeTokenService TokenService,
+        FakeCampaignProgressProvider ProgressProvider);
 
     private static Harness BuildHarness(string? supportEmail = "support@acme.test")
     {
@@ -72,7 +73,7 @@ public class CampaignSendServiceTests
 
         return new Harness(
             service, contextProvider, templateRepository, campaignRepository, recipientRepository,
-            audienceService, usageService, emailOutboxService, unitOfWork, tokenService);
+            audienceService, usageService, emailOutboxService, unitOfWork, tokenService, progressProvider);
     }
 
     private static EmailTemplate BuildActiveTemplate(DateTimeOffset now) => EmailTemplate.Create(
@@ -453,6 +454,84 @@ public class CampaignSendServiceTests
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => h.Service.CancelScheduledAsync(Slug, OwnerUserId, Guid.NewGuid(), CancellationToken.None));
+    }
+
+    // --- Task 04.5: manual resend of failed recipients ---
+
+    [Fact]
+    public async Task ResendFailedAsync_NoFailedRecipients_IsNoOpWithZeroCount()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+        var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+        // ProgressProvider.FailedCountByCampaign left empty -> 0 failed for this campaign.
+
+        var result = await h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None);
+
+        Assert.Equal(0, result.RequeuedCount);
+    }
+
+    [Fact]
+    public async Task ResendFailedAsync_HasFailedRecipients_RequeuesOnlyThisCampaignAndReturnsCount()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com", "b@test.com"];
+        var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+
+        var otherCampaignId = Guid.NewGuid();
+        h.ProgressProvider.FailedCountByCampaign[sent.PublicId] = 2;
+        h.ProgressProvider.FailedCountByCampaign[otherCampaignId] = 5; // a different campaign's failures
+
+        var result = await h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None);
+
+        Assert.Equal(2, result.RequeuedCount);
+        var call = Assert.Single(h.ProgressProvider.RequeueFailedCalls);
+        Assert.Equal(sent.PublicId, call.CampaignPublicId); // never the other campaign's id
+    }
+
+    [Fact]
+    public async Task ResendFailedAsync_DoesNotConsumeMonthlyUsageLimit()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+        var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+        h.UsageService.ConsumeCalls.Clear(); // drop the original send's own consumption, isolate the resend call
+        h.ProgressProvider.FailedCountByCampaign[sent.PublicId] = 1;
+
+        await h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None);
+
+        Assert.Empty(h.UsageService.ConsumeCalls);
+    }
+
+    [Fact]
+    public async Task ResendFailedAsync_UnknownCampaign_ThrowsNotFound()
+    {
+        var h = BuildHarness();
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => h.Service.ResendFailedAsync(Slug, OwnerUserId, Guid.NewGuid(), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ResendFailedAsync_CampaignOwnedByAnotherCreator_ThrowsNotFound()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+        var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+
+        // Simulate a different creator's workspace resolving to a different CreatorId.
+        h.ContextProvider.Context = h.ContextProvider.Context! with { CreatorId = 999 };
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None));
     }
 
     private static SendCampaignRequestDto BuildScheduledRequest(Guid templatePublicId, DateTimeOffset scheduledAt) => new()

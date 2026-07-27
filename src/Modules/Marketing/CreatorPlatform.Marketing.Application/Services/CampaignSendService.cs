@@ -226,6 +226,25 @@ public sealed class CampaignSendService : ICampaignSendService
         return await BuildDetailDtoAsync(campaign!, ct);
     }
 
+    public async Task<ResendFailedResultDto> ResendFailedAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var campaign = await _campaignRepository.GetByPublicIdAsync(campaignPublicId, ct);
+        if (campaign is null || campaign.CreatorId != context.CreatorId)
+            throw new NotFoundException("Campaign not found.");
+
+        int requeuedCount = 0;
+
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            requeuedCount = await _progressProvider.RequeueFailedAsync(campaignPublicId, DateTimeOffset.UtcNow, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, ct);
+
+        return new ResendFailedResultDto(requeuedCount);
+    }
+
     /// <summary>Dispatch-only: resolves the audience for real, consumes the usage limit, transitions
     /// Scheduled → Queued, then hands off to the same recipients/outbox tail the immediate-send path
     /// uses. Never called for immediate sends — that path already has its recipientCount and creates the

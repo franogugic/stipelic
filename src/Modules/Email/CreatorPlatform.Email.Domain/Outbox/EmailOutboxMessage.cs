@@ -81,6 +81,21 @@ public sealed class EmailOutboxMessage
         ProcessingExpiresAt = nextAttemptAt;
     }
 
+    /// <summary>Creator-initiated manual retry of a terminally-Failed message (e.g. "Resend failed" on a
+    /// campaign) — resets the retry budget and puts it back in the normal pending queue. Guarded to only
+    /// leave Failed, since requeuing a Sent/Cancelled/Processing message would be nonsensical (or, for
+    /// Processing, could race the worker holding that lease).</summary>
+    public void Requeue(DateTimeOffset nextAttemptAt)
+    {
+        if (Status != EmailOutboxMessageStatus.Failed)
+            return;
+
+        Status = EmailOutboxMessageStatus.Pending;
+        RetryCount = 0;
+        NextAttemptAt = nextAttemptAt;
+        LastError = null;
+    }
+
     public void Cancel()
     {
         if (Status is not EmailOutboxMessageStatus.Pending and

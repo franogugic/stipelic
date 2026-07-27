@@ -15,4 +15,10 @@ public interface ICampaignProgressProvider
     /// <summary>Every terminally-Failed recipient for one campaign, with its last error — one query, no
     /// pagination (bounded by the campaign's own recipient count).</summary>
     Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(Guid campaignPublicId, CancellationToken ct);
+
+    /// <summary>Requeues every currently-Failed outbox message for one campaign back to Pending (tracked
+    /// query — caller must still call SaveChangesAsync). Returns how many were requeued. Deliberately does
+    /// NOT touch the monthly send usage counter — see <see cref="ICampaignSendService.ResendFailedAsync"/>
+    /// for why.</summary>
+    Task<int> RequeueFailedAsync(Guid campaignPublicId, DateTimeOffset nextAttemptAt, CancellationToken ct);
 }

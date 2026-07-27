@@ -69,4 +69,23 @@ public sealed class CampaignProgressProvider : ICampaignProgressProvider
             .Select(m => new FailedRecipientDto(m.ToEmail, m.LastError))
             .ToListAsync(ct);
     }
+
+    public async Task<int> RequeueFailedAsync(Guid campaignPublicId, DateTimeOffset nextAttemptAt, CancellationToken ct)
+    {
+        var prefix = campaignPublicId + ":%";
+
+        // Tracked (no AsNoTracking) — each row's Requeue() call must be persisted by the caller's
+        // SaveChangesAsync. The CorrelationKey prefix match keeps this scoped to exactly this campaign's
+        // own messages, never touching a Failed row from a different send.
+        var messages = await _context.Set<EmailOutboxMessage>()
+            .Where(m => m.Purpose == EmailOutboxMessagePurpose.CampaignBroadcast &&
+                        m.Status == EmailOutboxMessageStatus.Failed &&
+                        EF.Functions.Like(m.CorrelationKey, prefix))
+            .ToListAsync(ct);
+
+        foreach (var message in messages)
+            message.Requeue(nextAttemptAt);
+
+        return messages.Count;
+    }
 }

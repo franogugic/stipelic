@@ -75,4 +75,49 @@ public class EmailOutboxMessageTests
         Assert.Equal(EmailOutboxMessageStatus.Failed, message.Status);
         Assert.Equal(2, message.RetryCount);
     }
+
+    [Fact]
+    public void Requeue_FromFailed_ResetsToRetryablePending()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var message = BuildProcessingMessage(now);
+        message.MarkAsFailed("boom 1", now.AddMinutes(1), maxRetryCount: 1); // one strike -> already Failed
+
+        var nextAttemptAt = now.AddMinutes(30);
+        message.Requeue(nextAttemptAt);
+
+        Assert.Equal(EmailOutboxMessageStatus.Pending, message.Status);
+        Assert.Equal(0, message.RetryCount);
+        Assert.Equal(nextAttemptAt, message.NextAttemptAt);
+        Assert.Null(message.LastError);
+    }
+
+    [Theory]
+    [InlineData(EmailOutboxMessageStatus.Pending)]
+    [InlineData(EmailOutboxMessageStatus.Processing)]
+    [InlineData(EmailOutboxMessageStatus.Sent)]
+    [InlineData(EmailOutboxMessageStatus.Cancelled)]
+    public void Requeue_FromAnyNonFailedStatus_IsNoOp(EmailOutboxMessageStatus initialStatus)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.CampaignBroadcast, $"{Guid.NewGuid()}:1", "a@test.com", "Subject", "<p/>", "Body", now);
+
+        switch (initialStatus)
+        {
+            case EmailOutboxMessageStatus.Processing:
+                message.MarkAsProcessing(now.AddMinutes(5));
+                break;
+            case EmailOutboxMessageStatus.Sent:
+                message.MarkAsSent(now);
+                break;
+            case EmailOutboxMessageStatus.Cancelled:
+                message.Cancel();
+                break;
+        }
+
+        message.Requeue(now.AddMinutes(30));
+
+        Assert.Equal(initialStatus, message.Status);
+    }
 }
