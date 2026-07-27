@@ -124,6 +124,22 @@ public sealed class CampaignsController : ControllerBase
             campaign));
     }
 
+    /// <summary>Cancels a still-Scheduled send before it dispatches — never touches an already-Queued/
+    /// Failed/Cancelled campaign (409 if attempted).</summary>
+    [HttpDelete("{campaignPublicId:guid}/schedule")]
+    public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> CancelSchedule(
+        string slug, Guid campaignPublicId, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var campaign = await _campaignSendService.CancelScheduledAsync(slug, currentUser.Id, campaignPublicId, ct);
+
+        return Ok(ApiResponse<CampaignDetailDto>.Success(
+            StatusCodes.Status200OK,
+            "Scheduled send cancelled.",
+            campaign));
+    }
+
     /// <summary>Returns the authenticated user or throws 401.</summary>
     private CurrentUserDto GetAuthenticatedUser()
     {

@@ -19,35 +19,47 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
 
     public async Task<MarketingCreatorContext?> GetBySlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
     {
-        return await _context.Set<Creator>()
-            .AsNoTracking()
-            .Where(c => c.Slug == slug && c.OwnerUserId == ownerUserId && c.Status != CreatorStatus.Disabled)
-            .Select(c => new MarketingCreatorContext(
-                c.Id,
-                c.PublicId,
-                c.Name,
-                c.Slug,
-                _context.Set<CreatorSettings>()
-                    .Where(s => s.CreatorId == c.Id)
-                    .Select(s => s.SupportEmail)
-                    .FirstOrDefault(),
-                _context.Set<CreatorSettings>()
-                    .Where(s => s.CreatorId == c.Id)
-                    .Select(s => s.BrandName)
-                    .FirstOrDefault() ?? c.Name,
-                _context.Set<CreatorSettings>()
-                    .Where(s => s.CreatorId == c.Id)
-                    .Select(s => s.LogoUrl)
-                    .FirstOrDefault(),
-                _context.Set<CreatorSettings>()
-                    .Where(s => s.CreatorId == c.Id)
-                    .Select(s => s.PrimaryColor)
-                    .FirstOrDefault() ?? "#111111",
-                _context.Set<User>()
-                    .Where(u => u.Id == c.OwnerUserId)
-                    .Select(u => u.Email)
-                    .First()))
+        return await ProjectContext(_context.Set<Creator>()
+                .AsNoTracking()
+                .Where(c => c.Slug == slug && c.OwnerUserId == ownerUserId && c.Status != CreatorStatus.Disabled))
             .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<MarketingCreatorContext?> GetByCreatorIdAsync(int creatorId, CancellationToken ct)
+    {
+        return await ProjectContext(_context.Set<Creator>()
+                .AsNoTracking()
+                .Where(c => c.Id == creatorId && c.Status != CreatorStatus.Disabled))
+            .FirstOrDefaultAsync(ct);
+    }
+
+    private IQueryable<MarketingCreatorContext> ProjectContext(IQueryable<Creator> creators)
+    {
+        return creators.Select(c => new MarketingCreatorContext(
+            c.Id,
+            c.PublicId,
+            c.Name,
+            c.Slug,
+            _context.Set<CreatorSettings>()
+                .Where(s => s.CreatorId == c.Id)
+                .Select(s => s.SupportEmail)
+                .FirstOrDefault(),
+            _context.Set<CreatorSettings>()
+                .Where(s => s.CreatorId == c.Id)
+                .Select(s => s.BrandName)
+                .FirstOrDefault() ?? c.Name,
+            _context.Set<CreatorSettings>()
+                .Where(s => s.CreatorId == c.Id)
+                .Select(s => s.LogoUrl)
+                .FirstOrDefault(),
+            _context.Set<CreatorSettings>()
+                .Where(s => s.CreatorId == c.Id)
+                .Select(s => s.PrimaryColor)
+                .FirstOrDefault() ?? "#111111",
+            _context.Set<User>()
+                .Where(u => u.Id == c.OwnerUserId)
+                .Select(u => u.Email)
+                .First()));
     }
 
     public async Task<Dictionary<int, Guid>> GetLandingPagePublicIdsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)

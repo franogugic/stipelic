@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\Modules\Creators\CreatorPlatform.Creators.Infrastructure\CreatorPlatform.Creators.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Products\CreatorPlatform.Products.Infrastructure\CreatorPlatform.Products.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\LandingPages\CreatorPlatform.LandingPages.Infrastructure\CreatorPlatform.LandingPages.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Analytics\CreatorPlatform.Analytics.Infrastructure\CreatorPlatform.Analytics.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Payments\CreatorPlatform.Payments.Infrastructure\CreatorPlatform.Payments.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Orders\CreatorPlatform.Orders.Infrastructure\CreatorPlatform.Orders.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Access\CreatorPlatform.Access.Infrastructure\CreatorPlatform.Access.Infrastructure.csproj" />

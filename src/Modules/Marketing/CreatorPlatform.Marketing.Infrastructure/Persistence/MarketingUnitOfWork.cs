@@ -36,4 +36,9 @@ public sealed class MarketingUnitOfWork : IMarketingUnitOfWork
         await _context.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({CampaignLockNamespace}, {creatorId})", ct);
     }
+
+    public async Task ReloadAsync(object entity, CancellationToken ct)
+    {
+        await _context.Entry(entity).ReloadAsync(ct);
+    }
 }

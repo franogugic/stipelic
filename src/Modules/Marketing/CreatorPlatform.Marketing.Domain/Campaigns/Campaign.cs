@@ -24,8 +24,11 @@ public sealed class Campaign
         CampaignAudienceType audienceType,
         int? landingPageId,
         int? productId,
+        CampaignStatus status,
         int recipientCount,
-        DateTimeOffset queuedAt)
+        DateTimeOffset? queuedAt,
+        DateTimeOffset? scheduledAt,
+        DateTimeOffset createdAt)
     {
         PublicId = publicId;
         CreatorId = creatorId;
@@ -37,11 +40,12 @@ public sealed class Campaign
         AudienceType = audienceType;
         LandingPageId = landingPageId;
         ProductId = productId;
-        Status = CampaignStatus.Queued;
+        Status = status;
         RecipientCount = recipientCount;
         QueuedAt = queuedAt;
-        CreatedAt = queuedAt;
-        UpdatedAt = queuedAt;
+        ScheduledAt = scheduledAt;
+        CreatedAt = createdAt;
+        UpdatedAt = createdAt;
     }
 
     /// <summary>Snapshots <paramref name="subject"/>/<paramref name="bodyText"/>/CTA (the template's
@@ -79,8 +83,90 @@ public sealed class Campaign
             audienceType,
             landingPageId,
             productId,
+            CampaignStatus.Queued,
             recipientCount,
-            queuedAt);
+            queuedAt,
+            scheduledAt: null,
+            createdAt: queuedAt);
+    }
+
+    /// <summary>Snapshots the template's current content (same principle as <see cref="CreateQueuedFromTemplate"/>)
+    /// but does NOT touch audience/limit/recipients/outbox — the real audience is resolved again at
+    /// dispatch time (<see cref="MarkQueuedFromSchedule"/>), never frozen here, so an unsubscribe between
+    /// scheduling and dispatch is always honored. <paramref name="recipientCount"/> is unknown until then,
+    /// so it's fixed at 0 and deliberately NOT validated positive here (contrast
+    /// <see cref="CreateQueuedFromTemplate"/> — that guard moves to <see cref="MarkQueuedFromSchedule"/>).</summary>
+    public static Campaign CreateScheduled(
+        int creatorId,
+        int templateId,
+        string subject,
+        string bodyText,
+        string? ctaLabel,
+        string? ctaUrl,
+        CampaignAudienceType audienceType,
+        int? landingPageId,
+        int? productId,
+        DateTimeOffset scheduledAt,
+        DateTimeOffset createdAt)
+    {
+        MailContentRules.Validate(subject, bodyText, ctaLabel, ctaUrl);
+        ValidateAudience(audienceType, landingPageId, productId);
+
+        return new Campaign(
+            Guid.NewGuid(),
+            creatorId,
+            templateId,
+            subject.Trim(),
+            bodyText,
+            ctaLabel?.Trim(),
+            ctaUrl?.Trim(),
+            audienceType,
+            landingPageId,
+            productId,
+            CampaignStatus.Scheduled,
+            recipientCount: 0,
+            queuedAt: null,
+            scheduledAt,
+            createdAt);
+    }
+
+    /// <summary>Dispatch-time transition once the audience has actually been resolved and the usage limit
+    /// consumed — guard mirrors <see cref="CreateQueuedFromTemplate"/>'s positive-recipient-count check,
+    /// moved here since it wasn't knowable at scheduling time.</summary>
+    public void MarkQueuedFromSchedule(int recipientCount, DateTimeOffset queuedAt)
+    {
+        if (Status != CampaignStatus.Scheduled)
+            throw new InvalidOperationException($"Cannot mark a {Status} campaign as queued from schedule — only Scheduled campaigns can be.");
+
+        if (recipientCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(recipientCount), recipientCount, "Recipient count must be positive.");
+
+        Status = CampaignStatus.Queued;
+        RecipientCount = recipientCount;
+        QueuedAt = queuedAt;
+        UpdatedAt = queuedAt;
+    }
+
+    /// <summary>Dispatch of a scheduled send failed (no recipients, limit reached, etc.) — same
+    /// Note-on-failure pattern as <see cref="Payouts.Payout.MarkFailed"/>.</summary>
+    public void MarkFailed(string? note, DateTimeOffset updatedAt)
+    {
+        if (Status != CampaignStatus.Scheduled)
+            throw new InvalidOperationException($"Cannot mark a {Status} campaign as failed — only Scheduled campaigns can be.");
+
+        Status = CampaignStatus.Failed;
+        Note = note;
+        UpdatedAt = updatedAt;
+    }
+
+    /// <summary>Creator-initiated cancellation of their own still-Scheduled send, before it dispatches.</summary>
+    public void Cancel(DateTimeOffset cancelledAt)
+    {
+        if (Status != CampaignStatus.Scheduled)
+            throw new InvalidOperationException($"Cannot cancel a {Status} campaign — only Scheduled campaigns can be.");
+
+        Status = CampaignStatus.Cancelled;
+        UpdatedAt = cancelledAt;
     }
 
     private static void ValidateAudience(CampaignAudienceType audienceType, int? landingPageId, int? productId)
@@ -128,6 +214,11 @@ public sealed class Campaign
     public int RecipientCount { get; private set; }
 
     public DateTimeOffset? QueuedAt { get; private set; }
+
+    public DateTimeOffset? ScheduledAt { get; private set; }
+
+    /// <summary>Failure reason, set only by <see cref="MarkFailed"/> — null for every other status.</summary>
+    public string? Note { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

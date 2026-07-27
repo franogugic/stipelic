@@ -64,6 +64,11 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
 
         builder.Property(c => c.QueuedAt);
 
+        builder.Property(c => c.ScheduledAt);
+
+        builder.Property(c => c.Note)
+            .HasMaxLength(500);
+
         builder.Property(c => c.CreatedAt)
             .IsRequired();
 
@@ -71,6 +76,9 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
             .IsRequired();
 
         builder.HasIndex(c => new { c.CreatorId, c.CreatedAt });
+
+        // Backs the scheduled-dispatch worker's poll (WHERE Status = 'Scheduled' AND ScheduledAt <= now()).
+        builder.HasIndex(c => new { c.Status, c.ScheduledAt });
 
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_campaigns_Audience_Matches_Fk",

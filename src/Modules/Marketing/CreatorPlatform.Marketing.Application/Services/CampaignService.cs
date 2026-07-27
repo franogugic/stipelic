@@ -170,6 +170,8 @@ public sealed class CampaignService : ICampaignService
             targetPublicId,
             campaign.RecipientCount,
             campaign.QueuedAt,
+            campaign.ScheduledAt,
+            campaign.Note,
             campaign.CreatedAt,
             campaignProgress.SentCount,
             campaignProgress.FailedCount);
@@ -188,6 +190,8 @@ public sealed class CampaignService : ICampaignService
             campaign.Status.ToString(),
             campaign.RecipientCount,
             campaign.QueuedAt,
+            campaign.ScheduledAt,
+            campaign.Note,
             campaign.CreatedAt,
             campaign.UpdatedAt,
             progress.SentCount,

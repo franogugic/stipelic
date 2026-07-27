@@ -18,6 +18,9 @@ public sealed class FakeMarketingCreatorContextProvider : ICreatorContextProvide
     public Task<MarketingCreatorContext?> GetBySlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(Context);
 
+    public Task<MarketingCreatorContext?> GetByCreatorIdAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult(Context is not null && Context.CreatorId == creatorId ? Context : null);
+
     public Task<int?> ResolveLandingPageIdAsync(int creatorId, Guid landingPagePublicId, CancellationToken ct)
         => Task.FromResult(LandingPageId);
 
@@ -49,13 +52,18 @@ public sealed class FakeAudienceService : IAudienceService
 
     public List<(CampaignAudienceType AudienceType, int? LandingPageId, int? ProductId, int CreatorId, string? AfterEmail, int Limit)> GetPageCalls { get; } = [];
 
+    public int GetAudienceEmailsCallCount { get; private set; }
+
     public Task<int> GetAudienceCountAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
         => Task.FromResult(Count);
 
     public Task<List<string>> GetAudienceEmailsAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
-        => Task.FromResult(Emails);
+    {
+        GetAudienceEmailsCallCount++;
+        return Task.FromResult(Emails);
+    }
 
     /// <summary>Faithful in-memory keyset reimplementation over <see cref="PageableEmails"/> — sorts
     /// ordinally, slices strictly after <paramref name="afterEmail"/>, fetches one extra row to compute
@@ -134,12 +142,29 @@ public sealed class FakeCampaignRepository : ICampaignRepository
     public Task<Campaign?> GetByPublicIdAsync(Guid publicId, CancellationToken ct)
         => Task.FromResult(Campaigns.FirstOrDefault(c => c.PublicId == publicId));
 
+    /// <summary>In-memory fakes never distinguish tracked vs untracked reads — mutating the returned
+    /// reference always mutates the same object held in <see cref="Campaigns"/>, same as a real
+    /// tracked EF query would after SaveChanges.</summary>
+    public Task<Campaign?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
+        => Task.FromResult(Campaigns.FirstOrDefault(c => c.PublicId == publicId));
+
     public Task<List<Campaign>> GetRecentByCreatorIdAsync(int creatorId, int take, CancellationToken ct)
         => Task.FromResult(Campaigns
             .Where(c => c.CreatorId == creatorId)
             .OrderByDescending(c => c.CreatedAt)
             .Take(take)
             .ToList());
+
+    public Task<List<Guid>> GetDueScheduledPublicIdsAsync(int limit, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return Task.FromResult(Campaigns
+            .Where(c => c.Status == CampaignStatus.Scheduled && c.ScheduledAt <= now)
+            .OrderBy(c => c.ScheduledAt)
+            .Take(limit)
+            .Select(c => c.PublicId)
+            .ToList());
+    }
 }
 
 public sealed class FakeEmailTemplateRepository : IEmailTemplateRepository
@@ -213,6 +238,10 @@ public sealed class FakeMarketingUnitOfWork : IMarketingUnitOfWork
         LockedCreatorId = creatorId;
         return Task.CompletedTask;
     }
+
+    /// <summary>No-op — the in-memory fake repositories always hand back the live, shared object
+    /// reference, so there's never a stale copy to refresh (unlike a real EF identity-mapped context).</summary>
+    public Task ReloadAsync(object entity, CancellationToken ct) => Task.CompletedTask;
 }
 
 public sealed class FakeCampaignProgressProvider : ICampaignProgressProvider

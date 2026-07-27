@@ -12,4 +12,7 @@ public sealed class MarketingOptions
     /// <summary>Base URL of this API — used to build the per-recipient unsubscribe link embedded in
     /// campaign emails (<c>{ApiBaseUrl}/api/public/unsubscribe/{token}</c>).</summary>
     public string ApiBaseUrl { get; init; } = string.Empty;
+
+    /// <summary>How often <c>ScheduledCampaignDispatchWorker</c> polls for due Scheduled campaigns.</summary>
+    public int ScheduledCampaignPollIntervalSeconds { get; init; } = 30;
 }

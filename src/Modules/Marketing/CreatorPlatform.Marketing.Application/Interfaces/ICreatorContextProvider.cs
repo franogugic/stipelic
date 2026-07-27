@@ -15,6 +15,11 @@ public interface ICreatorContextProvider
 {
     Task<MarketingCreatorContext?> GetBySlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct);
 
+    /// <summary>Same context, resolved by internal creator id with no ownership check — for the
+    /// background dispatch worker, which already has a trusted <c>CreatorId</c> off the Scheduled
+    /// campaign row rather than a slug + HTTP caller.</summary>
+    Task<MarketingCreatorContext?> GetByCreatorIdAsync(int creatorId, CancellationToken ct);
+
     /// <summary>Resolves a landing page's internal id, verifying it belongs to this creator. Null if not
     /// found or not owned — deliberately not distinguishing the two, to avoid leaking existence across
     /// creators (same principle as every other ownership check in this codebase).</summary>

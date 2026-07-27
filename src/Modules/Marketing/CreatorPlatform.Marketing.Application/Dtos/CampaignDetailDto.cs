@@ -11,6 +11,8 @@ public sealed record CampaignDetailDto(
     string Status,
     int RecipientCount,
     DateTimeOffset? QueuedAt,
+    DateTimeOffset? ScheduledAt,
+    string? Note,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     int SentCount,

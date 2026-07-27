@@ -8,6 +8,8 @@ public sealed record CampaignListItemDto(
     Guid TargetPublicId,
     int RecipientCount,
     DateTimeOffset? QueuedAt,
+    DateTimeOffset? ScheduledAt,
+    string? Note,
     DateTimeOffset CreatedAt,
     int SentCount,
     int FailedCount);

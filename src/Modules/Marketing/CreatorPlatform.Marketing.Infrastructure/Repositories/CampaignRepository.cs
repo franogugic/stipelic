@@ -26,6 +26,12 @@ public sealed class CampaignRepository : ICampaignRepository
             .FirstOrDefaultAsync(c => c.PublicId == publicId, ct);
     }
 
+    public async Task<Campaign?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
+    {
+        return await _context.Set<Campaign>()
+            .FirstOrDefaultAsync(c => c.PublicId == publicId, ct);
+    }
+
     public async Task<List<Campaign>> GetRecentByCreatorIdAsync(int creatorId, int take, CancellationToken ct)
     {
         return await _context.Set<Campaign>()
@@ -33,6 +39,18 @@ public sealed class CampaignRepository : ICampaignRepository
             .Where(c => c.CreatorId == creatorId)
             .OrderByDescending(c => c.CreatedAt)
             .Take(take)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<Guid>> GetDueScheduledPublicIdsAsync(int limit, CancellationToken ct)
+    {
+        return await _context.Database.SqlQuery<Guid>($"""
+            SELECT "PublicId" AS "Value"
+            FROM marketing.campaigns
+            WHERE "Status" = 'Scheduled' AND "ScheduledAt" <= now()
+            ORDER BY "ScheduledAt"
+            LIMIT {limit}
+            """)
             .ToListAsync(ct);
     }
 }
