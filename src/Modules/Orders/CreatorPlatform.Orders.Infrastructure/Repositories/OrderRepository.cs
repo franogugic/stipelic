@@ -51,27 +51,50 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(o => o.StripePaymentIntentId == stripePaymentIntentId, ct);
     }
 
-    public async Task<List<OrderDto>> GetByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    public async Task<List<OrderDto>> GetByCreatorSlugAsync(
+        string creatorSlug,
+        int ownerUserId,
+        DateTimeOffset? afterCreatedAt,
+        Guid? afterId,
+        int limit,
+        CancellationToken ct)
     {
-        return await (
+        var query =
             from o in _context.Set<Order>().AsNoTracking()
             join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
             join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
             where c.Slug == creatorSlug && c.OwnerUserId == ownerUserId
-            orderby o.CreatedAt descending
-            select new OrderDto(
-                o.PublicId,
-                o.Email,
-                o.Name,
-                p.Name,
-                o.AmountCents,
-                o.Currency.ToString(),
-                o.Status.ToString(),
-                o.CreatedAt,
-                o.PaidAt,
-                o.PlatformFeeCents,
-                o.AmountCents - o.PlatformFeeCents)
-        ).ToListAsync(ct);
+            select new { o, ProductName = p.Name };
+
+        if (afterCreatedAt.HasValue && afterId.HasValue)
+        {
+            var cursorCreatedAt = afterCreatedAt.Value;
+            var cursorId = afterId.Value;
+
+            // Mirrors OrderKeysetCursor.IsBeforeCursor (see its tests) — inlined because EF Core
+            // can't translate a call to an extracted predicate into SQL.
+            query = query.Where(x =>
+                x.o.CreatedAt < cursorCreatedAt ||
+                (x.o.CreatedAt == cursorCreatedAt && x.o.PublicId.CompareTo(cursorId) < 0));
+        }
+
+        return await query
+            .OrderByDescending(x => x.o.CreatedAt)
+            .ThenByDescending(x => x.o.PublicId)
+            .Take(limit)
+            .Select(x => new OrderDto(
+                x.o.PublicId,
+                x.o.Email,
+                x.o.Name,
+                x.ProductName,
+                x.o.AmountCents,
+                x.o.Currency.ToString(),
+                x.o.Status.ToString(),
+                x.o.CreatedAt,
+                x.o.PaidAt,
+                x.o.PlatformFeeCents,
+                x.o.AmountCents - x.o.PlatformFeeCents))
+            .ToListAsync(ct);
     }
 
     public async Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)

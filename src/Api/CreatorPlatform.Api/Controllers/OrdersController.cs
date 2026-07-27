@@ -23,16 +23,19 @@ public sealed class OrdersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<List<OrderDto>>>> List(
+    public async Task<ActionResult<ApiResponse<OrdersPageDto>>> List(
         string slug,
+        [FromQuery] DateTimeOffset? afterCreatedAt,
+        [FromQuery] Guid? afterId,
+        [FromQuery] int limit,
         CancellationToken ct)
     {
         var user = _currentUserContext.User
             ?? throw new UnauthorizedException("Authentication is required.");
 
-        var orders = await _orderService.ListAsync(slug, user.Id, ct);
+        var orders = await _orderService.ListAsync(slug, user.Id, afterCreatedAt, afterId, limit, ct);
 
-        return Ok(ApiResponse<List<OrderDto>>.Success(
+        return Ok(ApiResponse<OrdersPageDto>.Success(
             StatusCodes.Status200OK,
             "Orders loaded.",
             orders));
