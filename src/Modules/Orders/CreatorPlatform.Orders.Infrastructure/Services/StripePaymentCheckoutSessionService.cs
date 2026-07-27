@@ -27,7 +27,8 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
         IReadOnlyDictionary<string, string> metadata,
         CancellationToken ct,
         int? applicationFeeAmountCents = null,
-        string? destinationAccountId = null)
+        string? destinationAccountId = null,
+        string? thumbnailUrl = null)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey))
             throw new BadRequestException("Stripe secret key is not configured.");
@@ -44,6 +45,17 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
             {
                 Destination = destinationAccountId
             };
+        }
+
+        var productData = new SessionLineItemPriceDataProductDataOptions
+        {
+            Name = productName
+        };
+
+        // Stripe rejects an empty/null entry inside Images — only attach the list when there's a real URL.
+        if (!string.IsNullOrWhiteSpace(thumbnailUrl))
+        {
+            productData.Images = [thumbnailUrl];
         }
 
         var options = new SessionCreateOptions
@@ -63,10 +75,7 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
                     {
                         Currency = currency.ToLowerInvariant(),
                         UnitAmount = priceCents,
-                        ProductData = new SessionLineItemPriceDataProductDataOptions
-                        {
-                            Name = productName
-                        }
+                        ProductData = productData
                     }
                 }
             ]

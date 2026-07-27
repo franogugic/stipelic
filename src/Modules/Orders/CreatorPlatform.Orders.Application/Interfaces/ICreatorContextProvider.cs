@@ -8,6 +8,7 @@ public sealed record LandingPageProductInfo(
     int ProductId,
     int LandingPageId,
     string ProductName,
+    string? ThumbnailUrl,
     int PriceCents,
     Currency Currency,
     CreatorStatus CreatorStatus,

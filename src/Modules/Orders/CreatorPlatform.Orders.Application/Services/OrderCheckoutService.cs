@@ -95,7 +95,8 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
                 metadata,
                 ct,
                 applicationFeeAmountCents: platformFeeCents,
-                destinationAccountId: productInfo.StripeConnectAccountId);
+                destinationAccountId: productInfo.StripeConnectAccountId,
+                thumbnailUrl: productInfo.ThumbnailUrl);
         }
         else
         {
@@ -108,7 +109,8 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
                 cancelUrl,
                 Guid.NewGuid().ToString(),
                 metadata,
-                ct);
+                ct,
+                thumbnailUrl: productInfo.ThumbnailUrl);
         }
 
         var order = Order.Create(

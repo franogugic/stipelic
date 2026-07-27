@@ -23,11 +23,13 @@ public class OrderCheckoutServiceTests
         bool stripeConnectPayoutsEnabled = true,
         bool hasPayoutProfile = true,
         int priceCents = 1000,
-        int? platformFeeBasisPoints = 500) => new(
+        int? platformFeeBasisPoints = 500,
+        string? thumbnailUrl = null) => new(
         CreatorId: 1,
         ProductId: 2,
         LandingPageId: 3,
         ProductName: "Course",
+        ThumbnailUrl: thumbnailUrl,
         PriceCents: priceCents,
         Currency: Currency.Eur,
         CreatorStatus: creatorStatus,
@@ -150,5 +152,27 @@ public class OrderCheckoutServiceTests
 
         await Assert.ThrowsAsync<BadRequestException>(
             () => service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task CreateCheckoutAsync_WithThumbnail_PassesThumbnailUrlToSession()
+    {
+        var productInfo = BuildProductInfo(thumbnailUrl: "https://cdn.example.com/thumb.jpg");
+        var (service, _, checkoutSessionService, _) = BuildService(productInfo);
+
+        await service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None);
+
+        Assert.Equal("https://cdn.example.com/thumb.jpg", checkoutSessionService.LastThumbnailUrl);
+    }
+
+    [Fact]
+    public async Task CreateCheckoutAsync_WithoutThumbnail_PassesNullThumbnailUrlToSession()
+    {
+        var productInfo = BuildProductInfo(thumbnailUrl: null);
+        var (service, _, checkoutSessionService, _) = BuildService(productInfo);
+
+        await service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None);
+
+        Assert.Null(checkoutSessionService.LastThumbnailUrl);
     }
 }
