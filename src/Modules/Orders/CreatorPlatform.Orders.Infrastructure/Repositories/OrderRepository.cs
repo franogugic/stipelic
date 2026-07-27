@@ -173,11 +173,11 @@ public sealed class OrderRepository : IOrderRepository
 
         var productCount = await _context.Set<Product>()
             .AsNoTracking()
-            .CountAsync(p => p.CreatorId == creator.Id, ct);
+            .CountAsync(p => p.CreatorId == creator.Id && p.Status != ProductStatus.Archived, ct);
 
         var landingPageCount = await _context.Set<LandingPage>()
             .AsNoTracking()
-            .CountAsync(lp => lp.CreatorId == creator.Id, ct);
+            .CountAsync(lp => lp.CreatorId == creator.Id && lp.Status != LandingPageStatus.Archived, ct);
 
         var recentOrders = await (
             from o in _context.Set<Order>().AsNoTracking()
