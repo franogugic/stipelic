@@ -1,6 +1,8 @@
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Payments.Application.Dtos;
+using CreatorPlatform.Payments.Application.Interfaces;
+using CreatorPlatform.Payments.Domain;
 using Microsoft.Extensions.Logging;
 
 namespace CreatorPlatform.Creators.Application.Services;
@@ -10,6 +12,7 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
     private readonly ICreatorRepository _creatorRepository;
     private readonly ICreatorSubscriptionRepository _creatorSubscriptionRepository;
     private readonly ICreatorPlanRepository _creatorPlanRepository;
+    private readonly IWebhookFailureRepository _webhookFailureRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly ILogger<CreatorWebhookService> _logger;
 
@@ -17,12 +20,14 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         ICreatorRepository creatorRepository,
         ICreatorSubscriptionRepository creatorSubscriptionRepository,
         ICreatorPlanRepository creatorPlanRepository,
+        IWebhookFailureRepository webhookFailureRepository,
         ICreatorsUnitOfWork unitOfWork,
         ILogger<CreatorWebhookService> logger)
     {
         _creatorRepository = creatorRepository;
         _creatorSubscriptionRepository = creatorSubscriptionRepository;
         _creatorPlanRepository = creatorPlanRepository;
+        _webhookFailureRepository = webhookFailureRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
@@ -175,6 +180,23 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                             _logger.LogWarning(
                                 "Plan not found for StripePriceId: {StripePriceId}. Plan not updated.",
                                 data.StripePriceId);
+
+                            // Silently leaving this as a log line means the plan silently stops
+                            // tracking Stripe's billing state with no way to notice or reprocess it
+                            // later — record it the same way any other webhook failure is recorded,
+                            // even though the outer handler never threw.
+                            var failure = WebhookFailure.Create(
+                                provider: "stripe",
+                                eventId: data.EventId,
+                                eventType: "customer.subscription.updated",
+                                payload: $"StripeSubscriptionId={data.StripeSubscriptionId}, " +
+                                    $"StripePriceId={data.StripePriceId}, " +
+                                    $"CurrentPlanCode={subscription.Plan.Code}",
+                                errorMessage: $"No creator plan found for StripePriceId '{data.StripePriceId}'. " +
+                                    "Subscription plan was left unchanged.",
+                                occurredAt: now);
+
+                            await _webhookFailureRepository.AddAsync(failure, ct);
                         }
                     }
 

@@ -125,6 +125,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
             EventType = stripeEvent.Type,
             SubscriptionChanged = new SubscriptionChangedData
             {
+                EventId = stripeEvent.Id,
                 StripeSubscriptionId = subscription.Id,
                 StripeCustomerId = subscription.CustomerId,
                 Status = subscription.Status,

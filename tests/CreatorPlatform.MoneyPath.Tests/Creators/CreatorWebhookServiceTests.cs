@@ -13,10 +13,26 @@ public class CreatorWebhookServiceTests
 
     private static CreatorWebhookService BuildService(FakeCreatorRepository creatorRepository, FakeCreatorsUnitOfWork unitOfWork)
     {
-        return new CreatorWebhookService(
+        return BuildService(
             creatorRepository,
             new FakeCreatorSubscriptionRepository(),
             new FakeCreatorPlanRepository(),
+            new FakeWebhookFailureRepository(),
+            unitOfWork);
+    }
+
+    private static CreatorWebhookService BuildService(
+        FakeCreatorRepository creatorRepository,
+        FakeCreatorSubscriptionRepository subscriptionRepository,
+        FakeCreatorPlanRepository planRepository,
+        FakeWebhookFailureRepository webhookFailureRepository,
+        FakeCreatorsUnitOfWork unitOfWork)
+    {
+        return new CreatorWebhookService(
+            creatorRepository,
+            subscriptionRepository,
+            planRepository,
+            webhookFailureRepository,
             unitOfWork,
             NullLogger<CreatorWebhookService>.Instance);
     }
@@ -102,5 +118,119 @@ public class CreatorWebhookServiceTests
 
         Assert.Null(exception);
         Assert.Equal(0, uow.SaveChangesCallCount);
+    }
+
+    private const string StripeSubscriptionId = "sub_test123";
+
+    private static CreatorPlan BuildPlan(string code, string stripePriceId, int platformFeeBasisPoints) =>
+        CreatorPlan.Create(code, code, null, 1000, Currency.Eur, BillingInterval.Monthly, platformFeeBasisPoints, stripePriceId, Now);
+
+    private static SubscriptionChangedData BuildSubscriptionChangedData(
+        string status = "active",
+        bool cancelAtPeriodEnd = false,
+        string? stripePriceId = null,
+        string eventId = "evt_test123") => new()
+    {
+        EventId = eventId,
+        StripeSubscriptionId = StripeSubscriptionId,
+        StripeCustomerId = "cus_test123",
+        Status = status,
+        CancelAtPeriodEnd = cancelAtPeriodEnd,
+        StripePriceId = stripePriceId,
+        CurrentPeriodStart = Now,
+        CurrentPeriodEnd = Now.AddMonths(1),
+    };
+
+    [Fact]
+    public async Task HandleSubscriptionUpdated_KnownNewPrice_UpdatesPlan()
+    {
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var basicPlan = BuildPlan("basic", "price_basic", 500);
+        var proPlan = BuildPlan("pro", "price_pro", 250);
+        var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+
+        var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
+        var planRepo = new FakeCreatorPlanRepository();
+        planRepo.PlansByCode["pro"] = proPlan;
+        var webhookFailureRepo = new FakeWebhookFailureRepository();
+        var uow = new FakeCreatorsUnitOfWork();
+        var service = BuildService(new FakeCreatorRepository(), subscriptionRepo, planRepo, webhookFailureRepo, uow);
+
+        var data = BuildSubscriptionChangedData(stripePriceId: "price_pro");
+
+        await service.HandleSubscriptionUpdatedAsync(data, CancellationToken.None);
+
+        Assert.Equal("pro", subscription.Plan.Code);
+        Assert.Empty(webhookFailureRepo.Added);
+        Assert.Equal(1, uow.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task HandleSubscriptionUpdated_UnknownPrice_PlanUnchangedAndWebhookFailureRecorded()
+    {
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var basicPlan = BuildPlan("basic", "price_basic", 500);
+        var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+
+        var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
+        var planRepo = new FakeCreatorPlanRepository(); // no plan registered for "price_unknown"
+        var webhookFailureRepo = new FakeWebhookFailureRepository();
+        var uow = new FakeCreatorsUnitOfWork();
+        var service = BuildService(new FakeCreatorRepository(), subscriptionRepo, planRepo, webhookFailureRepo, uow);
+
+        var data = BuildSubscriptionChangedData(stripePriceId: "price_unknown", eventId: "evt_unknown_price");
+
+        await service.HandleSubscriptionUpdatedAsync(data, CancellationToken.None);
+
+        // The subscription must not fall onto a wrong/random plan — it simply stays on "basic".
+        Assert.Equal("basic", subscription.Plan.Code);
+        Assert.Single(webhookFailureRepo.Added);
+        var failure = webhookFailureRepo.Added[0];
+        Assert.Equal("stripe", failure.Provider);
+        Assert.Equal("evt_unknown_price", failure.EventId);
+        Assert.Equal("customer.subscription.updated", failure.EventType);
+        Assert.False(failure.IsResolved);
+        Assert.Equal(1, uow.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task HandleSubscriptionUpdated_CancelAtPeriodEndTrue_SchedulesCancel()
+    {
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var basicPlan = BuildPlan("basic", "price_basic", 500);
+        var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+
+        var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
+        var uow = new FakeCreatorsUnitOfWork();
+        var service = BuildService(new FakeCreatorRepository(), subscriptionRepo, new FakeCreatorPlanRepository(), new FakeWebhookFailureRepository(), uow);
+
+        var data = BuildSubscriptionChangedData(cancelAtPeriodEnd: true);
+
+        await service.HandleSubscriptionUpdatedAsync(data, CancellationToken.None);
+
+        Assert.True(subscription.CancelAtPeriodEnd);
+    }
+
+    [Fact]
+    public async Task HandleSubscriptionUpdated_CancelAtPeriodEndFalseAfterTrue_UndoesScheduledCancel()
+    {
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var basicPlan = BuildPlan("basic", "price_basic", 500);
+        var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ScheduleCancel(Now);
+
+        var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
+        var uow = new FakeCreatorsUnitOfWork();
+        var service = BuildService(new FakeCreatorRepository(), subscriptionRepo, new FakeCreatorPlanRepository(), new FakeWebhookFailureRepository(), uow);
+
+        var data = BuildSubscriptionChangedData(cancelAtPeriodEnd: false);
+
+        await service.HandleSubscriptionUpdatedAsync(data, CancellationToken.None);
+
+        Assert.False(subscription.CancelAtPeriodEnd);
     }
 }

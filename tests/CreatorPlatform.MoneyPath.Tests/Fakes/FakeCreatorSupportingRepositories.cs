@@ -62,6 +62,9 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
 {
     public List<CreatorSubscription> Added { get; } = [];
 
+    /// <summary>Set up so GetByProviderSubscriptionIdForUpdateAsync returns it when the id matches.</summary>
+    public CreatorSubscription? SubscriptionByProviderSubscriptionId { get; set; }
+
     public Task AddAsync(CreatorSubscription subscription, CancellationToken ct)
     {
         Added.Add(subscription);
@@ -80,7 +83,10 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
 
     public Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(string providerSubscriptionId, CancellationToken ct)
     {
-        return Task.FromResult<CreatorSubscription?>(null);
+        return Task.FromResult(
+            SubscriptionByProviderSubscriptionId?.ProviderSubscriptionId == providerSubscriptionId
+                ? SubscriptionByProviderSubscriptionId
+                : null);
     }
 }
 
