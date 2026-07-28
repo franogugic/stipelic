@@ -51,6 +51,22 @@ public sealed class EmailOutboxService : IEmailOutboxService
         }
     }
 
+    public async Task QueuePasswordResetAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
+    {
+        var resetUrl = BuildPasswordResetUrl(token);
+
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.PasswordReset,
+            userPublicId,
+            toEmail,
+            PasswordResetTemplate.Subject,
+            PasswordResetTemplate.BuildHtml(resetUrl),
+            PasswordResetTemplate.BuildPlainText(resetUrl),
+            DateTimeOffset.UtcNow);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
     public async Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct)
     {
         var message = EmailOutboxMessage.Create(
@@ -119,5 +135,13 @@ public sealed class EmailOutboxService : IEmailOutboxService
         var encodedToken = Uri.EscapeDataString(token);
 
         return $"{baseUrl}/verify-email?token={encodedToken}";
+    }
+
+    private string BuildPasswordResetUrl(string token)
+    {
+        var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');
+        var encodedToken = Uri.EscapeDataString(token);
+
+        return $"{baseUrl}/reset-password?token={encodedToken}";
     }
 }

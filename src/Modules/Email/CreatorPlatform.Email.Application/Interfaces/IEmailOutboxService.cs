@@ -6,6 +6,8 @@ public interface IEmailOutboxService
 
     Task CancelUnsentEmailVerificationMessagesAsync(string userPublicId, CancellationToken ct);
 
+    Task QueuePasswordResetAsync(string toEmail, string userPublicId, string token, CancellationToken ct);
+
     Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct);
 
     Task QueuePayoutRequestedAsync(

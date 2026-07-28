@@ -129,6 +129,26 @@ public sealed class AuthController : ControllerBase
         return Ok(response);
     }
 
+    [HttpPost("request-password-reset")]
+    [EnableRateLimiting("RequestPasswordReset")]
+    public async Task<ActionResult<RequestPasswordResetResponseDto>> RequestPasswordReset(
+        RequestPasswordResetRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.RequestPasswordResetAsync(request, ct);
+        return Ok(response);
+    }
+
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("ResetPassword")]
+    public async Task<ActionResult<ResetPasswordResponseDto>> ResetPassword(
+        ResetPasswordRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.ResetPasswordAsync(request, ct);
+        return Ok(response);
+    }
+
     private CookieOptions CreateSessionCookieOptions(DateTimeOffset? expires = null)
     {
         var options = new CookieOptions

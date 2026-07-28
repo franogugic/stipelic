@@ -13,7 +13,7 @@ public sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<P
 
         builder.HasKey(token => token.Id);
 
-        builder.HasOne<User>()
+        builder.HasOne(token => token.User)
             .WithMany()
             .HasForeignKey(token => token.UserId)
             .OnDelete(DeleteBehavior.Cascade);
