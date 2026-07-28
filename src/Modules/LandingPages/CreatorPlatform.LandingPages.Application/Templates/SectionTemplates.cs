@@ -25,6 +25,14 @@ public static class SectionTemplates
         },
         new SectionTemplate
         {
+            Key = "navbar-dark",
+            Name = "Dark",
+            Type = LandingPageSectionType.Navbar,
+            DefaultBackgroundColor = "#111827",
+            ContentJson = """{"brandName":"My Brand","links":[]}"""
+        },
+        new SectionTemplate
+        {
             Key = "hero-minimal",
             Name = "Minimal",
             Type = LandingPageSectionType.Hero,
@@ -94,6 +102,62 @@ public static class SectionTemplates
             Type = LandingPageSectionType.Footer,
             DefaultBackgroundColor = "#ffffff",
             ContentJson = """{"copyright":"© 2025 My Brand. All rights reserved."}"""
+        },
+        new SectionTemplate
+        {
+            Key = "footer-dark",
+            Name = "Dark",
+            Type = LandingPageSectionType.Footer,
+            DefaultBackgroundColor = "#111827",
+            ContentJson = """{"copyright":"© 2025 My Brand. All rights reserved."}"""
+        },
+        new SectionTemplate
+        {
+            Key = "testimonials-simple",
+            Name = "Simple",
+            Type = LandingPageSectionType.Testimonials,
+            DefaultBackgroundColor = "#ffffff",
+            ContentJson = """{"heading":"What people are saying","items":[{"quote":"This changed how I run my business.","author":"Jamie Lee","role":"Creator"},{"quote":"Simple to use and it just works.","author":"Alex Rivera","role":"Customer"}]}"""
+        },
+        new SectionTemplate
+        {
+            Key = "testimonials-grid",
+            Name = "Grid",
+            Type = LandingPageSectionType.Testimonials,
+            DefaultBackgroundColor = "#f9fafb",
+            ContentJson = """{"heading":"Loved by creators everywhere","items":[{"quote":"The best decision I made this year.","author":"Morgan Blake","role":"Creator"},{"quote":"Support is fantastic and the product delivers.","author":"Sam Chen","role":"Customer"},{"quote":"Exactly what I needed to get started.","author":"Taylor Reed","role":"Creator"}]}"""
+        },
+        new SectionTemplate
+        {
+            Key = "faq-simple",
+            Name = "Simple",
+            Type = LandingPageSectionType.Faq,
+            DefaultBackgroundColor = "#ffffff",
+            ContentJson = """{"heading":"Frequently asked questions","items":[{"question":"How does this work?","answer":"You get instant access after purchase."},{"question":"Can I get a refund?","answer":"Yes, within 14 days of purchase."}]}"""
+        },
+        new SectionTemplate
+        {
+            Key = "faq-extended",
+            Name = "Extended",
+            Type = LandingPageSectionType.Faq,
+            DefaultBackgroundColor = "#f9fafb",
+            ContentJson = """{"heading":"Questions? We've got answers","items":[{"question":"How does this work?","answer":"You get instant access after purchase."},{"question":"Can I get a refund?","answer":"Yes, within 14 days of purchase."},{"question":"Is support included?","answer":"Yes, email support is included with every purchase."}]}"""
+        },
+        new SectionTemplate
+        {
+            Key = "gallery-simple",
+            Name = "Simple",
+            Type = LandingPageSectionType.Gallery,
+            DefaultBackgroundColor = "#ffffff",
+            ContentJson = """{"heading":"Gallery","imageUrls":[]}"""
+        },
+        new SectionTemplate
+        {
+            Key = "gallery-showcase",
+            Name = "Showcase",
+            Type = LandingPageSectionType.Gallery,
+            DefaultBackgroundColor = "#f9fafb",
+            ContentJson = """{"heading":"See it in action","imageUrls":[]}"""
         }
     ];
 
