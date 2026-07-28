@@ -37,7 +37,7 @@ public static class SectionTemplates
             Name = "Minimal",
             Type = LandingPageSectionType.Hero,
             DefaultBackgroundColor = "#ffffff",
-            ContentJson = """{"heading":"Welcome","subheading":"Tell your story here.","ctaText":"Get started"}"""
+            ContentJson = """{"heading":"Welcome","subheading":"Tell your story here.","ctaText":"Get started","imageUrl":null}"""
         },
         new SectionTemplate
         {
@@ -45,7 +45,7 @@ public static class SectionTemplates
             Name = "Bold",
             Type = LandingPageSectionType.Hero,
             DefaultBackgroundColor = "#111827",
-            ContentJson = """{"heading":"Transform Your Business Today","subheading":"Join thousands of creators who trust our platform.","ctaText":"Start now"}"""
+            ContentJson = """{"heading":"Transform Your Business Today","subheading":"Join thousands of creators who trust our platform.","ctaText":"Start now","imageUrl":null}"""
         },
         new SectionTemplate
         {
@@ -69,7 +69,7 @@ public static class SectionTemplates
             Name = "Simple",
             Type = LandingPageSectionType.ProductDetails,
             DefaultBackgroundColor = "#ffffff",
-            ContentJson = """{"heading":"About this product","description":"Describe your product here.","showPrice":true,"bullets":[]}"""
+            ContentJson = """{"heading":"About this product","description":"Describe your product here.","showPrice":true,"bullets":[],"imageUrl":null}"""
         },
         new SectionTemplate
         {
@@ -77,7 +77,7 @@ public static class SectionTemplates
             Name = "Detailed",
             Type = LandingPageSectionType.ProductDetails,
             DefaultBackgroundColor = "#ffffff",
-            ContentJson = """{"heading":"Everything you get","description":"A comprehensive breakdown of what's included.","showPrice":true,"bullets":["Instant access after purchase","Lifetime updates","Step-by-step guidance"]}"""
+            ContentJson = """{"heading":"Everything you get","description":"A comprehensive breakdown of what's included.","showPrice":true,"bullets":["Instant access after purchase","Lifetime updates","Step-by-step guidance"],"imageUrl":null}"""
         },
         new SectionTemplate
         {
