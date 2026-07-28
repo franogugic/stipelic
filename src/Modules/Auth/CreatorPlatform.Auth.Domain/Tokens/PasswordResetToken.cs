@@ -1,3 +1,5 @@
+using CreatorPlatform.Auth.Domain.Users;
+
 namespace CreatorPlatform.Auth.Domain.Tokens;
 
 public sealed class PasswordResetToken
@@ -8,30 +10,47 @@ public sealed class PasswordResetToken
 
     private PasswordResetToken(
         Guid id,
-        int userId,
+        User user,
         string tokenHash,
         DateTimeOffset expiresAt,
         DateTimeOffset createdAt)
     {
         Id = id;
-        UserId = userId;
+        User = user;
         TokenHash = tokenHash;
         ExpiresAt = expiresAt;
         CreatedAt = createdAt;
     }
 
     public static PasswordResetToken Create(
-        int userId,
+        User user,
         string tokenHash,
         DateTimeOffset expiresAt,
         DateTimeOffset createdAt)
     {
         return new PasswordResetToken(
             Guid.NewGuid(),
-            userId,
+            user,
             tokenHash,
             expiresAt,
             createdAt);
+    }
+
+    public bool IsUsed => UsedAt is not null;
+
+    public bool IsExpired(DateTimeOffset now)
+    {
+        return ExpiresAt <= now;
+    }
+
+    public void MarkAsUsed(DateTimeOffset usedAt)
+    {
+        UsedAt = usedAt;
+    }
+
+    public void Invalidate(DateTimeOffset invalidatedAt)
+    {
+        UsedAt = invalidatedAt;
     }
 
     public Guid Id { get; private set; }
@@ -45,4 +64,6 @@ public sealed class PasswordResetToken
     public DateTimeOffset? UsedAt { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public User User { get; private set; } = null!;
 }

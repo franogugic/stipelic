@@ -26,6 +26,7 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ICreatorPlanRepository _creatorPlanRepository;
     private readonly ICreatorSettingsRepository _creatorSettingsRepository;
     private readonly ICreatorSubscriptionRepository _creatorSubscriptionRepository;
+    private readonly ICreatorPayoutProfileRepository _creatorPayoutProfileRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly ISubscriptionCheckoutSessionService _subscriptionCheckoutSessionService;
     private readonly ISubscriptionCancellationService _subscriptionCancellationService;
@@ -37,6 +38,7 @@ public sealed partial class CreatorService : ICreatorService
         ICreatorPlanRepository creatorPlanRepository,
         ICreatorSettingsRepository creatorSettingsRepository,
         ICreatorSubscriptionRepository creatorSubscriptionRepository,
+        ICreatorPayoutProfileRepository creatorPayoutProfileRepository,
         ICreatorsUnitOfWork unitOfWork,
         ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService,
         ISubscriptionCancellationService subscriptionCancellationService,
@@ -47,6 +49,7 @@ public sealed partial class CreatorService : ICreatorService
         _creatorPlanRepository = creatorPlanRepository;
         _creatorSettingsRepository = creatorSettingsRepository;
         _creatorSubscriptionRepository = creatorSubscriptionRepository;
+        _creatorPayoutProfileRepository = creatorPayoutProfileRepository;
         _unitOfWork = unitOfWork;
         _subscriptionCheckoutSessionService = subscriptionCheckoutSessionService;
         _subscriptionCancellationService = subscriptionCancellationService;
@@ -62,6 +65,7 @@ public sealed partial class CreatorService : ICreatorService
         var slug = NormalizeSlug(request.Slug, name);
         var planCode = NormalizePlanCode(request.PlanCode);
         var defaultCurrency = ParseCurrency(request.DefaultCurrency);
+        var countryCode = NormalizeCountryCode(request.CountryCode);
         var supportEmail = NormalizeOptionalEmail(request.SupportEmail);
         var brandName = NormalizeOptionalText(request.BrandName, BrandNameMaxLength) ?? name;
         var logoUrl = NormalizeOptionalUrl(request.LogoUrl);
@@ -84,6 +88,8 @@ public sealed partial class CreatorService : ICreatorService
             ? CreatorStatus.PendingPayment
             : CreatorStatus.Active;
 
+        var payoutMode = PayoutCountries.ResolveMode(countryCode);
+
         var createdAt = DateTimeOffset.UtcNow;
         var creator = Creator.Create(
             ownerUserId,
@@ -91,6 +97,8 @@ public sealed partial class CreatorService : ICreatorService
             slug,
             defaultCurrency,
             creatorStatus,
+            countryCode,
+            payoutMode,
             createdAt);
 
         CreatorSubscription? createdSubscription = null;
@@ -126,7 +134,8 @@ public sealed partial class CreatorService : ICreatorService
 
         return new CreateCreatorResponseDto
         {
-            Creator = ToResponse(creator, createdSubscription),
+            // Freshly created — a payout profile can't exist yet.
+            Creator = ToResponse(creator, createdSubscription, hasPayoutProfile: false),
             RequiresPayment = requiresPayment,
             PaymentStatus = requiresPayment
                 ? CreatorSubscriptionStatus.PendingPayment.ToString()
@@ -137,13 +146,13 @@ public sealed partial class CreatorService : ICreatorService
 
     public async Task<CreatorResponseDto?> GetCurrentForOwnerAsync(int ownerUserId, CancellationToken ct)
     {
-        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
+        var (creator, hasPayoutProfile) = await _creatorRepository.GetByOwnerUserIdWithPayoutProfileAsync(ownerUserId, ct);
         if (creator is null)
             return null;
 
         var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
 
-        return ToResponse(creator, subscription);
+        return ToResponse(creator, subscription, hasPayoutProfile);
     }
 
     public async Task<CreatorSettingsResponseDto> GetSettingsAsync(
@@ -249,6 +258,65 @@ public sealed partial class CreatorService : ICreatorService
         var wasDisabled = await _creatorRepository.DisableByOwnerUserIdAsync(ownerUserId, disabledAt, ct);
         if (!wasDisabled)
             throw new NotFoundException("Creator workspace does not exist.");
+    }
+
+    public async Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        var normalizedSlug = ValidateRouteSlug(slug);
+        var creator = await _creatorRepository.GetBySlugForOwnerAsync(normalizedSlug, ownerUserId, ct);
+        if (creator is null)
+            throw new NotFoundException("Creator workspace not found.");
+
+        var profile = await _creatorPayoutProfileRepository.GetByCreatorIdAsync(creator.Id, ct);
+
+        return profile is null ? null : ToPayoutProfileResponse(profile);
+    }
+
+    public async Task<PayoutProfileResponseDto> UpdatePayoutProfileAsync(
+        string slug,
+        int ownerUserId,
+        UpdatePayoutProfileRequestDto request,
+        CancellationToken ct)
+    {
+        var normalizedSlug = ValidateRouteSlug(slug);
+        var creator = await _creatorRepository.GetForUpdateBySlugAndOwnerAsync(normalizedSlug, ownerUserId, ct);
+        if (creator is null)
+            throw new NotFoundException("Creator workspace not found.");
+
+        var accountHolderName = NormalizeOptionalText(request.AccountHolderName, 100)
+            ?? throw new BadRequestException("Account holder name is required.");
+        var bankCountryCode = NormalizeBankCountryCode(request.BankCountryCode);
+
+        var iban = IbanValidator.Normalize(request.Iban);
+        if (!IbanValidator.IsValid(iban))
+            throw new BadRequestException("IBAN is not valid.");
+
+        var now = DateTimeOffset.UtcNow;
+        var profile = await _creatorPayoutProfileRepository.GetForUpdateByCreatorIdAsync(creator.Id, ct);
+
+        if (profile is null)
+        {
+            profile = CreatorPayoutProfile.Create(creator, accountHolderName, iban, bankCountryCode, now);
+            await _creatorPayoutProfileRepository.AddAsync(profile, ct);
+        }
+        else
+        {
+            profile.Update(accountHolderName, iban, bankCountryCode, now);
+        }
+
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return ToPayoutProfileResponse(profile);
+    }
+
+    public List<PayoutCountryDto> GetPayoutCountries()
+    {
+        var connect = PayoutCountries.ConnectCountries
+            .Select(code => new PayoutCountryDto(code, PayoutMode.StripeConnect.ToString()));
+        var bankTransfer = PayoutCountries.BankTransferCountries
+            .Select(code => new PayoutCountryDto(code, PayoutMode.BankTransfer.ToString()));
+
+        return connect.Concat(bankTransfer).OrderBy(c => c.Code, StringComparer.Ordinal).ToList();
     }
 
     public async Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
@@ -363,6 +431,26 @@ public sealed partial class CreatorService : ICreatorService
         };
     }
 
+    private static string NormalizeCountryCode(string countryCode)
+    {
+        var normalized = countryCode.Trim().ToUpperInvariant();
+
+        if (!PayoutCountries.IsSupported(normalized))
+            throw new BadRequestException("Country is not supported yet.");
+
+        return normalized;
+    }
+
+    private static string NormalizeBankCountryCode(string bankCountryCode)
+    {
+        var normalized = bankCountryCode.Trim().ToUpperInvariant();
+
+        if (!CountryCodeRegex().IsMatch(normalized))
+            throw new BadRequestException("Bank country code must be a 2-letter ISO code.");
+
+        return normalized;
+    }
+
     private static string? NormalizeOptionalEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -461,8 +549,12 @@ public sealed partial class CreatorService : ICreatorService
         return normalized;
     }
 
-    private static CreatorResponseDto ToResponse(Creator creator, CreatorSubscription? subscription)
+    private static CreatorResponseDto ToResponse(Creator creator, CreatorSubscription? subscription, bool hasPayoutProfile)
     {
+        var payoutReady = creator.PayoutMode == PayoutMode.StripeConnect
+            ? creator.StripeConnectPayoutsEnabled
+            : hasPayoutProfile;
+
         return new CreatorResponseDto
         {
             PublicId = creator.PublicId,
@@ -472,6 +564,12 @@ public sealed partial class CreatorService : ICreatorService
             DefaultCurrency = creator.DefaultCurrency.ToString(),
             PlanCode = subscription?.Plan.Code ?? string.Empty,
             CancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false,
+            CountryCode = creator.CountryCode,
+            PayoutMode = creator.PayoutMode.ToString(),
+            StripeConnectDetailsSubmitted = creator.StripeConnectDetailsSubmitted,
+            StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled,
+            HasPayoutProfile = hasPayoutProfile,
+            PayoutReady = payoutReady,
         };
     }
 
@@ -492,6 +590,38 @@ public sealed partial class CreatorService : ICreatorService
         };
     }
 
+    private static PayoutProfileResponseDto ToPayoutProfileResponse(CreatorPayoutProfile profile)
+    {
+        return new PayoutProfileResponseDto
+        {
+            AccountHolderName = profile.AccountHolderName,
+            MaskedIban = MaskIban(profile.Iban),
+            BankCountryCode = profile.BankCountryCode
+        };
+    }
+
+    // "HR12 **** **** 3456" style — first 4 + last 4 characters visible, everything between masked in
+    // groups of 4. The full IBAN is never returned by the API once saved.
+    private static string MaskIban(string iban)
+    {
+        const int visiblePrefixLength = 4;
+        const int visibleSuffixLength = 4;
+
+        if (iban.Length <= visiblePrefixLength + visibleSuffixLength)
+            return iban;
+
+        var prefix = iban[..visiblePrefixLength];
+        var suffix = iban[^visibleSuffixLength..];
+        var maskedLength = iban.Length - visiblePrefixLength - visibleSuffixLength;
+
+        var groups = new List<string> { prefix };
+        for (var i = 0; i < maskedLength; i += 4)
+            groups.Add(new string('*', Math.Min(4, maskedLength - i)));
+        groups.Add(suffix);
+
+        return string.Join(' ', groups);
+    }
+
     [GeneratedRegex("[^a-z0-9]+")]
     private static partial Regex InvalidSlugCharactersRegex();
 
@@ -509,4 +639,7 @@ public sealed partial class CreatorService : ICreatorService
 
     [GeneratedRegex("^[A-Za-z0-9_./+-]+$")]
     private static partial Regex TimezoneRegex();
+
+    [GeneratedRegex("^[A-Z]{2}$")]
+    private static partial Regex CountryCodeRegex();
 }

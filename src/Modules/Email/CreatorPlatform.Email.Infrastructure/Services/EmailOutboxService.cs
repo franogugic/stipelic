@@ -51,6 +51,22 @@ public sealed class EmailOutboxService : IEmailOutboxService
         }
     }
 
+    public async Task QueuePasswordResetAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
+    {
+        var resetUrl = BuildPasswordResetUrl(token);
+
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.PasswordReset,
+            userPublicId,
+            toEmail,
+            PasswordResetTemplate.Subject,
+            PasswordResetTemplate.BuildHtml(resetUrl),
+            PasswordResetTemplate.BuildPlainText(resetUrl),
+            DateTimeOffset.UtcNow);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
     public async Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct)
     {
         var message = EmailOutboxMessage.Create(
@@ -65,11 +81,67 @@ public sealed class EmailOutboxService : IEmailOutboxService
         await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
     }
 
+    public async Task QueuePayoutRequestedAsync(
+        string toEmail,
+        string payoutPublicId,
+        string creatorName,
+        string creatorSlug,
+        int amountCents,
+        string currency,
+        CancellationToken ct)
+    {
+        var formattedAmount = $"{amountCents / 100.0:0.00} {currency.ToUpperInvariant()}";
+        var adminPayoutsUrl = $"{_options.FrontendBaseUrl.TrimEnd('/')}/admin/payouts";
+
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.PayoutRequested,
+            payoutPublicId,
+            toEmail,
+            PayoutRequestedTemplate.BuildSubject(creatorName, formattedAmount),
+            PayoutRequestedTemplate.BuildHtml(creatorName, creatorSlug, formattedAmount, adminPayoutsUrl),
+            PayoutRequestedTemplate.BuildPlainText(creatorName, creatorSlug, formattedAmount, adminPayoutsUrl),
+            DateTimeOffset.UtcNow);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
+    public async Task QueueCampaignAsync(
+        string toEmail,
+        string subject,
+        string htmlBody,
+        string plainTextBody,
+        string? replyTo,
+        string listUnsubscribeUrl,
+        string correlationKey,
+        CancellationToken ct)
+    {
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.CampaignBroadcast,
+            correlationKey,
+            toEmail,
+            subject,
+            htmlBody,
+            plainTextBody,
+            DateTimeOffset.UtcNow,
+            replyTo,
+            listUnsubscribeUrl);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
     private string BuildVerificationUrl(string token)
     {
         var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');
         var encodedToken = Uri.EscapeDataString(token);
 
         return $"{baseUrl}/verify-email?token={encodedToken}";
+    }
+
+    private string BuildPasswordResetUrl(string token)
+    {
+        var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');
+        var encodedToken = Uri.EscapeDataString(token);
+
+        return $"{baseUrl}/reset-password?token={encodedToken}";
     }
 }

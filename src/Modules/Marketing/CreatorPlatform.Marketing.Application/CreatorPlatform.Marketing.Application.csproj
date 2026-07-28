@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\CreatorPlatform.Marketing.Domain\CreatorPlatform.Marketing.Domain.csproj" />
+    <ProjectReference Include="..\..\Creators\CreatorPlatform.Creators.Domain\CreatorPlatform.Creators.Domain.csproj" />
+    <ProjectReference Include="..\..\Creators\CreatorPlatform.Creators.Application\CreatorPlatform.Creators.Application.csproj" />
+    <ProjectReference Include="..\..\Email\CreatorPlatform.Email.Application\CreatorPlatform.Email.Application.csproj" />
+    <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Application\CreatorPlatform.Shared.Application.csproj" />
+    <ProjectReference Include="..\..\..\Shared\CreatorPlatform.Shared.Domain\CreatorPlatform.Shared.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

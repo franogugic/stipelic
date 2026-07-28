@@ -20,13 +20,18 @@ public sealed class AuthService : IAuthService
     private const string LoggedOutSuccessfullyMessage = "Logged out successfully.";
     private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
     private const string InvalidLoginCredentialsMessage = "Invalid email or password.";
+    private const string RequestPasswordResetMessage = "If an account exists for that email, we've sent a password reset link.";
+    private const string InvalidPasswordResetTokenMessage = "Invalid or expired reset link.";
+    private const string PasswordResetSuccessMessage = "Your password has been reset. Please sign in with your new password.";
     private static readonly TimeSpan ResendEmailVerificationCooldown = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan PasswordResetTokenLifetime = TimeSpan.FromHours(1);
 
     private readonly IUserRepository _userRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ITokenGenerator _tokenGenerator;
     private readonly ITokenHasher _tokenHasher;
     private readonly IEmailVerificationTokenRepository _emailVerificationTokenRepository;
+    private readonly IPasswordResetTokenRepository _passwordResetTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IUserRoleRepository _userRoleRepository;
     private readonly IEmailOutboxService _emailOutboxService;
@@ -40,6 +45,7 @@ public sealed class AuthService : IAuthService
         ITokenGenerator tokenGenerator,
         ITokenHasher tokenHasher,
         IEmailVerificationTokenRepository emailVerificationTokenRepository,
+        IPasswordResetTokenRepository passwordResetTokenRepository,
         IUnitOfWork unitOfWork,
         IUserRoleRepository userRoleRepository,
         IEmailOutboxService emailOutboxService,
@@ -53,6 +59,7 @@ public sealed class AuthService : IAuthService
         _tokenGenerator = tokenGenerator;
         _tokenHasher = tokenHasher;
         _emailVerificationTokenRepository = emailVerificationTokenRepository;
+        _passwordResetTokenRepository = passwordResetTokenRepository;
         _unitOfWork = unitOfWork;
         _userRoleRepository = userRoleRepository;
         _emailOutboxService = emailOutboxService;
@@ -297,6 +304,114 @@ public sealed class AuthService : IAuthService
             user.PublicId);
         
         return CreateResendEmailVerificationResponse();
+    }
+
+    public async Task<RequestPasswordResetResponseDto> RequestPasswordResetAsync(
+        RequestPasswordResetRequestDto request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return CreateRequestPasswordResetResponse();
+
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _userRepository.GetByEmailAsync(email, ct);
+
+        if (user is null)
+        {
+            // Enumeration protection: identical response whether or not the account exists —
+            // same principle as ResendEmailVerificationAsync above.
+            _logger.LogInformation(
+                "Password reset request skipped because no eligible user was found.");
+
+            return CreateRequestPasswordResetResponse();
+        }
+
+        var createdAt = DateTimeOffset.UtcNow;
+
+        // Invalidate all previously-unused tokens first — same hygiene principle as email
+        // verification: never leave more than one valid reset link outstanding for a user.
+        var unusedTokens = await _passwordResetTokenRepository.GetUnusedByUserIdAsync(user.Id, ct);
+        foreach (var unusedToken in unusedTokens)
+        {
+            unusedToken.Invalidate(createdAt);
+        }
+
+        var rawPasswordResetToken = _tokenGenerator.GenerateToken();
+        var hashedPasswordResetToken = _tokenHasher.Hash(rawPasswordResetToken);
+
+        var passwordResetToken = PasswordResetToken.Create(
+            user,
+            hashedPasswordResetToken,
+            createdAt.Add(PasswordResetTokenLifetime),
+            createdAt);
+
+        await _passwordResetTokenRepository.AddAsync(passwordResetToken, ct);
+        await _emailOutboxService.QueuePasswordResetAsync(
+            user.Email,
+            user.PublicId.ToString(),
+            rawPasswordResetToken,
+            ct);
+
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Password reset requested. UserPublicId: {UserPublicId}.",
+            user.PublicId);
+
+        return CreateRequestPasswordResetResponse();
+    }
+
+    public async Task<ResetPasswordResponseDto> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Token))
+            throw new BadRequestException(InvalidPasswordResetTokenMessage);
+
+        var token = request.Token.Trim();
+        var tokenHash = _tokenHasher.Hash(token);
+        var passwordResetToken = await _passwordResetTokenRepository.GetByTokenHashAsync(tokenHash, ct);
+
+        if (passwordResetToken is null)
+            throw new BadRequestException(InvalidPasswordResetTokenMessage);
+
+        var now = DateTimeOffset.UtcNow;
+
+        // Same generic error regardless of used/expired — never tell the caller which reason
+        // applied, so a stolen/guessed token can't be used to probe token state.
+        if (passwordResetToken.IsUsed || passwordResetToken.IsExpired(now))
+            throw new BadRequestException(InvalidPasswordResetTokenMessage);
+
+        CheckPassword(request.NewPassword);
+
+        var newPasswordHash = _passwordHasher.Hash(request.NewPassword);
+        passwordResetToken.User.SetPassword(newPasswordHash, now);
+        passwordResetToken.MarkAsUsed(now);
+
+        // Whoever changed the password may be doing so because they suspect a compromise —
+        // revoke every other active session so a possible attacker is signed out too.
+        var activeSessions = await _userSessionRepository.GetActiveByUserIdAsync(passwordResetToken.User.Id, now, ct);
+        foreach (var session in activeSessions)
+        {
+            session.Revoke(now);
+        }
+
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Password reset completed. UserPublicId: {UserPublicId}.",
+            passwordResetToken.User.PublicId);
+
+        return new ResetPasswordResponseDto
+        {
+            Message = PasswordResetSuccessMessage
+        };
+    }
+
+    private static RequestPasswordResetResponseDto CreateRequestPasswordResetResponse()
+    {
+        return new RequestPasswordResetResponseDto
+        {
+            Message = RequestPasswordResetMessage
+        };
     }
 
     private void CheckPassword(string password)

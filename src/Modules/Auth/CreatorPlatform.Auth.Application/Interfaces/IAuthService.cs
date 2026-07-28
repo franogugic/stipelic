@@ -11,4 +11,8 @@ public interface IAuthService
     Task<ResendEmailVerificationResponseDto> ResendEmailVerificationAsync(
         ResendEmailVerificationRequestDto request,
         CancellationToken ct);
+    Task<RequestPasswordResetResponseDto> RequestPasswordResetAsync(
+        RequestPasswordResetRequestDto request,
+        CancellationToken ct);
+    Task<ResetPasswordResponseDto> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken ct);
 }

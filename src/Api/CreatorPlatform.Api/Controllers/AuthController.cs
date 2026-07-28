@@ -79,7 +79,8 @@ public sealed class AuthController : ControllerBase
             LastName = currentUser.LastName,
             Email = currentUser.Email,
             IsEmailVerified = currentUser.IsEmailVerified,
-            Status = currentUser.Status
+            Status = currentUser.Status,
+            Roles = currentUser.Roles
         });
     }
 
@@ -125,6 +126,26 @@ public sealed class AuthController : ControllerBase
         CancellationToken ct)
     {
         var response = await _authService.ResendEmailVerificationAsync(request, ct);
+        return Ok(response);
+    }
+
+    [HttpPost("request-password-reset")]
+    [EnableRateLimiting("RequestPasswordReset")]
+    public async Task<ActionResult<RequestPasswordResetResponseDto>> RequestPasswordReset(
+        RequestPasswordResetRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.RequestPasswordResetAsync(request, ct);
+        return Ok(response);
+    }
+
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("ResetPassword")]
+    public async Task<ActionResult<ResetPasswordResponseDto>> ResetPassword(
+        ResetPasswordRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.ResetPasswordAsync(request, ct);
         return Ok(response);
     }
 

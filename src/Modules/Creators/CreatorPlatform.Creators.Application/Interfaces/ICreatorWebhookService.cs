@@ -11,4 +11,6 @@ public interface ICreatorWebhookService
     Task HandleSubscriptionDeletedAsync(SubscriptionChangedData data, CancellationToken ct);
 
     Task HandleInvoicePaymentFailedAsync(InvoicePaymentFailedData data, CancellationToken ct);
+
+    Task HandleAccountUpdatedAsync(AccountUpdatedData data, CancellationToken ct);
 }

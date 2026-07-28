@@ -31,6 +31,14 @@ public sealed class LandingPageRepository : ILandingPageRepository
             .FirstOrDefaultAsync(lp => lp.PublicId == publicId && lp.CreatorId == creatorId, ct);
     }
 
+    public async Task<LandingPage?> GetByPublicIdAndCreatorIdAsync(Guid publicId, int creatorId, CancellationToken ct)
+    {
+        return await _context
+            .Set<LandingPage>()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(lp => lp.PublicId == publicId && lp.CreatorId == creatorId, ct);
+    }
+
     public async Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct)
     {
         return await _context.Database

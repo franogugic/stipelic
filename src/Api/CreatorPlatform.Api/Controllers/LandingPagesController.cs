@@ -5,6 +5,7 @@ using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -18,17 +19,32 @@ public sealed class LandingPagesController : ControllerBase
     private readonly ILandingPageService _landingPageService;
     private readonly IPageViewService _pageViewService;
     private readonly IEmailCaptureService _emailCaptureService;
+    private readonly IOrderService _orderService;
+    private readonly ILandingPageInsightsService _landingPageInsightsService;
+    private readonly ILandingPageTimeSeriesCache _timeSeriesCache;
+    private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly IViewsSummaryCache _viewsSummaryCache;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
         ILandingPageService landingPageService,
         IPageViewService pageViewService,
         IEmailCaptureService emailCaptureService,
+        IOrderService orderService,
+        ILandingPageInsightsService landingPageInsightsService,
+        ILandingPageTimeSeriesCache timeSeriesCache,
+        IHomeSummaryCache homeSummaryCache,
+        IViewsSummaryCache viewsSummaryCache,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
         _pageViewService = pageViewService;
         _emailCaptureService = emailCaptureService;
+        _orderService = orderService;
+        _landingPageInsightsService = landingPageInsightsService;
+        _timeSeriesCache = timeSeriesCache;
+        _homeSummaryCache = homeSummaryCache;
+        _viewsSummaryCache = viewsSummaryCache;
         _currentUserContext = currentUserContext;
     }
 
@@ -39,7 +55,19 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetAuthenticatedUser();
         var pages = await _landingPageService.ListAsync(slug, user.Id, ct);
-        return Ok(ApiResponse<List<LandingPageResponseDto>>.Success(StatusCodes.Status200OK, "Landing pages loaded.", pages));
+
+        // Merge in (cached) view counts so the list page needs a single request instead of a second
+        // round trip to a standalone views-summary endpoint.
+        var viewsByPage = (await _pageViewService.GetViewsSummaryByCreatorAsync(slug, user.Id, ct))
+            .ToDictionary(v => v.PublicId);
+
+        var merged = pages
+            .Select(p => viewsByPage.TryGetValue(p.PublicId, out var views)
+                ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
+                : p)
+            .ToList();
+
+        return Ok(ApiResponse<List<LandingPageResponseDto>>.Success(StatusCodes.Status200OK, "Landing pages loaded.", merged));
     }
 
     
@@ -63,6 +91,10 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         var page = await _landingPageService.CreateAsync(slug, user.Id, request, ct);
+        // Landing page count on the home summary changed — invalidate so the dashboard reflects it immediately.
+        _homeSummaryCache.Remove(slug);
+        // New page isn't in the previously cached views summary yet — invalidate so it shows up right away.
+        _viewsSummaryCache.Remove(slug);
         return StatusCode(StatusCodes.Status201Created, ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status201Created, "Landing page created.", page));
     }
 
@@ -87,6 +119,8 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         await _landingPageService.ArchiveAsync(slug, pageId, user.Id, ct);
+        _homeSummaryCache.Remove(slug);
+        _viewsSummaryCache.Remove(slug);
         return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Landing page archived.", null));
     }
 
@@ -102,7 +136,6 @@ public sealed class LandingPagesController : ControllerBase
         var page = await _landingPageService.SaveEditorAsync(slug, pageId, user.Id, request, ct);
         return Ok(ApiResponse<LandingPageWithSectionsResponseDto>.Success(StatusCodes.Status200OK, "Landing page saved.", page));
     }
-
     [HttpGet("{pageId:guid}/analytics")]
     public async Task<ActionResult<ApiResponse<LandingPageAnalyticsResponseDto>>> GetAnalytics(
         string slug,
@@ -110,20 +143,46 @@ public sealed class LandingPagesController : ControllerBase
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
-        var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
+        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
 
         var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
         var captureCount = await _emailCaptureService.GetCaptureCountAsync(page.Id, ct);
+        var orderSummary = await _orderService.GetSummaryByLandingPageIdAsync(page.Id, ct);
 
         var analytics = new LandingPageAnalyticsResponseDto
         {
+            Title = page.Title,
+            Slug = page.Slug,
+            Status = page.Status,
             AllTime = stats.AllTime,
             Today = stats.Today,
             Last7Days = stats.Last7Days,
             Last30Days = stats.Last30Days,
-            TotalEmailCaptures = captureCount
+            TotalEmailCaptures = captureCount,
+            PurchaseCount = orderSummary.PaidOrderCount,
+            TotalRevenueCents = orderSummary.TotalPaidAmountCents,
+            Currency = orderSummary.Currency
         };
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
+    }
+
+    [HttpGet("{pageId:guid}/timeseries")]
+    public async Task<ActionResult<ApiResponse<TimeSeriesResponseDto>>> GetTimeSeries(
+        string slug,
+        Guid pageId,
+        [FromQuery] TimeSeriesPeriod period,
+        CancellationToken ct)
+    {
+        var user = GetAuthenticatedUser();
+        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
+
+        if (_timeSeriesCache.TryGet(page.Id, period, out var cached) && cached is not null)
+            return Ok(ApiResponse<TimeSeriesResponseDto>.Success(StatusCodes.Status200OK, "Time series loaded.", cached));
+
+        var result = await _landingPageInsightsService.GetTimeSeriesAsync(page.Id, page.CreatedAt, period, ct);
+        _timeSeriesCache.Set(page.Id, period, result);
+
+        return Ok(ApiResponse<TimeSeriesResponseDto>.Success(StatusCodes.Status200OK, "Time series loaded.", result));
     }
 
     [HttpGet("{pageId:guid}/captures")]
@@ -133,7 +192,7 @@ public sealed class LandingPagesController : ControllerBase
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
-        var page = await _landingPageService.GetWithSectionsAsync(slug, pageId, user.Id, ct);
+        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
         var captures = await _emailCaptureService.ListCapturesAsync(page.Id, ct);
         return Ok(ApiResponse<List<EmailCaptureResponseDto>>.Success(StatusCodes.Status200OK, "Captures loaded.", captures));
     }

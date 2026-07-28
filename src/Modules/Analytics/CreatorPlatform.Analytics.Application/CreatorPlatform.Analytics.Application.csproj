@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CreatorPlatform.Analytics.Domain\CreatorPlatform.Analytics.Domain.csproj" />
+    <ProjectReference Include="..\..\Orders\CreatorPlatform.Orders.Application\CreatorPlatform.Orders.Application.csproj" />
+    <ProjectReference Include="..\..\Creators\CreatorPlatform.Creators.Application\CreatorPlatform.Creators.Application.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

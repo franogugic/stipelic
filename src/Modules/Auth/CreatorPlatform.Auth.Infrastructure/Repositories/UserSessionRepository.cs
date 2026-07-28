@@ -35,4 +35,14 @@ public sealed class UserSessionRepository : IUserSessionRepository
         return await _context.Set<UserSession>()
             .FirstOrDefaultAsync(session => session.Id == id, ct);
     }
+
+    public async Task<IReadOnlyList<UserSession>> GetActiveByUserIdAsync(int userId, DateTimeOffset now, CancellationToken ct)
+    {
+        return await _context.Set<UserSession>()
+            .Where(session =>
+                session.UserId == userId &&
+                session.RevokedAt == null &&
+                session.ExpiresAt > now)
+            .ToListAsync(ct);
+    }
 }

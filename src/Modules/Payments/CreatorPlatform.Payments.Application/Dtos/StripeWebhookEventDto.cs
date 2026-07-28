@@ -8,6 +8,19 @@ public sealed class StripeWebhookEventDto
     public SubscriptionChangedData? SubscriptionChanged { get; init; }
     public InvoicePaymentFailedData? InvoicePaymentFailed { get; init; }
     public ChargeRefundedData? ChargeRefunded { get; init; }
+    public AccountUpdatedData? AccountUpdated { get; init; }
+}
+
+public sealed class AccountUpdatedData
+{
+    public required string AccountId { get; init; }
+    public bool DetailsSubmitted { get; init; }
+    public bool ChargesEnabled { get; init; }
+    public bool PayoutsEnabled { get; init; }
+
+    /// <summary>The Stripe event's own timestamp (not when we received it) — Stripe does not guarantee
+    /// delivery order, so this is used to reject a stale/out-of-order replay of an older account state.</summary>
+    public DateTimeOffset OccurredAt { get; init; }
 }
 
 public sealed class CheckoutSessionCompletedData
@@ -23,6 +36,9 @@ public sealed class CheckoutSessionCompletedData
 
 public sealed class SubscriptionChangedData
 {
+    /// <summary>The Stripe event's own id — used to record a `webhook_failures` entry when the
+    /// event references a price we don't recognize, without needing the full raw payload.</summary>
+    public required string EventId { get; init; }
     public required string StripeSubscriptionId { get; init; }
     public required string StripeCustomerId { get; init; }
     public required string Status { get; init; }
@@ -52,4 +68,5 @@ public static class StripeEventTypes
     public const string CustomerSubscriptionDeleted = "customer.subscription.deleted";
     public const string InvoicePaymentFailed = "invoice.payment_failed";
     public const string ChargeRefunded = "charge.refunded";
+    public const string AccountUpdated = "account.updated";
 }

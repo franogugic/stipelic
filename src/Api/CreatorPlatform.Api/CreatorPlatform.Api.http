@@ -4,3 +4,83 @@ GET {{CreatorPlatform.Api_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+### Task 5 — Payout administration manual verification
+### Grant the platform_admin role first (run once against the dev DB, then log the admin user in via the
+### normal /auth/login flow so the session cookie picks up the role on next request):
+###   INSERT INTO auth.user_roles ("UserId","RoleId","CreatedAt") VALUES (<admin-user-id>, 2, now());
+
+### 1. List BankTransfer creators with a payable balance (defaults to Payouts:MinPayoutCents = 5000)
+GET {{CreatorPlatform.Api_HostAddress}}/api/admin/payouts/balances?minCents=5000&limit=100
+Accept: application/json
+
+###
+
+### 2. Create a payout for a creator (creatorPublicId from the balances list above)
+POST {{CreatorPlatform.Api_HostAddress}}/api/admin/payouts
+Content-Type: application/json
+
+{
+  "creatorPublicId": "00000000-0000-0000-0000-000000000000",
+  "amountCents": 10000,
+  "currency": "EUR",
+  "note": "October payout"
+}
+
+###
+
+### 3. Concurrency check (acceptance criterion #3): fire this same request twice in quick succession
+### (e.g. two terminals running `curl -X POST .../api/admin/payouts -d '{...}'` at the same time) —
+### the pg_advisory_xact_lock serializes them, so exactly one succeeds (201) and the other gets a 409
+### ConflictException ("Creator's balance is insufficient for this payout.").
+
+### 4. Mark the payout paid (publicId from step 2's response)
+POST {{CreatorPlatform.Api_HostAddress}}/api/admin/payouts/00000000-0000-0000-0000-000000000000/mark-paid
+Content-Type: application/json
+
+{
+  "bankReference": "REF-2026-001"
+}
+
+###
+
+### 5. Mark a payout failed instead (books a compensating Adjustment that restores the creator's balance)
+POST {{CreatorPlatform.Api_HostAddress}}/api/admin/payouts/00000000-0000-0000-0000-000000000000/mark-failed
+Content-Type: application/json
+
+{
+  "note": "Wrong IBAN, resubmitting next cycle"
+}
+
+###
+
+### 6. Creator-facing: balance summary (null data for StripeConnect-mode creators)
+GET {{CreatorPlatform.Api_HostAddress}}/api/creators/acme/payouts/summary
+Accept: application/json
+
+###
+
+### 7. Creator-facing: payout history (last 50, newest first)
+GET {{CreatorPlatform.Api_HostAddress}}/api/creators/acme/payouts
+Accept: application/json
+
+###
+
+### 8. Creator-facing: save IBAN — acceptance criterion #4: the response's MaskedIban never contains
+### the full number, only "XX00 **** **** 6819" style
+PUT {{CreatorPlatform.Api_HostAddress}}/api/creators/acme/payout-profile
+Content-Type: application/json
+
+{
+  "accountHolderName": "Acme Doo",
+  "iban": "GB29NWBK60161331926819",
+  "bankCountryCode": "GB"
+}
+
+###
+
+### 9. Creator-facing: read back the payout profile — confirm only the masked IBAN comes back
+GET {{CreatorPlatform.Api_HostAddress}}/api/creators/acme/payout-profile
+Accept: application/json
+
+###

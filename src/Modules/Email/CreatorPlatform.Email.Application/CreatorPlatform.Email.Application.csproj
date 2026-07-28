@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\CreatorPlatform.Email.Domain\CreatorPlatform.Email.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

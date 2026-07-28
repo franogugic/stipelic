@@ -24,6 +24,10 @@ public sealed class CreateCreatorRequestDto
     [RegularExpression("^[A-Z]{3}$")]
     public string DefaultCurrency { get; init; } = "EUR";
 
+    [Required(AllowEmptyStrings = false)]
+    [RegularExpression("^[A-Z]{2}$")]
+    public string CountryCode { get; init; } = string.Empty;
+
     [EmailAddress]
     [MaxLength(100)]
     public string? SupportEmail { get; init; }

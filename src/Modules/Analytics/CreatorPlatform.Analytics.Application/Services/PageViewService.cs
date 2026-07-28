@@ -7,10 +7,12 @@ namespace CreatorPlatform.Analytics.Application.Services;
 public sealed class PageViewService : IPageViewService
 {
     private readonly IPageViewRepository _repository;
+    private readonly IViewsSummaryCache _viewsSummaryCache;
 
-    public PageViewService(IPageViewRepository repository)
+    public PageViewService(IPageViewRepository repository, IViewsSummaryCache viewsSummaryCache)
     {
         _repository = repository;
+        _viewsSummaryCache = viewsSummaryCache;
     }
 
     public async Task RecordAsync(int landingPageId, Guid visitorId, CancellationToken ct)
@@ -36,6 +38,11 @@ public sealed class PageViewService : IPageViewService
 
         return new LandingPageAnalyticsResponseDto
         {
+            // Title/Slug/Status/captures/purchases are irrelevant here — the controller only reads the
+            // period stats off this object and builds the real response DTO itself.
+            Title = string.Empty,
+            Slug = string.Empty,
+            Status = string.Empty,
             AllTime = new PeriodStatsDto
             {
                 TotalViews = stats.TotalViews,
@@ -56,7 +63,22 @@ public sealed class PageViewService : IPageViewService
                 TotalViews = stats.ViewsLast30Days,
                 UniqueVisitors = stats.UniqueVisitorsLast30Days
             },
-            TotalEmailCaptures = 0
+            TotalEmailCaptures = 0,
+            PurchaseCount = 0,
+            TotalRevenueCents = 0,
+            Currency = null
         };
+    }
+
+    public async Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        if (_viewsSummaryCache.TryGet(creatorSlug, out var cached) && cached is not null)
+            return cached;
+
+        var result = await _repository.GetViewsSummaryByCreatorAsync(creatorSlug, ownerUserId, ct);
+
+        _viewsSummaryCache.Set(creatorSlug, result);
+
+        return result;
     }
 }

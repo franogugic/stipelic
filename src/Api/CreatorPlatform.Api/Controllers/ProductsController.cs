@@ -1,6 +1,7 @@
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
@@ -14,13 +15,16 @@ namespace CreatorPlatform.Api.Controllers;
 public sealed class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
+    private readonly IHomeSummaryCache _homeSummaryCache;
     private readonly ICurrentUserContext _currentUserContext;
 
     public ProductsController(
         IProductService productService,
+        IHomeSummaryCache homeSummaryCache,
         ICurrentUserContext currentUserContext)
     {
         _productService = productService;
+        _homeSummaryCache = homeSummaryCache;
         _currentUserContext = currentUserContext;
     }
 
@@ -49,6 +53,9 @@ public sealed class ProductsController : ControllerBase
         var user = GetVerifiedUser();
 
         var product = await _productService.CreateAsync(slug, user.Id, request, ct);
+
+        // Product count on the home summary changed — invalidate so the dashboard reflects it immediately.
+        _homeSummaryCache.Remove(slug);
 
         return StatusCode(StatusCodes.Status201Created, ApiResponse<ProductResponseDto>.Success(
             StatusCodes.Status201Created,
@@ -83,6 +90,8 @@ public sealed class ProductsController : ControllerBase
         var user = GetVerifiedUser();
 
         await _productService.ArchiveAsync(slug, productId, user.Id, ct);
+
+        _homeSummaryCache.Remove(slug);
 
         return Ok(ApiResponse<object>.Success(
             StatusCodes.Status200OK,

@@ -52,6 +52,16 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .HasMaxLength(20)
             .IsRequired();
 
+        builder.Property(o => o.PlatformFeeBasisPoints)
+            .IsRequired();
+
+        builder.Property(o => o.PlatformFeeCents)
+            .IsRequired();
+
+        builder.Property(o => o.PayoutMode)
+            .HasMaxLength(30)
+            .IsRequired();
+
         builder.Property(o => o.StripeCheckoutSessionId)
             .HasMaxLength(255)
             .IsRequired();
@@ -72,9 +82,12 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.HasIndex(o => new { o.CreatorId, o.CreatedAt });
 
+        builder.HasIndex(o => o.LandingPageId);
+
         builder.HasIndex(o => o.Email);
 
         builder.ToTable(t => t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0"));
+        builder.ToTable(t => t.HasCheckConstraint("CK_orders_PlatformFeeCents_NonNegative", "\"PlatformFeeCents\" >= 0"));
 
         builder.HasOne<Creator>()
             .WithMany()

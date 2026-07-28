@@ -81,7 +81,7 @@ public sealed class PublicLandingPagesController : ControllerBase
                 Code = "NOT_FOUND"
             });
 
-        await _emailCaptureService.CaptureAsync(page.Id, page.ProductId, request.Email, ct);
+        await _emailCaptureService.CaptureAsync(page.Id, page.ProductId, page.CreatorId, request.Email, ct);
 
         return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Email captured.", null));
     }

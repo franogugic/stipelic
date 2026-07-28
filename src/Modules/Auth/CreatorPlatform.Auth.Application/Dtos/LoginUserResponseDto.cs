@@ -8,4 +8,5 @@ public sealed record LoginUserResponseDto
     public string Email { get; init; } = string.Empty;
     public bool IsEmailVerified { get; init; }
     public string Status { get; init; } = string.Empty;
+    public IReadOnlyList<string> Roles { get; init; } = [];
 }

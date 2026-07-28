@@ -15,6 +15,8 @@ public sealed class Creator
         string slug,
         Currency defaultCurrency,
         CreatorStatus status,
+        string countryCode,
+        PayoutMode payoutMode,
         DateTimeOffset createdAt)
     {
         PublicId = publicId;
@@ -23,6 +25,8 @@ public sealed class Creator
         Slug = slug;
         DefaultCurrency = defaultCurrency;
         Status = status;
+        CountryCode = countryCode;
+        PayoutMode = payoutMode;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
     }
@@ -33,6 +37,8 @@ public sealed class Creator
         string slug,
         Currency defaultCurrency,
         CreatorStatus status,
+        string countryCode,
+        PayoutMode payoutMode,
         DateTimeOffset createdAt)
     {
         return new Creator(
@@ -42,6 +48,8 @@ public sealed class Creator
             slug,
             defaultCurrency,
             status,
+            countryCode,
+            payoutMode,
             createdAt);
     }
 
@@ -82,6 +90,34 @@ public sealed class Creator
         UpdatedAt = updatedAt;
     }
 
+    public void SetStripeConnectAccountId(string stripeConnectAccountId, DateTimeOffset updatedAt)
+    {
+        StripeConnectAccountId = stripeConnectAccountId;
+        UpdatedAt = updatedAt;
+    }
+
+    /// <summary>
+    /// Applies Stripe's reported Connect account state. <paramref name="eventOccurredAt"/> is the Stripe
+    /// event's own timestamp — Stripe does not guarantee delivery order, so an event older than the last
+    /// one we already applied is a no-op (protects against a delayed/replayed event overwriting newer state).
+    /// </summary>
+    public void UpdateStripeConnectStatus(
+        bool detailsSubmitted,
+        bool chargesEnabled,
+        bool payoutsEnabled,
+        DateTimeOffset eventOccurredAt,
+        DateTimeOffset updatedAt)
+    {
+        if (StripeConnectStatusEventAt is { } lastEventAt && eventOccurredAt <= lastEventAt)
+            return;
+
+        StripeConnectDetailsSubmitted = detailsSubmitted;
+        StripeConnectChargesEnabled = chargesEnabled;
+        StripeConnectPayoutsEnabled = payoutsEnabled;
+        StripeConnectStatusEventAt = eventOccurredAt;
+        UpdatedAt = updatedAt;
+    }
+
     public int Id { get; private set; }
 
     public Guid PublicId { get; private set; }
@@ -97,6 +133,20 @@ public sealed class Creator
     public Currency DefaultCurrency { get; private set; }
 
     public string? StripeCustomerId { get; private set; }
+
+    public string CountryCode { get; private set; } = string.Empty;
+
+    public PayoutMode PayoutMode { get; private set; }
+
+    public string? StripeConnectAccountId { get; private set; }
+
+    public bool StripeConnectDetailsSubmitted { get; private set; }
+
+    public bool StripeConnectChargesEnabled { get; private set; }
+
+    public bool StripeConnectPayoutsEnabled { get; private set; }
+
+    public DateTimeOffset? StripeConnectStatusEventAt { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

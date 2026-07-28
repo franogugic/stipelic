@@ -1,17 +1,21 @@
 using Azure;
 using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Email.Domain.Outbox;
+using CreatorPlatform.Email.Infrastructure.Options;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace CreatorPlatform.Worker;
 
 public sealed class EmailOutboxWorker(
     IServiceScopeFactory scopeFactory,
+    IOptions<EmailOptions> emailOptions,
     ILogger<EmailOutboxWorker> logger) : BackgroundService
 {
     private const int BatchSize = 20;
     private const int MaxRetryCount = 3;
+    private const int ThrottledStatusCode = 429;
     private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ProcessingLeaseTimeout = TimeSpan.FromMinutes(5);
 
@@ -27,7 +31,7 @@ public sealed class EmailOutboxWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -39,7 +43,7 @@ public sealed class EmailOutboxWorker(
                 logger.LogError(exception, "Email outbox worker failed while processing messages.");
             }
 
-            
+
             await Task.Delay(PollingInterval, stoppingToken);
         }
     }
@@ -55,16 +59,32 @@ public sealed class EmailOutboxWorker(
             return;
 
         logger.LogInformation(
-            "Processing {MessageCount} pending email outbox message(s).",
-            messages.Count);
+            "Processing {MessageCount} pending email outbox message(s): {Purposes}.",
+            messages.Count,
+            string.Join(", ", messages
+                .GroupBy(m => m.Purpose)
+                .Select(g => $"{g.Key}={g.Count()}")));
 
-        
         var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+        var failureHandlers = scope.ServiceProvider.GetServices<IEmailSendFailureHandler>().ToList();
+
+        var sentCount = 0;
+        var failedOrRetryingCount = 0;
 
         foreach (var message in messages)
         {
-            await ProcessMessageAsync(dbContext, emailSender, message, ct);
+            var sent = await ProcessMessageAsync(dbContext, emailSender, failureHandlers, message, ct);
+            if (sent)
+                sentCount++;
+            else
+                failedOrRetryingCount++;
         }
+
+        logger.LogInformation(
+            "Batch complete: {SentCount} sent, {FailedOrRetryingCount} failed/retrying out of {Total}.",
+            sentCount,
+            failedOrRetryingCount,
+            messages.Count);
     }
 
     private static async Task<List<EmailOutboxMessage>> ClaimReadyMessagesAsync(
@@ -94,40 +114,74 @@ public sealed class EmailOutboxWorker(
         {
             message.MarkAsProcessing(processingExpiresAt);
         }
-        
+
         await dbContext.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
         return messages;
     }
 
-    private async Task ProcessMessageAsync(
+    private async Task<bool> ProcessMessageAsync(
         CreatorPlatformDbContext dbContext,
         IEmailSender emailSender,
+        List<IEmailSendFailureHandler> failureHandlers,
         EmailOutboxMessage message,
         CancellationToken ct)
     {
+        var sent = false;
+
         try
         {
             if (await TrySkipCancelledMessageAsync(dbContext, message, ct))
-                return;
+                return false;
+
+            logger.LogInformation(
+                "Sending email outbox message {MessageId}. Purpose: {Purpose}. To: {ToEmail}. CorrelationKey: {CorrelationKey}.",
+                message.Id,
+                message.Purpose,
+                message.ToEmail,
+                message.CorrelationKey);
 
             await emailSender.SendAsync(
                 message.ToEmail,
                 message.Subject,
                 message.HtmlBody,
                 message.PlainTextBody,
+                message.ReplyTo,
+                message.ListUnsubscribeUrl,
                 ct);
 
             message.MarkAsSent(DateTimeOffset.UtcNow);
+            sent = true;
             logger.LogInformation(
-                "Sent email outbox message {MessageId}.",
-                message.Id);
+                "Sent email outbox message {MessageId}. Purpose: {Purpose}. To: {ToEmail}.",
+                message.Id,
+                message.Purpose,
+                message.ToEmail);
         }
         catch (Exception exception)
         {
             if (await TrySkipCancelledMessageAsync(dbContext, message, ct))
-                return;
+                return false;
+
+            // Provider throttling (ACS 429) means "try later", not "this attempt failed" — reschedule
+            // without touching RetryCount, so a quota blip never eats into the message's limited retry
+            // budget the way a genuine delivery failure does.
+            if (exception is RequestFailedException throttled && throttled.Status == ThrottledStatusCode)
+            {
+                var throttledUntil = DateTimeOffset.UtcNow.AddMinutes(emailOptions.Value.ThrottleBackoffMinutes);
+                message.Reschedule(throttledUntil);
+
+                logger.LogWarning(
+                    exception,
+                    "Email outbox message {MessageId} throttled by the provider (429, {AzureErrorCode}); rescheduled to {NextAttemptAt} without consuming a retry.",
+                    message.Id,
+                    throttled.ErrorCode,
+                    throttledUntil);
+
+                await dbContext.SaveChangesAsync(ct);
+                return false;
+            }
 
             var nextAttemptAt = DateTimeOffset.UtcNow.Add(GetRetryDelay(message.RetryCount + 1));
             message.MarkAsFailed(exception.Message, nextAttemptAt, MaxRetryCount);
@@ -139,34 +193,58 @@ public sealed class EmailOutboxWorker(
                     "Email outbox message {MessageId} permanently failed after {RetryCount} attempt(s).",
                     message.Id,
                     message.RetryCount);
+
+                // The failure-handler side effect (e.g. refunding a usage counter) must commit or roll
+                // back together with the status transition — same DB transaction, one SaveChanges.
+                await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
+
+                var handler = failureHandlers.FirstOrDefault(h => h.Purpose == message.Purpose);
+                if (handler is not null)
+                {
+                    try
+                    {
+                        await handler.HandleAsync(message, ct);
+                    }
+                    catch (Exception handlerException)
+                    {
+                        logger.LogWarning(
+                            handlerException,
+                            "Email send-failure handler threw for message {MessageId} (Purpose {Purpose}); continuing without its side effect for this message.",
+                            message.Id,
+                            message.Purpose);
+                    }
+                }
+
+                await dbContext.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return false;
+            }
+
+            if (exception is RequestFailedException requestFailedException)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Azure Email error. MessageId: {MessageId}. AzureMessage: {AzureMessage}. AzureStatus: {AzureStatus}. AzureErrorCode: {AzureErrorCode}. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
+                    message.Id,
+                    requestFailedException.Message,
+                    requestFailedException.Status,
+                    requestFailedException.ErrorCode,
+                    message.RetryCount,
+                    nextAttemptAt);
             }
             else
             {
-                if (exception is RequestFailedException requestFailedException)
-                {
-                    logger.LogWarning(
-                        exception,
-                        "Azure Email error. MessageId: {MessageId}. AzureMessage: {AzureMessage}. AzureStatus: {AzureStatus}. AzureErrorCode: {AzureErrorCode}. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
-                        message.Id,
-                        requestFailedException.Message,
-                        requestFailedException.Status,
-                        requestFailedException.ErrorCode,
-                        message.RetryCount,
-                        nextAttemptAt);
-                }
-                else
-                {
-                    logger.LogWarning(
-                        exception,
-                        "Email outbox message {MessageId} failed. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
-                        message.Id,
-                        message.RetryCount,
-                        nextAttemptAt);
-                }
+                logger.LogWarning(
+                    exception,
+                    "Email outbox message {MessageId} failed. RetryCount: {RetryCount}. NextAttemptAt: {NextAttemptAt}.",
+                    message.Id,
+                    message.RetryCount,
+                    nextAttemptAt);
             }
         }
 
         await dbContext.SaveChangesAsync(ct);
+        return sent;
     }
 
     private async Task<bool> TrySkipCancelledMessageAsync(

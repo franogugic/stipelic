@@ -25,10 +25,38 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
         string cancelUrl,
         string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
-        CancellationToken ct)
+        CancellationToken ct,
+        int? applicationFeeAmountCents = null,
+        string? destinationAccountId = null,
+        string? thumbnailUrl = null)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey))
             throw new BadRequestException("Stripe secret key is not configured.");
+
+        var paymentIntentData = new SessionPaymentIntentDataOptions
+        {
+            Metadata = new Dictionary<string, string>(metadata)
+        };
+
+        if (applicationFeeAmountCents is not null && destinationAccountId is not null)
+        {
+            paymentIntentData.ApplicationFeeAmount = applicationFeeAmountCents;
+            paymentIntentData.TransferData = new SessionPaymentIntentDataTransferDataOptions
+            {
+                Destination = destinationAccountId
+            };
+        }
+
+        var productData = new SessionLineItemPriceDataProductDataOptions
+        {
+            Name = productName
+        };
+
+        // Stripe rejects an empty/null entry inside Images — only attach the list when there's a real URL.
+        if (!string.IsNullOrWhiteSpace(thumbnailUrl))
+        {
+            productData.Images = [thumbnailUrl];
+        }
 
         var options = new SessionCreateOptions
         {
@@ -37,10 +65,7 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
             CancelUrl = cancelUrl,
             CustomerEmail = customerEmail,
             Metadata = new Dictionary<string, string>(metadata),
-            PaymentIntentData = new SessionPaymentIntentDataOptions
-            {
-                Metadata = new Dictionary<string, string>(metadata)
-            },
+            PaymentIntentData = paymentIntentData,
             LineItems =
             [
                 new SessionLineItemOptions
@@ -50,10 +75,7 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
                     {
                         Currency = currency.ToLowerInvariant(),
                         UnitAmount = priceCents,
-                        ProductData = new SessionLineItemPriceDataProductDataOptions
-                        {
-                            Name = productName
-                        }
+                        ProductData = productData
                     }
                 }
             ]

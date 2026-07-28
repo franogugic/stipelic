@@ -35,6 +35,12 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
         builder.Property(message => message.PlainTextBody)
             .IsRequired();
 
+        builder.Property(message => message.ReplyTo)
+            .HasMaxLength(254);
+
+        builder.Property(message => message.ListUnsubscribeUrl)
+            .HasMaxLength(2000);
+
         builder.Property(message => message.Status)
             .HasConversion<string>()
             .HasMaxLength(30)

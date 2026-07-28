@@ -49,6 +49,12 @@ public sealed class User
         UpdatedAt = verifiedAt;
     }
 
+    public void SetPassword(string newPasswordHash, DateTimeOffset updatedAt)
+    {
+        PasswordHash = newPasswordHash;
+        UpdatedAt = updatedAt;
+    }
+
     public bool IsEmailVerified => EmailVerifiedAt is not null && Status == UserStatus.Active;
 
     public int Id { get; private set; }

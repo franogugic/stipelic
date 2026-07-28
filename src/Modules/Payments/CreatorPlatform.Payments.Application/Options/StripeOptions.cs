@@ -13,4 +13,10 @@ public sealed class StripeOptions
     public string CancelUrl { get; init; } = string.Empty;
 
     public string BillingPortalReturnUrl { get; init; } = string.Empty;
+
+    /// <summary>Frontend origin used to build Connect onboarding return/refresh URLs.</summary>
+    public string FrontendBaseUrl { get; init; } = string.Empty;
+
+    /// <summary>Signing secret for the separate Connect webhook endpoint registration (different from <see cref="WebhookSecret"/>).</summary>
+    public string ConnectWebhookSecret { get; init; } = string.Empty;
 }

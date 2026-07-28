@@ -21,10 +21,20 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         string landingPageSlug,
         CancellationToken ct)
     {
+        // Active-subscription fee, pre-projected to a nullable int so the later LEFT JOIN naturally
+        // yields null (not a default 0) when a creator has no active subscription.
+        var activeSubscriptionFees =
+            from cs in _context.Set<CreatorSubscription>().AsNoTracking()
+            join plan in _context.Set<CreatorPlan>().AsNoTracking() on cs.PlanId equals plan.Id
+            where cs.Status == CreatorSubscriptionStatus.Active
+            select new { cs.CreatorId, PlatformFeeBasisPoints = (int?)plan.PlatformFeeBasisPoints };
+
         var result = await (
             from lp in _context.Set<LandingPage>().AsNoTracking()
             join c in _context.Set<Creator>().AsNoTracking() on lp.CreatorId equals c.Id
             join p in _context.Set<Product>().AsNoTracking() on lp.ProductId equals p.Id
+            join fee in activeSubscriptionFees on c.Id equals fee.CreatorId into fees
+            from fee in fees.DefaultIfEmpty()
             where c.Slug == creatorSlug
                 && lp.Slug == landingPageSlug
                 && lp.Status == LandingPageStatus.Published
@@ -35,8 +45,15 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
                 ProductId = p.Id,
                 LandingPageId = lp.Id,
                 ProductName = p.Name,
+                p.ThumbnailUrl,
                 p.PriceCents,
-                Currency = c.DefaultCurrency
+                Currency = c.DefaultCurrency,
+                c.Status,
+                c.PayoutMode,
+                c.StripeConnectAccountId,
+                c.StripeConnectPayoutsEnabled,
+                HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(pp => pp.CreatorId == c.Id),
+                fee.PlatformFeeBasisPoints
             }
         ).FirstOrDefaultAsync(ct);
 
@@ -48,8 +65,15 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             result.ProductId,
             result.LandingPageId,
             result.ProductName,
+            result.ThumbnailUrl,
             result.PriceCents,
-            result.Currency);
+            result.Currency,
+            result.Status,
+            result.PayoutMode,
+            result.StripeConnectAccountId,
+            result.StripeConnectPayoutsEnabled,
+            result.HasPayoutProfile,
+            result.PlatformFeeBasisPoints);
     }
 
     public async Task<string?> GetProductNameAsync(int productId, CancellationToken ct)
@@ -58,6 +82,15 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             .AsNoTracking()
             .Where(p => p.Id == productId)
             .Select(p => p.Name)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<string?> GetCreatorSlugByIdAsync(int creatorId, CancellationToken ct)
+    {
+        return await _context.Set<Creator>()
+            .AsNoTracking()
+            .Where(c => c.Id == creatorId)
+            .Select(c => c.Slug)
             .FirstOrDefaultAsync(ct);
     }
 }

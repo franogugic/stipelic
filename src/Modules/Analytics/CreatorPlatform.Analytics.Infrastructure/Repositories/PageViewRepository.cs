@@ -1,3 +1,4 @@
+using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.PageViews;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -50,5 +51,53 @@ public sealed class PageViewRepository : IPageViewRepository
             .FirstAsync(ct);
 
         return result;
+    }
+
+    public async Task<List<ViewsBucketRow>> GetBucketedViewsAsync(
+        int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
+    {
+        // bucketUnit comes from a fixed server-side map (never from raw query string), so it is safe to
+        // interpolate into date_trunc / generate_series. Zero-filled buckets via LEFT JOIN on generate_series.
+        return await _context.Database.SqlQuery<ViewsBucketRow>($"""
+            WITH buckets AS (
+                SELECT generate_series(
+                    date_trunc({bucketUnit}, {cutoff}::timestamptz),
+                    date_trunc({bucketUnit}, now()),
+                    ('1 ' || {bucketUnit})::interval
+                ) AS bucket_start
+            )
+            SELECT
+                b.bucket_start                                      AS "BucketStart",
+                COALESCE(COUNT(pv."Id"), 0)                         AS "ViewCount",
+                COALESCE(COUNT(DISTINCT pv."VisitorId"), 0)         AS "UniqueVisitors"
+            FROM buckets b
+            LEFT JOIN analytics.page_views pv
+                ON pv."LandingPageId" = {landingPageId}
+                AND date_trunc({bucketUnit}, pv."ViewedAt") = b.bucket_start
+            GROUP BY b.bucket_start
+            ORDER BY b.bucket_start
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorAsync(
+        string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        // One aggregate query for every landing page of the creator, so the landing-pages list needs a single
+        // request instead of one /analytics call per page. Scoped by creator slug + owner (same as OrderRepository).
+        return await _context.Database.SqlQuery<LandingPageViewsSummaryDto>($"""
+            SELECT
+                lp."PublicId"                                AS "PublicId",
+                COALESCE(COUNT(pv."Id"), 0)                  AS "TotalViews",
+                COALESCE(COUNT(DISTINCT pv."VisitorId"), 0)  AS "UniqueVisitors"
+            FROM landing_pages.landing_pages lp
+            JOIN creators.creators c ON c."Id" = lp."CreatorId"
+            LEFT JOIN analytics.page_views pv ON pv."LandingPageId" = lp."Id"
+            WHERE c."Slug" = {creatorSlug} AND c."OwnerUserId" = {ownerUserId}
+            GROUP BY lp."PublicId"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
     }
 }
