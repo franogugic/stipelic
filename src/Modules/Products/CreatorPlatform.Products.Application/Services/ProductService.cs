@@ -61,11 +61,12 @@ public sealed class ProductService : IProductService
     public async Task<List<ProductResponseDto>> ListAsync(
         string slug,
         int ownerUserId,
+        bool includeArchived,
         CancellationToken ct)
     {
         var (creatorId, _, _) = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
-        var products = await _productRepository.ListByCreatorIdAsync(creatorId, ct);
+        var products = await _productRepository.ListByCreatorIdAsync(creatorId, includeArchived, ct);
         var revenueByProductId = await _orderRepository.GetProductRevenueByCreatorIdAsync(creatorId, ct);
 
         return products.Select(p => MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id))).ToList();
@@ -125,6 +126,31 @@ public sealed class ProductService : IProductService
 
         product.Archive(DateTimeOffset.UtcNow);
         await _unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task<ProductResponseDto> RestoreAsync(
+        string slug,
+        Guid productPublicId,
+        int ownerUserId,
+        CancellationToken ct)
+    {
+        var (creatorId, maxProducts, activeProductCount) = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var product = await _productRepository.GetByPublicIdAndCreatorIdForUpdateAsync(productPublicId, creatorId, ct);
+        if (product is null)
+            throw new NotFoundException("Product not found.");
+
+        if (product.Status != ProductStatus.Archived)
+            throw new BadRequestException("Only archived products can be restored.");
+
+        if (maxProducts >= 0 && activeProductCount >= maxProducts)
+            throw new ConflictException(
+                $"Your plan allows a maximum of {maxProducts} product(s). Free up {activeProductCount - maxProducts + 1} product(s) before restoring.");
+
+        product.Restore(DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return MapToDto(product);
     }
 
     private async Task<CreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)

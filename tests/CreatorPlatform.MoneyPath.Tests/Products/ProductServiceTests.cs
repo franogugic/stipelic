@@ -45,7 +45,7 @@ public class ProductServiceTests
             [product.Id] = new ProductRevenueDto(product.Id, RevenueCents: 15_00 + 25_00 + 10_00, PaidOrderCount: 3)
         };
 
-        var result = await service.ListAsync(CreatorSlug, OwnerUserId, CancellationToken.None);
+        var result = await service.ListAsync(CreatorSlug, OwnerUserId, includeArchived: false, CancellationToken.None);
 
         var dto = Assert.Single(result);
         Assert.Equal(5000, dto.RevenueCents);
@@ -62,7 +62,7 @@ public class ProductServiceTests
         // No entry at all for this product's id — simulates a LEFT JOIN with no matching rows.
         orderRepository.RevenueByProductId = [];
 
-        var result = await service.ListAsync(CreatorSlug, OwnerUserId, CancellationToken.None);
+        var result = await service.ListAsync(CreatorSlug, OwnerUserId, includeArchived: false, CancellationToken.None);
 
         var dto = Assert.Single(result);
         Assert.Equal(0, dto.RevenueCents);
@@ -86,7 +86,7 @@ public class ProductServiceTests
             [product.Id] = new ProductRevenueDto(product.Id, RevenueCents: 0, PaidOrderCount: 0)
         };
 
-        var result = await service.ListAsync(CreatorSlug, OwnerUserId, CancellationToken.None);
+        var result = await service.ListAsync(CreatorSlug, OwnerUserId, includeArchived: false, CancellationToken.None);
 
         var dto = Assert.Single(result);
         Assert.Equal(0, dto.RevenueCents);
@@ -108,7 +108,7 @@ public class ProductServiceTests
             [productB.Id] = new ProductRevenueDto(productB.Id, RevenueCents: 0, PaidOrderCount: 0)
         };
 
-        var result = await service.ListAsync(CreatorSlug, OwnerUserId, CancellationToken.None);
+        var result = await service.ListAsync(CreatorSlug, OwnerUserId, includeArchived: false, CancellationToken.None);
 
         var dtoA = Assert.Single(result, d => d.Name == "Product A");
         var dtoB = Assert.Single(result, d => d.Name == "Product B");

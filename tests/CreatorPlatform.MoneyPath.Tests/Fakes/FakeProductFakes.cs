@@ -20,8 +20,10 @@ public sealed class FakeProductRepository : IProductRepository
         Products.Add(product);
     }
 
-    public Task<List<Product>> ListByCreatorIdAsync(int creatorId, CancellationToken ct)
-        => Task.FromResult(Products.Where(p => p.CreatorId == creatorId).ToList());
+    public Task<List<Product>> ListByCreatorIdAsync(int creatorId, bool includeArchived, CancellationToken ct)
+        => Task.FromResult(Products
+            .Where(p => p.CreatorId == creatorId && (includeArchived || p.Status != ProductStatus.Archived))
+            .ToList());
 
     public Task<Product?> GetByPublicIdAndCreatorIdForUpdateAsync(Guid publicId, int creatorId, CancellationToken ct)
         => Task.FromResult(Products.FirstOrDefault(p => p.PublicId == publicId && p.CreatorId == creatorId));

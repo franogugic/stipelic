@@ -22,8 +22,14 @@ public sealed class FakeLandingPageRepository : ILandingPageRepository
 {
     public LandingPage? PageForUpdate { get; set; }
 
-    public Task<List<LandingPage>> ListByCreatorIdAsync(int creatorId, CancellationToken ct)
-        => Task.FromResult(new List<LandingPage>());
+    public bool SlugExists { get; set; }
+
+    public List<LandingPage> Pages { get; } = [];
+
+    public Task<List<LandingPage>> ListByCreatorIdAsync(int creatorId, bool includeArchived, CancellationToken ct)
+        => Task.FromResult(Pages
+            .Where(p => p.CreatorId == creatorId && (includeArchived || p.Status != LandingPageStatus.Archived))
+            .ToList());
 
     public Task<LandingPage?> GetByPublicIdAndCreatorIdForUpdateAsync(Guid publicId, int creatorId, CancellationToken ct)
         => Task.FromResult(PageForUpdate);
@@ -32,7 +38,7 @@ public sealed class FakeLandingPageRepository : ILandingPageRepository
         => Task.FromResult(PageForUpdate);
 
     public Task<bool> SlugExistsForCreatorAsync(int creatorId, string slug, CancellationToken ct)
-        => Task.FromResult(false);
+        => Task.FromResult(SlugExists);
 
     public Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct)
         => Task.FromResult(PageForUpdate);

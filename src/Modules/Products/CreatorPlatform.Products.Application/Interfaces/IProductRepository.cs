@@ -4,7 +4,7 @@ namespace CreatorPlatform.Products.Application.Interfaces;
 
 public interface IProductRepository
 {
-    Task<List<Product>> ListByCreatorIdAsync(int creatorId, CancellationToken ct);
+    Task<List<Product>> ListByCreatorIdAsync(int creatorId, bool includeArchived, CancellationToken ct);
 
     Task<Product?> GetByPublicIdAndCreatorIdForUpdateAsync(Guid publicId, int creatorId, CancellationToken ct);
 

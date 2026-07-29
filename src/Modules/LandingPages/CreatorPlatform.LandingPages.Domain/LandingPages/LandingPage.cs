@@ -78,6 +78,15 @@ public sealed class LandingPage
         UpdatedAt = updatedAt;
     }
 
+    public void Restore(DateTimeOffset updatedAt)
+    {
+        if (Status != LandingPageStatus.Archived)
+            throw new InvalidOperationException("Only archived landing pages can be restored.");
+
+        Status = LandingPageStatus.Draft;
+        UpdatedAt = updatedAt;
+    }
+
     public int Id { get; private set; }
 
     public Guid PublicId { get; private set; }
