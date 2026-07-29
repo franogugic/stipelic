@@ -39,6 +39,8 @@
     <ProjectReference Include="..\..\src\Modules\Analytics\CreatorPlatform.Analytics.Application\CreatorPlatform.Analytics.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Media\CreatorPlatform.Media.Domain\CreatorPlatform.Media.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Media\CreatorPlatform.Media.Application\CreatorPlatform.Media.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Products\CreatorPlatform.Products.Domain\CreatorPlatform.Products.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Products\CreatorPlatform.Products.Application\CreatorPlatform.Products.Application.csproj" />
   </ItemGroup>
 
 </Project>

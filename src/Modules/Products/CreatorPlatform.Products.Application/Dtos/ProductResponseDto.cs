@@ -12,4 +12,6 @@ public sealed class ProductResponseDto
     public string? ThumbnailUrl { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
+    public int RevenueCents { get; init; }
+    public int PaidOrderCount { get; init; }
 }

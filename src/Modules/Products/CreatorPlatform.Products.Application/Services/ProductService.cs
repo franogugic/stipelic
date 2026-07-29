@@ -1,3 +1,4 @@
+using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Interfaces;
 using CreatorPlatform.Products.Domain.Products;
@@ -15,15 +16,18 @@ public sealed class ProductService : IProductService
     private readonly IProductRepository _productRepository;
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IProductsUnitOfWork _unitOfWork;
+    private readonly CreatorPlatform.Orders.Application.Interfaces.IOrderRepository _orderRepository;
 
     public ProductService(
         IProductRepository productRepository,
         ICreatorContextProvider creatorContextProvider,
-        IProductsUnitOfWork unitOfWork)
+        IProductsUnitOfWork unitOfWork,
+        CreatorPlatform.Orders.Application.Interfaces.IOrderRepository orderRepository)
     {
         _productRepository = productRepository;
         _creatorContextProvider = creatorContextProvider;
         _unitOfWork = unitOfWork;
+        _orderRepository = orderRepository;
     }
 
     public async Task<ProductResponseDto> CreateAsync(
@@ -62,8 +66,9 @@ public sealed class ProductService : IProductService
         var (creatorId, _, _) = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
         var products = await _productRepository.ListByCreatorIdAsync(creatorId, ct);
+        var revenueByProductId = await _orderRepository.GetProductRevenueByCreatorIdAsync(creatorId, ct);
 
-        return products.Select(MapToDto).ToList();
+        return products.Select(p => MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id))).ToList();
     }
 
     public async Task<ProductResponseDto> UpdateAsync(
@@ -182,7 +187,7 @@ public sealed class ProductService : IProductService
         return status;
     }
 
-    private static ProductResponseDto MapToDto(Product product) => new()
+    private static ProductResponseDto MapToDto(Product product, ProductRevenueDto? revenue = null) => new()
     {
         PublicId = product.PublicId,
         Name = product.Name,
@@ -193,6 +198,8 @@ public sealed class ProductService : IProductService
         AccessUrl = product.AccessUrl,
         ThumbnailUrl = product.ThumbnailUrl,
         CreatedAt = product.CreatedAt,
-        UpdatedAt = product.UpdatedAt
+        UpdatedAt = product.UpdatedAt,
+        RevenueCents = revenue?.RevenueCents ?? 0,
+        PaidOrderCount = revenue?.PaidOrderCount ?? 0
     };
 }
