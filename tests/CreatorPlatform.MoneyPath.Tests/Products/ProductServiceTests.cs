@@ -1,4 +1,4 @@
-using CreatorPlatform.Orders.Application.Dtos;
+using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Interfaces;
 using CreatorPlatform.Products.Application.Services;
 using CreatorPlatform.Products.Domain.Products;
@@ -15,7 +15,7 @@ public class ProductServiceTests
     private static (
         ProductService Service,
         FakeProductRepository ProductRepository,
-        FakeProductRevenueOrderRepository OrderRepository) BuildService()
+        FakeOrderContextProvider OrderRepository) BuildService()
     {
         var productRepository = new FakeProductRepository();
         var contextProvider = new FakeProductsCreatorContextProvider
@@ -23,7 +23,7 @@ public class ProductServiceTests
             Context = new CreatorContext(CreatorId, MaxProducts: 10, ActiveProductCount: 0)
         };
         var unitOfWork = new FakeProductsUnitOfWork();
-        var orderRepository = new FakeProductRevenueOrderRepository();
+        var orderRepository = new FakeOrderContextProvider();
 
         var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository);
 

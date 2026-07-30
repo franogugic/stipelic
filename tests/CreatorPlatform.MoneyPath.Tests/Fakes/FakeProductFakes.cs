@@ -1,5 +1,4 @@
-using CreatorPlatform.Orders.Application.Dtos;
-using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Interfaces;
 using CreatorPlatform.Products.Domain.Products;
 
@@ -54,39 +53,12 @@ public sealed class FakeProductsUnitOfWork : IProductsUnitOfWork
     }
 }
 
-/// <summary>Dedicated fake for Products→Orders revenue lookups — configurable per-product revenue,
-/// no query logic (the real aggregate SQL is verified separately via EXPLAIN + manual curl, per this
-/// module's own convention of not testing EF query translation without a real DB).</summary>
-public sealed class FakeProductRevenueOrderRepository : IOrderRepository
+/// <summary>Dedicated fake for Products' local order-revenue read-through — configurable per-product
+/// revenue, no query logic (the real aggregate SQL is verified separately via EXPLAIN + manual curl,
+/// per this module's own convention of not testing EF query translation without a real DB).</summary>
+public sealed class FakeOrderContextProvider : IOrderContextProvider
 {
     public Dictionary<int, ProductRevenueDto> RevenueByProductId { get; set; } = [];
-
-    public Task AddAsync(CreatorPlatform.Orders.Domain.Orders.Order order, CancellationToken ct) => Task.CompletedTask;
-
-    public Task<CreatorPlatform.Orders.Domain.Orders.Order?> GetByStripeCheckoutSessionIdAsync(string stripeCheckoutSessionId, CancellationToken ct)
-        => Task.FromResult<CreatorPlatform.Orders.Domain.Orders.Order?>(null);
-
-    public Task<CreatorPlatform.Orders.Domain.Orders.Order?> GetByStripeCheckoutSessionIdForUpdateAsync(string stripeCheckoutSessionId, CancellationToken ct)
-        => Task.FromResult<CreatorPlatform.Orders.Domain.Orders.Order?>(null);
-
-    public Task<CreatorPlatform.Orders.Domain.Orders.Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
-        => Task.FromResult<CreatorPlatform.Orders.Domain.Orders.Order?>(null);
-
-    public Task<List<OrderDto>> GetByCreatorSlugAsync(
-        string creatorSlug, int ownerUserId, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
-        => Task.FromResult(new List<OrderDto>());
-
-    public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
-        => Task.FromResult(new OrderSummaryDto(0, 0, null));
-
-    public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
-        => Task.FromResult(new OrderSummaryDto(0, 0, null));
-
-    public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
-        => Task.FromResult(new List<PurchasesBucketRow>());
-
-    public Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
-        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0));
 
     public Task<Dictionary<int, ProductRevenueDto>> GetProductRevenueByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(RevenueByProductId);

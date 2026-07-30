@@ -288,21 +288,6 @@ public sealed class OrderRepository : IOrderRepository
             emailsMonthlyLimit);
     }
 
-    public async Task<Dictionary<int, ProductRevenueDto>> GetProductRevenueByCreatorIdAsync(int creatorId, CancellationToken ct)
-    {
-        var rows = await _context.Set<Order>()
-            .AsNoTracking()
-            .Where(o => o.CreatorId == creatorId)
-            .GroupBy(o => o.ProductId)
-            .Select(g => new ProductRevenueDto(
-                g.Key,
-                g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0),
-                g.Count(o => o.Status == OrderStatus.Paid)))
-            .ToListAsync(ct);
-
-        return rows.ToDictionary(r => r.ProductId);
-    }
-
     private const int TrendDays = 14;
 
     private static List<int> ZeroTrend() => [.. new int[TrendDays]];

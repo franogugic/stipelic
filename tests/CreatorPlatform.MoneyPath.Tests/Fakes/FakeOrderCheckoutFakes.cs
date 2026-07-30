@@ -84,9 +84,6 @@ public sealed class FakeOrderRepository : IOrderRepository
 
     public Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0));
-
-    public Task<Dictionary<int, ProductRevenueDto>> GetProductRevenueByCreatorIdAsync(int creatorId, CancellationToken ct)
-        => Task.FromResult(new Dictionary<int, ProductRevenueDto>());
 }
 
 public sealed class FakeOrdersUnitOfWork : IOrdersUnitOfWork

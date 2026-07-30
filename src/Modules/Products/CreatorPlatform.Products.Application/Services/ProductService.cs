@@ -1,4 +1,3 @@
-using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Interfaces;
 using CreatorPlatform.Products.Domain.Products;
@@ -16,18 +15,18 @@ public sealed class ProductService : IProductService
     private readonly IProductRepository _productRepository;
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IProductsUnitOfWork _unitOfWork;
-    private readonly CreatorPlatform.Orders.Application.Interfaces.IOrderRepository _orderRepository;
+    private readonly IOrderContextProvider _orderContextProvider;
 
     public ProductService(
         IProductRepository productRepository,
         ICreatorContextProvider creatorContextProvider,
         IProductsUnitOfWork unitOfWork,
-        CreatorPlatform.Orders.Application.Interfaces.IOrderRepository orderRepository)
+        IOrderContextProvider orderContextProvider)
     {
         _productRepository = productRepository;
         _creatorContextProvider = creatorContextProvider;
         _unitOfWork = unitOfWork;
-        _orderRepository = orderRepository;
+        _orderContextProvider = orderContextProvider;
     }
 
     public async Task<ProductResponseDto> CreateAsync(
@@ -67,7 +66,7 @@ public sealed class ProductService : IProductService
         var (creatorId, _, _) = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
         var products = await _productRepository.ListByCreatorIdAsync(creatorId, includeArchived, ct);
-        var revenueByProductId = await _orderRepository.GetProductRevenueByCreatorIdAsync(creatorId, ct);
+        var revenueByProductId = await _orderContextProvider.GetProductRevenueByCreatorIdAsync(creatorId, ct);
 
         return products.Select(p => MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id))).ToList();
     }

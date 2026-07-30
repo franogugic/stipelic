@@ -22,7 +22,7 @@ public class ProductRestoreTests
             Context = new CreatorContext(CreatorId, maxProducts, activeProductCount)
         };
         var unitOfWork = new FakeProductsUnitOfWork();
-        var orderRepository = new FakeProductRevenueOrderRepository();
+        var orderRepository = new FakeOrderContextProvider();
 
         var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository);
 
