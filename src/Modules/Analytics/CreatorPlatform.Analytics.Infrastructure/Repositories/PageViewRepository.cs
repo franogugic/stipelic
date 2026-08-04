@@ -17,11 +17,25 @@ public sealed class PageViewRepository : IPageViewRepository
 
     public async Task AddAsync(PageView pageView, CancellationToken ct)
     {
+        // Single atomic statement: insert the view (deduped by the unique constraint), then bump the
+        // creator's running total by exactly how many rows the insert actually produced — 1 on a genuine
+        // new view, 0 on a deduped conflict, so ON CONFLICT DO NOTHING never double-counts. Keeps
+        // CreatorViewTotal in sync without a second round-trip or a race between insert and increment.
         await _context.Database.ExecuteSqlAsync(
             $"""
-             INSERT INTO analytics.page_views ("Id", "LandingPageId", "VisitorId", "ViewedAt", "ViewedDate")
-             VALUES ({pageView.Id}, {pageView.LandingPageId}, {pageView.VisitorId}, {pageView.ViewedAt}, {pageView.ViewedDate})
-             ON CONFLICT ("LandingPageId", "VisitorId", "ViewedDate") DO NOTHING
+             WITH inserted AS (
+                 INSERT INTO analytics.page_views ("Id", "LandingPageId", "VisitorId", "ViewedAt", "ViewedDate")
+                 VALUES ({pageView.Id}, {pageView.LandingPageId}, {pageView.VisitorId}, {pageView.ViewedAt}, {pageView.ViewedDate})
+                 ON CONFLICT ("LandingPageId", "VisitorId", "ViewedDate") DO NOTHING
+                 RETURNING 1
+             ), lp AS (
+                 SELECT "CreatorId" FROM landing_pages.landing_pages WHERE "Id" = {pageView.LandingPageId}
+             )
+             INSERT INTO analytics.creator_view_totals ("CreatorId", "TotalViews")
+             SELECT lp."CreatorId", COUNT(inserted.*) FROM lp LEFT JOIN inserted ON true
+             GROUP BY lp."CreatorId"
+             ON CONFLICT ("CreatorId") DO UPDATE
+                 SET "TotalViews" = analytics.creator_view_totals."TotalViews" + EXCLUDED."TotalViews"
              """,
             ct);
     }

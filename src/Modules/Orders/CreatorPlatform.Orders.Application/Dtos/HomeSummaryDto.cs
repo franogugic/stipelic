@@ -11,6 +11,9 @@ public sealed record HomeSummaryDto(
     TopProductDto? TopProduct,
     List<int> RevenueTrend,
     int EmailsSentThisMonth,
-    int EmailsMonthlyLimit);
+    int EmailsMonthlyLimit,
+    int TotalPageViews,
+    int SubscriberCount,
+    List<int> ViewsTrend);
 
 public sealed record TopProductDto(string Name, int TotalCents);
