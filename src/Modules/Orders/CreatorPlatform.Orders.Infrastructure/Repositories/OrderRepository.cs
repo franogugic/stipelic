@@ -178,7 +178,7 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(ct);
 
         if (creator is null)
-            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend(), 0, 0, 0, 0, ZeroTrend());
+            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend(), 0, 0, 0, 0, ZeroTrend(), ZeroMonthlyTrend(), 0);
 
         var now = DateTimeOffset.UtcNow;
         var todayMidnight = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
@@ -194,6 +194,7 @@ public sealed class OrderRepository : IOrderRepository
                 PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
                 TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0),
                 ThisMonthRevenueCents = g.Sum(o => o.Status == OrderStatus.Paid && o.PaidAt >= monthStart ? o.AmountCents : 0),
+                TotalPlatformFeeCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.PlatformFeeCents : 0),
             })
             .FirstOrDefaultAsync(ct);
 
@@ -312,6 +313,31 @@ public sealed class OrderRepository : IOrderRepository
                 viewsTrend[index]++;
         }
 
+        // Monthly revenue for the last MonthlyTrendMonths calendar months (oldest to newest, current
+        // month included) — same in-memory bucketing approach as the daily revenueTrend above, since
+        // month boundaries have variable lengths and aren't a clean SQL date-bucket without a calendar
+        // table. Separate query from the 7-day trendRows above (different, much wider window).
+        var monthlyTrendStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero)
+            .AddMonths(-(MonthlyTrendMonths - 1));
+        var monthlyRows = await _context.Set<Order>()
+            .AsNoTracking()
+            .Where(o => o.CreatorId == creator.Id && o.Status == OrderStatus.Paid && o.PaidAt >= monthlyTrendStart)
+            .Select(o => new { o.PaidAt, o.AmountCents })
+            .ToListAsync(ct);
+
+        var monthlyRevenueTrend = new int[MonthlyTrendMonths];
+        foreach (var row in monthlyRows)
+        {
+            if (row.PaidAt is not DateTimeOffset paidAt)
+                continue;
+
+            var paidUtc = paidAt.UtcDateTime;
+            var monthDiff = (now.Year - paidUtc.Year) * 12 + (now.Month - paidUtc.Month);
+            var index = MonthlyTrendMonths - 1 - monthDiff;
+            if (index >= 0 && index < MonthlyTrendMonths)
+                monthlyRevenueTrend[index] += row.AmountCents;
+        }
+
         return new HomeSummaryDto(
             orderStats?.TotalPaidAmountCents ?? 0,
             orderStats?.PaidOrderCount ?? 0,
@@ -326,12 +352,17 @@ public sealed class OrderRepository : IOrderRepository
             emailsMonthlyLimit,
             counts.TotalPageViews,
             counts.SubscriberCount,
-            [.. viewsTrend]);
+            [.. viewsTrend],
+            [.. monthlyRevenueTrend],
+            orderStats?.TotalPlatformFeeCents ?? 0);
     }
 
     private const int TrendDays = 7;
+    private const int MonthlyTrendMonths = 7;
 
     private static List<int> ZeroTrend() => [.. new int[TrendDays]];
+
+    private static List<int> ZeroMonthlyTrend() => [.. new int[MonthlyTrendMonths]];
 
     private sealed record SummaryCountsRow(int ProductCount, int LandingPageCount, int TotalPageViews, int SubscriberCount);
 }
