@@ -140,6 +140,29 @@ public sealed class OrderRepository : IOrderRepository
             : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
     }
 
+    public async Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(
+        string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        var rows = await (
+            from o in _context.Set<Order>().AsNoTracking()
+            join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
+            join lp in _context.Set<LandingPage>().AsNoTracking() on o.LandingPageId equals lp.Id
+            where c.Slug == creatorSlug && c.OwnerUserId == ownerUserId && o.Status == OrderStatus.Paid
+            group o by new { lp.PublicId, c.DefaultCurrency } into g
+            select new
+            {
+                g.Key.PublicId,
+                g.Key.DefaultCurrency,
+                PurchaseCount = g.Count(),
+                TotalRevenueCents = g.Sum(o => o.AmountCents)
+            }
+        ).ToListAsync(ct);
+
+        return rows
+            .Select(r => new LandingPageOrdersSummaryDto(r.PublicId, r.PurchaseCount, r.TotalRevenueCents, r.DefaultCurrency.ToString()))
+            .ToList();
+    }
+
     public async Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(
         int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
     {

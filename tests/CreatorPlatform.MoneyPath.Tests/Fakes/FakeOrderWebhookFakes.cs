@@ -34,6 +34,9 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
     public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null));
 
+    public Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult(new List<LandingPageOrdersSummaryDto>());
+
     public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<PurchasesBucketRow>());
 

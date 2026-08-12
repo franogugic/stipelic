@@ -62,10 +62,21 @@ public sealed class LandingPagesController : ControllerBase
         var viewsByPage = (await _pageViewService.GetViewsSummaryByCreatorAsync(slug, user.Id, ct))
             .ToDictionary(v => v.PublicId);
 
+        // Same merge pattern for purchases/revenue — one grouped query for the whole creator instead of
+        // a per-page round trip.
+        var ordersByPage = (await _orderService.GetOrdersSummaryByCreatorGroupedByLandingPageAsync(slug, user.Id, ct))
+            .ToDictionary(o => o.LandingPagePublicId);
+
         var merged = pages
-            .Select(p => viewsByPage.TryGetValue(p.PublicId, out var views)
-                ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
-                : p)
+            .Select(p =>
+            {
+                var withViews = viewsByPage.TryGetValue(p.PublicId, out var views)
+                    ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
+                    : p;
+                return ordersByPage.TryGetValue(p.PublicId, out var orders)
+                    ? withViews with { PurchaseCount = orders.PurchaseCount, TotalRevenueCents = orders.TotalRevenueCents }
+                    : withViews;
+            })
             .ToList();
 
         return Ok(ApiResponse<List<LandingPageResponseDto>>.Success(StatusCodes.Status200OK, "Landing pages loaded.", merged));
