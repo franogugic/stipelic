@@ -7,6 +7,8 @@ public interface IOrderService
     Task<OrdersPageDto> ListAsync(
         string creatorSlug,
         int ownerUserId,
+        Guid? productId,
+        string? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,

@@ -25,6 +25,8 @@ public sealed class OrdersController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ApiResponse<OrdersPageDto>>> List(
         string slug,
+        [FromQuery] Guid? productId,
+        [FromQuery] string? status,
         [FromQuery] DateTimeOffset? afterCreatedAt,
         [FromQuery] Guid? afterId,
         [FromQuery] int limit,
@@ -33,7 +35,7 @@ public sealed class OrdersController : ControllerBase
         var user = _currentUserContext.User
             ?? throw new UnauthorizedException("Authentication is required.");
 
-        var orders = await _orderService.ListAsync(slug, user.Id, afterCreatedAt, afterId, limit, ct);
+        var orders = await _orderService.ListAsync(slug, user.Id, productId, status, afterCreatedAt, afterId, limit, ct);
 
         return Ok(ApiResponse<OrdersPageDto>.Success(
             StatusCodes.Status200OK,

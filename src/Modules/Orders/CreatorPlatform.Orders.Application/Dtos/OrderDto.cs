@@ -11,4 +11,5 @@ public sealed record OrderDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     int PlatformFeeCents,
-    int NetAmountCents);
+    int NetAmountCents,
+    string? LandingPageTitle);

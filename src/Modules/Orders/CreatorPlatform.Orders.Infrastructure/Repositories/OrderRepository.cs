@@ -57,17 +57,31 @@ public sealed class OrderRepository : IOrderRepository
     public async Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,
+        Guid? productPublicId,
+        OrderStatus? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,
         CancellationToken ct)
     {
+        // Left join on landing pages — Order.LandingPageId is nullable (direct-link/no-referrer
+        // orders have none), so this must not drop rows the way an inner join would.
+        // Filtered server-side (not client-side) so a status/product filter narrows the full order
+        // set, not just whatever page happens to be loaded — keyset pagination below still walks the
+        // filtered result set correctly since the cursor condition is applied on top of it. Product is
+        // filtered by PublicId directly on the already-joined `p` — no extra round trip to resolve it
+        // to an internal id first.
         var query =
             from o in _context.Set<Order>().AsNoTracking()
             join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
             join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
-            where c.Slug == creatorSlug && c.OwnerUserId == ownerUserId
-            select new { o, ProductName = p.Name };
+            join lp in _context.Set<LandingPage>().AsNoTracking() on o.LandingPageId equals (int?)lp.Id into lpJoin
+            from lp in lpJoin.DefaultIfEmpty()
+            where c.Slug == creatorSlug
+                && c.OwnerUserId == ownerUserId
+                && (!productPublicId.HasValue || p.PublicId == productPublicId.Value)
+                && (!status.HasValue || o.Status == status.Value)
+            select new { o, ProductName = p.Name, LandingPageTitle = (string?)lp.Title };
 
         if (afterCreatedAt.HasValue && afterId.HasValue)
         {
@@ -96,7 +110,8 @@ public sealed class OrderRepository : IOrderRepository
                 x.o.CreatedAt,
                 x.o.PaidAt,
                 x.o.PlatformFeeCents,
-                x.o.AmountCents - x.o.PlatformFeeCents))
+                x.o.AmountCents - x.o.PlatformFeeCents,
+                x.LandingPageTitle))
             .ToListAsync(ct);
     }
 
@@ -260,7 +275,8 @@ public sealed class OrderRepository : IOrderRepository
                 o.CreatedAt,
                 o.PaidAt,
                 o.PlatformFeeCents,
-                o.AmountCents - o.PlatformFeeCents)
+                o.AmountCents - o.PlatformFeeCents,
+                null)
         ).Take(5).ToListAsync(ct);
 
         // Top product by paid revenue (all-time).

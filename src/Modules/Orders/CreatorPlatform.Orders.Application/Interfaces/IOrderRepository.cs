@@ -16,6 +16,8 @@ public interface IOrderRepository
     Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,
+        Guid? productPublicId,
+        OrderStatus? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,
