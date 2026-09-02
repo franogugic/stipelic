@@ -16,6 +16,8 @@ public interface IOrderRepository
     Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,
+        Guid? productPublicId,
+        OrderStatus? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,
@@ -24,6 +26,9 @@ public interface IOrderRepository
     Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 
     Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct);
+
+    Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(
+        string creatorSlug, int ownerUserId, CancellationToken ct);
 
     Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
 

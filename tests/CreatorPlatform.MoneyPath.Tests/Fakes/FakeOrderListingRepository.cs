@@ -12,6 +12,8 @@ public sealed class FakeOrderListingRepository : IOrderRepository
 
     public string? LastCreatorSlug { get; private set; }
     public int? LastOwnerUserId { get; private set; }
+    public Guid? LastProductPublicId { get; private set; }
+    public OrderStatus? LastStatus { get; private set; }
     public DateTimeOffset? LastAfterCreatedAt { get; private set; }
     public Guid? LastAfterId { get; private set; }
     public int? LastLimit { get; private set; }
@@ -28,10 +30,12 @@ public sealed class FakeOrderListingRepository : IOrderRepository
         => Task.FromResult<Order?>(null);
 
     public Task<List<OrderDto>> GetByCreatorSlugAsync(
-        string creatorSlug, int ownerUserId, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
+        string creatorSlug, int ownerUserId, Guid? productPublicId, OrderStatus? status, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
     {
         LastCreatorSlug = creatorSlug;
         LastOwnerUserId = ownerUserId;
+        LastProductPublicId = productPublicId;
+        LastStatus = status;
         LastAfterCreatedAt = afterCreatedAt;
         LastAfterId = afterId;
         LastLimit = limit;
@@ -44,11 +48,14 @@ public sealed class FakeOrderListingRepository : IOrderRepository
     public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null));
 
+    public Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult(new List<LandingPageOrdersSummaryDto>());
+
     public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<PurchasesBucketRow>());
 
     public Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
-        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0));
+        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0));
 }
 
 public sealed class FakeOrderListingHomeSummaryCache : IHomeSummaryCache

@@ -75,11 +75,12 @@ public sealed partial class LandingPageService : ILandingPageService
     public async Task<List<LandingPageResponseDto>> ListAsync(
         string creatorSlug,
         int ownerUserId,
+        bool includeArchived,
         CancellationToken ct)
     {
         var (creatorId, _, _) = await GetCreatorContextAsync(creatorSlug, ownerUserId, ct);
 
-        var pages = await _landingPageRepository.ListByCreatorIdAsync(creatorId, ct);
+        var pages = await _landingPageRepository.ListByCreatorIdAsync(creatorId, includeArchived, ct);
 
         return pages.Select(MapToDto).ToList();
     }
@@ -180,6 +181,34 @@ public sealed partial class LandingPageService : ILandingPageService
 
         landingPage.Archive(DateTimeOffset.UtcNow);
         await _unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task<LandingPageResponseDto> RestoreAsync(
+        string creatorSlug,
+        Guid landingPagePublicId,
+        int ownerUserId,
+        CancellationToken ct)
+    {
+        var (creatorId, maxLandingPages, activeLandingPageCount) = await GetCreatorContextAsync(creatorSlug, ownerUserId, ct);
+
+        var landingPage = await _landingPageRepository.GetByPublicIdAndCreatorIdForUpdateAsync(landingPagePublicId, creatorId, ct);
+        if (landingPage is null)
+            throw new NotFoundException("Landing page not found.");
+
+        if (landingPage.Status != LandingPageStatus.Archived)
+            throw new BadRequestException("Only archived landing pages can be restored.");
+
+        if (maxLandingPages >= 0 && activeLandingPageCount >= maxLandingPages)
+            throw new ConflictException(
+                $"Your plan allows a maximum of {maxLandingPages} landing page(s). Free up {activeLandingPageCount - maxLandingPages + 1} landing page(s) before restoring.");
+
+        if (await _landingPageRepository.SlugExistsForCreatorAsync(creatorId, landingPage.Slug, ct))
+            throw new ConflictException("A landing page with this URL already exists. Update its URL slug before restoring, or archive the conflicting page.");
+
+        landingPage.Restore(DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return MapToDto(landingPage);
     }
 
     public async Task<LandingPageWithSectionsResponseDto> SaveEditorAsync(

@@ -22,4 +22,6 @@ public sealed record LandingPageResponseDto
     public DateTimeOffset UpdatedAt { get; init; }
     public long TotalViews { get; init; }
     public long UniqueVisitors { get; init; }
+    public int PurchaseCount { get; init; }
+    public int TotalRevenueCents { get; init; }
 }

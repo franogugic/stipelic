@@ -31,11 +31,12 @@ public sealed class ProductsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<ProductResponseDto>>>> List(
         string slug,
+        [FromQuery] bool includeArchived,
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
 
-        var products = await _productService.ListAsync(slug, user.Id, ct);
+        var products = await _productService.ListAsync(slug, user.Id, includeArchived, ct);
 
         return Ok(ApiResponse<List<ProductResponseDto>>.Success(
             StatusCodes.Status200OK,
@@ -97,6 +98,24 @@ public sealed class ProductsController : ControllerBase
             StatusCodes.Status200OK,
             "Product archived.",
             null));
+    }
+
+    [HttpPost("{productId:guid}/restore")]
+    public async Task<ActionResult<ApiResponse<ProductResponseDto>>> Restore(
+        string slug,
+        Guid productId,
+        CancellationToken ct)
+    {
+        var user = GetVerifiedUser();
+
+        var product = await _productService.RestoreAsync(slug, productId, user.Id, ct);
+
+        _homeSummaryCache.Remove(slug);
+
+        return Ok(ApiResponse<ProductResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Product restored.",
+            product));
     }
 
     private Auth.Application.Dtos.CurrentUserDto GetAuthenticatedUser()

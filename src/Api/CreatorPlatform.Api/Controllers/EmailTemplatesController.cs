@@ -36,6 +36,19 @@ public sealed class EmailTemplatesController : ControllerBase
             templates));
     }
 
+    [HttpGet("starters")]
+    public ActionResult<ApiResponse<List<EmailTemplateStarterDto>>> GetStarters(string slug)
+    {
+        _ = GetVerifiedUser();
+
+        var starters = _templateService.GetStarters();
+
+        return Ok(ApiResponse<List<EmailTemplateStarterDto>>.Success(
+            StatusCodes.Status200OK,
+            "Starter templates loaded.",
+            starters));
+    }
+
     [HttpGet("{templatePublicId:guid}")]
     public async Task<ActionResult<ApiResponse<EmailTemplateDto>>> Get(string slug, Guid templatePublicId, CancellationToken ct)
     {

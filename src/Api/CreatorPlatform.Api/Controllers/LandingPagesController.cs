@@ -51,20 +51,32 @@ public sealed class LandingPagesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<LandingPageResponseDto>>>> List(
         string slug,
+        [FromQuery] bool includeArchived,
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
-        var pages = await _landingPageService.ListAsync(slug, user.Id, ct);
+        var pages = await _landingPageService.ListAsync(slug, user.Id, includeArchived, ct);
 
         // Merge in (cached) view counts so the list page needs a single request instead of a second
         // round trip to a standalone views-summary endpoint.
         var viewsByPage = (await _pageViewService.GetViewsSummaryByCreatorAsync(slug, user.Id, ct))
             .ToDictionary(v => v.PublicId);
 
+        // Same merge pattern for purchases/revenue — one grouped query for the whole creator instead of
+        // a per-page round trip.
+        var ordersByPage = (await _orderService.GetOrdersSummaryByCreatorGroupedByLandingPageAsync(slug, user.Id, ct))
+            .ToDictionary(o => o.LandingPagePublicId);
+
         var merged = pages
-            .Select(p => viewsByPage.TryGetValue(p.PublicId, out var views)
-                ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
-                : p)
+            .Select(p =>
+            {
+                var withViews = viewsByPage.TryGetValue(p.PublicId, out var views)
+                    ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
+                    : p;
+                return ordersByPage.TryGetValue(p.PublicId, out var orders)
+                    ? withViews with { PurchaseCount = orders.PurchaseCount, TotalRevenueCents = orders.TotalRevenueCents }
+                    : withViews;
+            })
             .ToList();
 
         return Ok(ApiResponse<List<LandingPageResponseDto>>.Success(StatusCodes.Status200OK, "Landing pages loaded.", merged));
@@ -122,6 +134,16 @@ public sealed class LandingPagesController : ControllerBase
         _homeSummaryCache.Remove(slug);
         _viewsSummaryCache.Remove(slug);
         return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Landing page archived.", null));
+    }
+
+    [HttpPost("{pageId:guid}/restore")]
+    public async Task<ActionResult<ApiResponse<LandingPageResponseDto>>> Restore(string slug, Guid pageId, CancellationToken ct)
+    {
+        var user = GetVerifiedUser();
+        var page = await _landingPageService.RestoreAsync(slug, pageId, user.Id, ct);
+        _homeSummaryCache.Remove(slug);
+        _viewsSummaryCache.Remove(slug);
+        return Ok(ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status200OK, "Landing page restored.", page));
     }
 
     [HttpPut("{pageId:guid}/editor")]

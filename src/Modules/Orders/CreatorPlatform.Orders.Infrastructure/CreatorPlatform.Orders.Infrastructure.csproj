@@ -8,6 +8,8 @@
     <ProjectReference Include="..\..\Creators\CreatorPlatform.Creators.Domain\CreatorPlatform.Creators.Domain.csproj" />
     <ProjectReference Include="..\..\Products\CreatorPlatform.Products.Domain\CreatorPlatform.Products.Domain.csproj" />
     <ProjectReference Include="..\..\LandingPages\CreatorPlatform.LandingPages.Domain\CreatorPlatform.LandingPages.Domain.csproj" />
+    <ProjectReference Include="..\..\Analytics\CreatorPlatform.Analytics.Domain\CreatorPlatform.Analytics.Domain.csproj" />
+    <ProjectReference Include="..\..\Marketing\CreatorPlatform.Marketing.Domain\CreatorPlatform.Marketing.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>

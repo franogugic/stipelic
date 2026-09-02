@@ -4,7 +4,7 @@ namespace CreatorPlatform.LandingPages.Application.Interfaces;
 
 public interface ILandingPageRepository
 {
-    Task<List<LandingPage>> ListByCreatorIdAsync(int creatorId, CancellationToken ct);
+    Task<List<LandingPage>> ListByCreatorIdAsync(int creatorId, bool includeArchived, CancellationToken ct);
 
     Task<LandingPage?> GetByPublicIdAndCreatorIdForUpdateAsync(Guid publicId, int creatorId, CancellationToken ct);
 

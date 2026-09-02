@@ -15,15 +15,18 @@ public sealed class ProductService : IProductService
     private readonly IProductRepository _productRepository;
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IProductsUnitOfWork _unitOfWork;
+    private readonly IOrderContextProvider _orderContextProvider;
 
     public ProductService(
         IProductRepository productRepository,
         ICreatorContextProvider creatorContextProvider,
-        IProductsUnitOfWork unitOfWork)
+        IProductsUnitOfWork unitOfWork,
+        IOrderContextProvider orderContextProvider)
     {
         _productRepository = productRepository;
         _creatorContextProvider = creatorContextProvider;
         _unitOfWork = unitOfWork;
+        _orderContextProvider = orderContextProvider;
     }
 
     public async Task<ProductResponseDto> CreateAsync(
@@ -57,13 +60,15 @@ public sealed class ProductService : IProductService
     public async Task<List<ProductResponseDto>> ListAsync(
         string slug,
         int ownerUserId,
+        bool includeArchived,
         CancellationToken ct)
     {
         var (creatorId, _, _) = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
-        var products = await _productRepository.ListByCreatorIdAsync(creatorId, ct);
+        var products = await _productRepository.ListByCreatorIdAsync(creatorId, includeArchived, ct);
+        var revenueByProductId = await _orderContextProvider.GetProductRevenueByCreatorIdAsync(creatorId, ct);
 
-        return products.Select(MapToDto).ToList();
+        return products.Select(p => MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id))).ToList();
     }
 
     public async Task<ProductResponseDto> UpdateAsync(
@@ -120,6 +125,31 @@ public sealed class ProductService : IProductService
 
         product.Archive(DateTimeOffset.UtcNow);
         await _unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task<ProductResponseDto> RestoreAsync(
+        string slug,
+        Guid productPublicId,
+        int ownerUserId,
+        CancellationToken ct)
+    {
+        var (creatorId, maxProducts, activeProductCount) = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var product = await _productRepository.GetByPublicIdAndCreatorIdForUpdateAsync(productPublicId, creatorId, ct);
+        if (product is null)
+            throw new NotFoundException("Product not found.");
+
+        if (product.Status != ProductStatus.Archived)
+            throw new BadRequestException("Only archived products can be restored.");
+
+        if (maxProducts >= 0 && activeProductCount >= maxProducts)
+            throw new ConflictException(
+                $"Your plan allows a maximum of {maxProducts} product(s). Free up {activeProductCount - maxProducts + 1} product(s) before restoring.");
+
+        product.Restore(DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return MapToDto(product);
     }
 
     private async Task<CreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)
@@ -182,7 +212,7 @@ public sealed class ProductService : IProductService
         return status;
     }
 
-    private static ProductResponseDto MapToDto(Product product) => new()
+    private static ProductResponseDto MapToDto(Product product, ProductRevenueDto? revenue = null) => new()
     {
         PublicId = product.PublicId,
         Name = product.Name,
@@ -193,6 +223,8 @@ public sealed class ProductService : IProductService
         AccessUrl = product.AccessUrl,
         ThumbnailUrl = product.ThumbnailUrl,
         CreatedAt = product.CreatedAt,
-        UpdatedAt = product.UpdatedAt
+        UpdatedAt = product.UpdatedAt,
+        RevenueCents = revenue?.RevenueCents ?? 0,
+        PaidOrderCount = revenue?.PaidOrderCount ?? 0
     };
 }

@@ -14,12 +14,12 @@ public sealed class ProductRepository : IProductRepository
         _context = context;
     }
 
-    public async Task<List<Product>> ListByCreatorIdAsync(int creatorId, CancellationToken ct)
+    public async Task<List<Product>> ListByCreatorIdAsync(int creatorId, bool includeArchived, CancellationToken ct)
     {
         return await _context
             .Set<Product>()
             .AsNoTracking()
-            .Where(p => p.CreatorId == creatorId && p.Status != ProductStatus.Archived)
+            .Where(p => p.CreatorId == creatorId && (includeArchived || p.Status != ProductStatus.Archived))
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync(ct);
     }

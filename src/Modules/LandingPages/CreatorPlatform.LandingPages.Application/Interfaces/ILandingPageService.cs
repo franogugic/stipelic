@@ -13,6 +13,7 @@ public interface ILandingPageService
     Task<List<LandingPageResponseDto>> ListAsync(
         string creatorSlug,
         int ownerUserId,
+        bool includeArchived,
         CancellationToken ct);
 
     Task<LandingPageWithSectionsResponseDto> GetWithSectionsAsync(
@@ -34,6 +35,8 @@ public interface ILandingPageService
     Task UnpublishAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct);
 
     Task ArchiveAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct);
+
+    Task<LandingPageResponseDto> RestoreAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct);
 
     Task<LandingPageWithSectionsResponseDto> SaveEditorAsync(
         string creatorSlug,

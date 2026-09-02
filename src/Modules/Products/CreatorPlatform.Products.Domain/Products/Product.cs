@@ -90,6 +90,15 @@ public sealed class Product
         UpdatedAt = updatedAt;
     }
 
+    public void Restore(DateTimeOffset updatedAt)
+    {
+        if (Status != ProductStatus.Archived)
+            throw new InvalidOperationException("Only archived products can be restored.");
+
+        Status = ProductStatus.Draft;
+        UpdatedAt = updatedAt;
+    }
+
     public int Id { get; private set; }
 
     public Guid PublicId { get; private set; }

@@ -14,12 +14,12 @@ public sealed class LandingPageRepository : ILandingPageRepository
         _context = context;
     }
 
-    public async Task<List<LandingPage>> ListByCreatorIdAsync(int creatorId, CancellationToken ct)
+    public async Task<List<LandingPage>> ListByCreatorIdAsync(int creatorId, bool includeArchived, CancellationToken ct)
     {
         return await _context
             .Set<LandingPage>()
             .AsNoTracking()
-            .Where(lp => lp.CreatorId == creatorId && lp.Status != LandingPageStatus.Archived)
+            .Where(lp => lp.CreatorId == creatorId && (includeArchived || lp.Status != LandingPageStatus.Archived))
             .OrderByDescending(lp => lp.CreatedAt)
             .ToListAsync(ct);
     }

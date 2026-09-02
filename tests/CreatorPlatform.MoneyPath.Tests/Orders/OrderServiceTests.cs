@@ -21,7 +21,8 @@ public class OrderServiceTests
         createdAt,
         createdAt,
         100,
-        900);
+        900,
+        null);
 
     private static (OrderService Service, FakeOrderListingRepository Repository) BuildService()
     {
@@ -40,7 +41,7 @@ public class OrderServiceTests
             .Select(i => BuildOrderDto(now.AddMinutes(-i), Guid.NewGuid()))
             .ToList();
 
-        var page = await service.ListAsync(CreatorSlug, OwnerUserId, null, null, 10, CancellationToken.None);
+        var page = await service.ListAsync(CreatorSlug, OwnerUserId, null, null, null, null, 10, CancellationToken.None);
 
         Assert.Equal(10, page.Orders.Count);
         Assert.True(page.HasMore);
@@ -55,7 +56,7 @@ public class OrderServiceTests
             .Select(i => BuildOrderDto(now.AddMinutes(-i), Guid.NewGuid()))
             .ToList();
 
-        var page = await service.ListAsync(CreatorSlug, OwnerUserId, null, null, 10, CancellationToken.None);
+        var page = await service.ListAsync(CreatorSlug, OwnerUserId, null, null, null, null, 10, CancellationToken.None);
 
         Assert.Equal(3, page.Orders.Count);
         Assert.False(page.HasMore);
@@ -66,7 +67,7 @@ public class OrderServiceTests
     {
         var (service, repository) = BuildService();
 
-        await service.ListAsync(CreatorSlug, OwnerUserId, null, null, 0, CancellationToken.None);
+        await service.ListAsync(CreatorSlug, OwnerUserId, null, null, null, null, 0, CancellationToken.None);
 
         Assert.Equal(11, repository.LastLimit); // DefaultLimit(10) + 1 lookahead row
     }
@@ -76,7 +77,7 @@ public class OrderServiceTests
     {
         var (service, repository) = BuildService();
 
-        await service.ListAsync(CreatorSlug, OwnerUserId, null, null, 5000, CancellationToken.None);
+        await service.ListAsync(CreatorSlug, OwnerUserId, null, null, null, null, 5000, CancellationToken.None);
 
         Assert.Equal(101, repository.LastLimit); // MaxLimit(100) + 1 lookahead row
     }
@@ -88,7 +89,7 @@ public class OrderServiceTests
         var cursorCreatedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var cursorId = Guid.NewGuid();
 
-        await service.ListAsync(CreatorSlug, OwnerUserId, cursorCreatedAt, cursorId, 10, CancellationToken.None);
+        await service.ListAsync(CreatorSlug, OwnerUserId, null, null, cursorCreatedAt, cursorId, 10, CancellationToken.None);
 
         Assert.Equal(CreatorSlug, repository.LastCreatorSlug);
         Assert.Equal(OwnerUserId, repository.LastOwnerUserId);

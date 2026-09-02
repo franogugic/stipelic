@@ -13,6 +13,7 @@ public interface IProductService
     Task<List<ProductResponseDto>> ListAsync(
         string slug,
         int ownerUserId,
+        bool includeArchived,
         CancellationToken ct);
 
     Task<ProductResponseDto> UpdateAsync(
@@ -23,6 +24,12 @@ public interface IProductService
         CancellationToken ct);
 
     Task ArchiveAsync(
+        string slug,
+        Guid productPublicId,
+        int ownerUserId,
+        CancellationToken ct);
+
+    Task<ProductResponseDto> RestoreAsync(
         string slug,
         Guid productPublicId,
         int ownerUserId,

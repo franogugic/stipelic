@@ -15,4 +15,7 @@ public interface IEmailTemplateService
     Task<EmailTemplateDto> UpdateAsync(string slug, int ownerUserId, Guid templatePublicId, SaveEmailTemplateRequestDto request, CancellationToken ct);
 
     Task<EmailTemplateDto> ArchiveAsync(string slug, int ownerUserId, Guid templatePublicId, CancellationToken ct);
+
+    /// <summary>Static, platform-provided starter content — not creator-scoped, no DB round trip.</summary>
+    List<EmailTemplateStarterDto> GetStarters();
 }

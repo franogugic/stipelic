@@ -1,5 +1,6 @@
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Marketing.Application.Templates;
 using CreatorPlatform.Marketing.Domain.Templates;
 using CreatorPlatform.Shared.Application.Exceptions;
 
@@ -109,6 +110,13 @@ public sealed class EmailTemplateService : IEmailTemplateService
         await _unitOfWork.SaveChangesAsync(ct);
 
         return ToDto(template);
+    }
+
+    public List<EmailTemplateStarterDto> GetStarters()
+    {
+        return EmailTemplateStarters.All
+            .Select(t => new EmailTemplateStarterDto(t.Key, t.Name, t.Subject, t.BodyText, t.CtaLabel, t.CtaUrl))
+            .ToList();
     }
 
     private async Task<MarketingCreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)

@@ -82,6 +82,13 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.HasIndex(o => new { o.CreatorId, o.CreatedAt });
 
+        // Support the Orders page's product/status filters staying index-backed even when combined
+        // with the keyset CreatedAt ordering, instead of falling back to a filtered scan of the
+        // (CreatorId, CreatedAt) index once a creator has enough order history to matter.
+        builder.HasIndex(o => new { o.CreatorId, o.Status, o.CreatedAt });
+
+        builder.HasIndex(o => new { o.CreatorId, o.ProductId, o.CreatedAt });
+
         builder.HasIndex(o => o.LandingPageId);
 
         builder.HasIndex(o => o.Email);

@@ -25,7 +25,7 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
         => Task.FromResult(Order);
 
     public Task<List<OrderDto>> GetByCreatorSlugAsync(
-        string creatorSlug, int ownerUserId, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
+        string creatorSlug, int ownerUserId, Guid? productPublicId, OrderStatus? status, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
         => Task.FromResult(new List<OrderDto>());
 
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
@@ -34,11 +34,14 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
     public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null));
 
+    public Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult(new List<LandingPageOrdersSummaryDto>());
+
     public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<PurchasesBucketRow>());
 
     public Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
-        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0));
+        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0));
 }
 
 public sealed class FakeEmailOutboxService : IEmailOutboxService

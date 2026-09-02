@@ -1,5 +1,8 @@
+using CreatorPlatform.Analytics.Domain.PageViews;
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.LandingPages.Domain.LandingPages;
+using CreatorPlatform.Marketing.Domain.Contacts;
+using CreatorPlatform.Marketing.Domain.Unsubscribes;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
@@ -54,17 +57,31 @@ public sealed class OrderRepository : IOrderRepository
     public async Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,
+        Guid? productPublicId,
+        OrderStatus? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,
         CancellationToken ct)
     {
+        // Left join on landing pages — Order.LandingPageId is nullable (direct-link/no-referrer
+        // orders have none), so this must not drop rows the way an inner join would.
+        // Filtered server-side (not client-side) so a status/product filter narrows the full order
+        // set, not just whatever page happens to be loaded — keyset pagination below still walks the
+        // filtered result set correctly since the cursor condition is applied on top of it. Product is
+        // filtered by PublicId directly on the already-joined `p` — no extra round trip to resolve it
+        // to an internal id first.
         var query =
             from o in _context.Set<Order>().AsNoTracking()
             join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
             join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
-            where c.Slug == creatorSlug && c.OwnerUserId == ownerUserId
-            select new { o, ProductName = p.Name };
+            join lp in _context.Set<LandingPage>().AsNoTracking() on o.LandingPageId equals (int?)lp.Id into lpJoin
+            from lp in lpJoin.DefaultIfEmpty()
+            where c.Slug == creatorSlug
+                && c.OwnerUserId == ownerUserId
+                && (!productPublicId.HasValue || p.PublicId == productPublicId.Value)
+                && (!status.HasValue || o.Status == status.Value)
+            select new { o, ProductName = p.Name, LandingPageTitle = (string?)lp.Title };
 
         if (afterCreatedAt.HasValue && afterId.HasValue)
         {
@@ -93,7 +110,8 @@ public sealed class OrderRepository : IOrderRepository
                 x.o.CreatedAt,
                 x.o.PaidAt,
                 x.o.PlatformFeeCents,
-                x.o.AmountCents - x.o.PlatformFeeCents))
+                x.o.AmountCents - x.o.PlatformFeeCents,
+                x.LandingPageTitle))
             .ToListAsync(ct);
     }
 
@@ -137,6 +155,29 @@ public sealed class OrderRepository : IOrderRepository
             : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
     }
 
+    public async Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(
+        string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        var rows = await (
+            from o in _context.Set<Order>().AsNoTracking()
+            join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
+            join lp in _context.Set<LandingPage>().AsNoTracking() on o.LandingPageId equals lp.Id
+            where c.Slug == creatorSlug && c.OwnerUserId == ownerUserId && o.Status == OrderStatus.Paid
+            group o by new { lp.PublicId, c.DefaultCurrency } into g
+            select new
+            {
+                g.Key.PublicId,
+                g.Key.DefaultCurrency,
+                PurchaseCount = g.Count(),
+                TotalRevenueCents = g.Sum(o => o.AmountCents)
+            }
+        ).ToListAsync(ct);
+
+        return rows
+            .Select(r => new LandingPageOrdersSummaryDto(r.PublicId, r.PurchaseCount, r.TotalRevenueCents, r.DefaultCurrency.ToString()))
+            .ToList();
+    }
+
     public async Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(
         int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
     {
@@ -175,7 +216,7 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(ct);
 
         if (creator is null)
-            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend(), 0, 0);
+            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend(), 0, 0, 0, 0, ZeroTrend(), ZeroMonthlyTrend(), 0);
 
         var now = DateTimeOffset.UtcNow;
         var todayMidnight = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
@@ -191,16 +232,32 @@ public sealed class OrderRepository : IOrderRepository
                 PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
                 TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0),
                 ThisMonthRevenueCents = g.Sum(o => o.Status == OrderStatus.Paid && o.PaidAt >= monthStart ? o.AmountCents : 0),
+                TotalPlatformFeeCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.PlatformFeeCents : 0),
             })
             .FirstOrDefaultAsync(ct);
 
-        var productCount = await _context.Set<Product>()
-            .AsNoTracking()
-            .CountAsync(p => p.CreatorId == creator.Id && p.Status != ProductStatus.Archived, ct);
-
-        var landingPageCount = await _context.Set<LandingPage>()
-            .AsNoTracking()
-            .CountAsync(lp => lp.CreatorId == creator.Id && lp.Status != LandingPageStatus.Archived, ct);
+        // Four independent scalar counts (products, landing pages, all-time views, active subscribers) —
+        // EF Core's DbContext isn't thread-safe for concurrent queries (Task.WhenAll on the same _context
+        // throws at runtime), so true parallel execution isn't an option here. This collapses what were 4
+        // separate round trips into 1 instead, each subquery backed by the same indexes the original LINQ
+        // queries used (Product/LandingPage: (CreatorId, Status); ContactSummary/Unsubscribe: (CreatorId,
+        // Email); CreatorViewTotal: PK). Status is stored as the enum's string name (HasConversion<string>),
+        // matching the != 'Archived' literal below exactly.
+        var counts = await _context.Database.SqlQuery<SummaryCountsRow>($"""
+            SELECT
+                (SELECT COUNT(*) FROM products.products
+                    WHERE "CreatorId" = {creator.Id} AND "Status" != 'Archived')      AS "ProductCount",
+                (SELECT COUNT(*) FROM landing_pages.landing_pages
+                    WHERE "CreatorId" = {creator.Id} AND "Status" != 'Archived')      AS "LandingPageCount",
+                COALESCE((SELECT "TotalViews" FROM analytics.creator_view_totals
+                    WHERE "CreatorId" = {creator.Id}), 0)                             AS "TotalPageViews",
+                (SELECT COUNT(*) FROM marketing.contact_summaries cs
+                    WHERE cs."CreatorId" = {creator.Id}
+                        AND NOT EXISTS (
+                            SELECT 1 FROM marketing.unsubscribes u
+                            WHERE u."CreatorId" = {creator.Id} AND u."Email" = cs."Email"
+                        ))                                                            AS "SubscriberCount"
+            """).AsNoTracking().FirstAsync(ct);
 
         var recentOrders = await (
             from o in _context.Set<Order>().AsNoTracking()
@@ -218,7 +275,8 @@ public sealed class OrderRepository : IOrderRepository
                 o.CreatedAt,
                 o.PaidAt,
                 o.PlatformFeeCents,
-                o.AmountCents - o.PlatformFeeCents)
+                o.AmountCents - o.PlatformFeeCents,
+                null)
         ).Take(5).ToListAsync(ct);
 
         // Top product by paid revenue (all-time).
@@ -252,7 +310,7 @@ public sealed class OrderRepository : IOrderRepository
             .Select(c => (int?)c.UsedValue)
             .FirstOrDefaultAsync(ct) ?? 0;
 
-        // Daily revenue for the last TrendDays days. Bounded window (14 days of one creator's paid orders),
+        // Daily revenue for the last TrendDays days. Bounded window (7 days of one creator's paid orders),
         // so we pull the rows and bucket in memory rather than doing SQL date bucketing.
         var trendRows = await _context.Set<Order>()
             .AsNoTracking()
@@ -274,21 +332,76 @@ public sealed class OrderRepository : IOrderRepository
                 revenueTrend[index] += row.AmountCents;
         }
 
+        // Daily page views for the same TrendDays window, bucketed by PageView.ViewedDate (already a UTC
+        // calendar day, see PageView entity doc) — no DateTimeOffset→midnight conversion needed here.
+        var trendStartDate = DateOnly.FromDateTime(trendStart.UtcDateTime);
+        var viewDates = await (
+            from pv in _context.Set<PageView>().AsNoTracking()
+            join lp in _context.Set<LandingPage>().AsNoTracking() on pv.LandingPageId equals lp.Id
+            where lp.CreatorId == creator.Id && pv.ViewedDate >= trendStartDate
+            select pv.ViewedDate
+        ).ToListAsync(ct);
+
+        var todayDate = DateOnly.FromDateTime(todayMidnight.UtcDateTime);
+        var viewsTrend = new int[TrendDays];
+        foreach (var viewedDate in viewDates)
+        {
+            var diffDays = todayDate.DayNumber - viewedDate.DayNumber;
+            var index = TrendDays - 1 - diffDays;
+            if (index >= 0 && index < TrendDays)
+                viewsTrend[index]++;
+        }
+
+        // Monthly revenue for the last MonthlyTrendMonths calendar months (oldest to newest, current
+        // month included) — same in-memory bucketing approach as the daily revenueTrend above, since
+        // month boundaries have variable lengths and aren't a clean SQL date-bucket without a calendar
+        // table. Separate query from the 7-day trendRows above (different, much wider window).
+        var monthlyTrendStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero)
+            .AddMonths(-(MonthlyTrendMonths - 1));
+        var monthlyRows = await _context.Set<Order>()
+            .AsNoTracking()
+            .Where(o => o.CreatorId == creator.Id && o.Status == OrderStatus.Paid && o.PaidAt >= monthlyTrendStart)
+            .Select(o => new { o.PaidAt, o.AmountCents })
+            .ToListAsync(ct);
+
+        var monthlyRevenueTrend = new int[MonthlyTrendMonths];
+        foreach (var row in monthlyRows)
+        {
+            if (row.PaidAt is not DateTimeOffset paidAt)
+                continue;
+
+            var paidUtc = paidAt.UtcDateTime;
+            var monthDiff = (now.Year - paidUtc.Year) * 12 + (now.Month - paidUtc.Month);
+            var index = MonthlyTrendMonths - 1 - monthDiff;
+            if (index >= 0 && index < MonthlyTrendMonths)
+                monthlyRevenueTrend[index] += row.AmountCents;
+        }
+
         return new HomeSummaryDto(
             orderStats?.TotalPaidAmountCents ?? 0,
             orderStats?.PaidOrderCount ?? 0,
             creator.DefaultCurrency.ToString(),
-            productCount,
-            landingPageCount,
+            counts.ProductCount,
+            counts.LandingPageCount,
             recentOrders,
             orderStats?.ThisMonthRevenueCents ?? 0,
             topProduct,
             [.. revenueTrend],
             emailsSentThisMonth,
-            emailsMonthlyLimit);
+            emailsMonthlyLimit,
+            counts.TotalPageViews,
+            counts.SubscriberCount,
+            [.. viewsTrend],
+            [.. monthlyRevenueTrend],
+            orderStats?.TotalPlatformFeeCents ?? 0);
     }
 
-    private const int TrendDays = 14;
+    private const int TrendDays = 7;
+    private const int MonthlyTrendMonths = 7;
 
     private static List<int> ZeroTrend() => [.. new int[TrendDays]];
+
+    private static List<int> ZeroMonthlyTrend() => [.. new int[MonthlyTrendMonths]];
+
+    private sealed record SummaryCountsRow(int ProductCount, int LandingPageCount, int TotalPageViews, int SubscriberCount);
 }

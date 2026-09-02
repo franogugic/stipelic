@@ -7,5 +7,8 @@ public enum LandingPageSectionType
     Features,
     ProductDetails,
     Cta,
-    Footer
+    Footer,
+    Testimonials,
+    Faq,
+    Gallery
 }
