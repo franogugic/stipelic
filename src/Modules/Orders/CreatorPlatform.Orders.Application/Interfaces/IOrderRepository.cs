@@ -17,6 +17,7 @@ public interface IOrderRepository
         string creatorSlug,
         int ownerUserId,
         Guid? productPublicId,
+        Guid? landingPagePublicId,
         OrderStatus? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
