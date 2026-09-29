@@ -5,7 +5,7 @@ public sealed record CampaignListItemDto(
     string Subject,
     string Status,
     string AudienceType,
-    Guid TargetPublicId,
+    Guid? TargetPublicId,
     int RecipientCount,
     DateTimeOffset? QueuedAt,
     DateTimeOffset? ScheduledAt,

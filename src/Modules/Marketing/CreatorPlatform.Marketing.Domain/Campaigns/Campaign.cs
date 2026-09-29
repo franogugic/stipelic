@@ -181,6 +181,10 @@ public sealed class Campaign
                 if (productId is null or <= 0 || landingPageId is not null)
                     throw new ArgumentException("A Product-audience campaign must set ProductId and leave LandingPageId null.");
                 break;
+            case CampaignAudienceType.All:
+                if (landingPageId is not null || productId is not null)
+                    throw new ArgumentException("An All-audience campaign must leave both LandingPageId and ProductId null.");
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(audienceType), audienceType, "Unknown audience type.");
         }

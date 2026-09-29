@@ -2,6 +2,7 @@ using CreatorPlatform.Analytics.Domain.EmailCaptures;
 using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Domain.Campaigns;
+using CreatorPlatform.Marketing.Domain.Contacts;
 using CreatorPlatform.Marketing.Domain.Unsubscribes;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -38,8 +39,24 @@ public sealed class AudienceService : IAudienceService
 
         // Raw SQL keyset scan (same pattern as ContactsRepository.SearchAsync) — Npgsql's EF provider does
         // not translate string comparison after a LINQ Distinct/Union, so this can't be a plain IQueryable
-        // WHERE+OrderBy tacked onto BuildAudienceQuery.
-        var rows = audienceType == CampaignAudienceType.LandingPage
+        // WHERE+OrderBy tacked onto BuildAudienceQuery. The All audience needs no DISTINCT: contact_summaries
+        // is already unique per (CreatorId, Email).
+        var rows = audienceType == CampaignAudienceType.All
+            ? await _context.Database.SqlQuery<EmailRow>($"""
+                SELECT cs."Email" AS "Email"
+                FROM marketing.contact_summaries cs
+                WHERE cs."CreatorId" = {creatorId}
+                  AND cs."Email" > {after}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM marketing.unsubscribes u
+                      WHERE u."CreatorId" = {creatorId} AND u."Email" = cs."Email"
+                  )
+                ORDER BY cs."Email"
+                LIMIT {fetchLimit}
+                """)
+                .AsNoTracking()
+                .ToListAsync(ct)
+            : audienceType == CampaignAudienceType.LandingPage
             ? await _context.Database.SqlQuery<EmailRow>($"""
                 SELECT DISTINCT ec."Email" AS "Email"
                 FROM analytics.email_captures ec
@@ -93,7 +110,16 @@ public sealed class AudienceService : IAudienceService
 
         IQueryable<string> captured;
 
-        if (audienceType == CampaignAudienceType.LandingPage)
+        if (audienceType == CampaignAudienceType.All)
+        {
+            // Every contact the creator has captured, straight off the materialized summary table — no
+            // re-aggregation of email_captures.
+            captured = _context.Set<ContactSummary>()
+                .AsNoTracking()
+                .Where(cs => cs.CreatorId == creatorId)
+                .Select(cs => cs.Email);
+        }
+        else if (audienceType == CampaignAudienceType.LandingPage)
         {
             captured = _context.Set<EmailCapture>()
                 .AsNoTracking()

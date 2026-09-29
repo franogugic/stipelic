@@ -7,7 +7,7 @@ public sealed record CampaignDetailDto(
     string? CtaLabel,
     string? CtaUrl,
     string AudienceType,
-    Guid TargetPublicId,
+    Guid? TargetPublicId,
     string Status,
     int RecipientCount,
     DateTimeOffset? QueuedAt,

@@ -123,6 +123,17 @@ public sealed class CampaignService : ICampaignService
     private async Task<(int? LandingPageId, int? ProductId)> ResolveTargetAsync(
         int creatorId, CampaignAudienceType audienceType, Guid targetPublicId, CancellationToken ct)
     {
+        if (audienceType == CampaignAudienceType.All)
+        {
+            if (targetPublicId != Guid.Empty)
+                throw new BadRequestException("The All audience does not take a target.");
+
+            return (null, null);
+        }
+
+        if (targetPublicId == Guid.Empty)
+            throw new BadRequestException("A target is required for this audience.");
+
         if (audienceType == CampaignAudienceType.LandingPage)
         {
             var landingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, targetPublicId, ct);
@@ -139,13 +150,17 @@ public sealed class CampaignService : ICampaignService
         return (null, productId);
     }
 
-    private async Task<Guid> ResolveTargetPublicIdAsync(Campaign campaign, CancellationToken ct)
+    private async Task<Guid?> ResolveTargetPublicIdAsync(Campaign campaign, CancellationToken ct)
     {
         if (campaign.LandingPageId is not null)
         {
             var map = await _creatorContextProvider.GetLandingPagePublicIdsAsync([campaign.LandingPageId.Value], ct);
             return map[campaign.LandingPageId.Value];
         }
+
+        // All-audience sends target neither a landing page nor a product.
+        if (campaign.ProductId is null)
+            return null;
 
         var productMap = await _creatorContextProvider.GetProductPublicIdsAsync([campaign.ProductId!.Value], ct);
         return productMap[campaign.ProductId.Value];
@@ -159,7 +174,9 @@ public sealed class CampaignService : ICampaignService
     {
         var targetPublicId = campaign.LandingPageId is not null
             ? landingPagePublicIds[campaign.LandingPageId.Value]
-            : productPublicIds[campaign.ProductId!.Value];
+            : campaign.ProductId is not null
+                ? productPublicIds[campaign.ProductId.Value]
+                : (Guid?)null;
         var campaignProgress = progress[campaign.PublicId];
 
         return new CampaignListItemDto(
@@ -177,7 +194,7 @@ public sealed class CampaignService : ICampaignService
             campaignProgress.FailedCount);
     }
 
-    private static CampaignDetailDto ToDetailDto(Campaign campaign, Guid targetPublicId, CampaignProgressDto progress)
+    private static CampaignDetailDto ToDetailDto(Campaign campaign, Guid? targetPublicId, CampaignProgressDto progress)
     {
         return new CampaignDetailDto(
             campaign.PublicId,

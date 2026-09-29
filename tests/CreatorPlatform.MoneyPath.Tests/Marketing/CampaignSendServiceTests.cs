@@ -262,6 +262,57 @@ public class CampaignSendServiceTests
         }
     }
 
+    // --- R2.1: All audience ---
+
+    private static SendCampaignRequestDto BuildAllRequest(Guid templatePublicId) => new()
+    {
+        TemplatePublicId = templatePublicId,
+        AudienceType = "All",
+    };
+
+    [Fact]
+    public async Task SendAsync_AllAudience_ExcludesUnsubscribedAndHasNoDuplicates()
+    {
+        var h = BuildHarness();
+        h.ContextProvider.LandingPageId = null; // proves the All path never resolves a landing page/product
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.AllContactEmails = ["a@test.com", "b@test.com", "b@test.com", "gone@test.com"];
+        h.AudienceService.UnsubscribedEmails = ["gone@test.com"];
+
+        var result = await h.Service.SendAsync(Slug, OwnerUserId, BuildAllRequest(template.PublicId), CancellationToken.None);
+
+        Assert.Equal("All", result.AudienceType);
+        Assert.Null(result.TargetPublicId);
+        Assert.Equal(2, result.RecipientCount);
+        Assert.Equal(["a@test.com", "b@test.com"], h.RecipientRepository.Recipients.Select(r => r.Email).Order());
+        Assert.Equal(2, h.EmailOutboxService.QueuedCampaignMessages.Count);
+
+        var campaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.Equal(CampaignAudienceType.All, campaign.AudienceType);
+        Assert.Null(campaign.LandingPageId);
+        Assert.Null(campaign.ProductId);
+    }
+
+    [Fact]
+    public async Task SendAsync_AllAudienceOverLimit_IsRejectedAndUsageCounterUnchanged()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.AllContactEmails = ["a@test.com", "b@test.com", "c@test.com"];
+        h.ContextProvider.PlanLimit = 2;
+        h.UsageService.Used[(CreatorId, "max_email_sends_per_month")] = 1;
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildAllRequest(template.PublicId), CancellationToken.None));
+
+        Assert.Equal(1, h.UsageService.Used[(CreatorId, "max_email_sends_per_month")]);
+        Assert.Empty(h.CampaignRepository.Campaigns);
+        Assert.Empty(h.RecipientRepository.Recipients);
+        Assert.Empty(h.EmailOutboxService.QueuedCampaignMessages);
+    }
+
     // --- Task 14: scheduled sends ---
 
     [Fact]

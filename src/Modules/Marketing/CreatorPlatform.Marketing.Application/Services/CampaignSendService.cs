@@ -364,6 +364,17 @@ public sealed class CampaignSendService : ICampaignSendService
     private async Task<(int? LandingPageId, int? ProductId)> ResolveTargetAsync(
         int creatorId, CampaignAudienceType audienceType, Guid targetPublicId, CancellationToken ct)
     {
+        if (audienceType == CampaignAudienceType.All)
+        {
+            if (targetPublicId != Guid.Empty)
+                throw new BadRequestException("The All audience does not take a target.");
+
+            return (null, null);
+        }
+
+        if (targetPublicId == Guid.Empty)
+            throw new BadRequestException("A target is required for this audience.");
+
         if (audienceType == CampaignAudienceType.LandingPage)
         {
             var landingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, targetPublicId, ct);
@@ -384,7 +395,9 @@ public sealed class CampaignSendService : ICampaignSendService
     {
         var targetPublicId = campaign.LandingPageId is not null
             ? (await _creatorContextProvider.GetLandingPagePublicIdsAsync([campaign.LandingPageId.Value], ct))[campaign.LandingPageId.Value]
-            : (await _creatorContextProvider.GetProductPublicIdsAsync([campaign.ProductId!.Value], ct))[campaign.ProductId.Value];
+            : campaign.ProductId is not null
+                ? (await _creatorContextProvider.GetProductPublicIdsAsync([campaign.ProductId.Value], ct))[campaign.ProductId.Value]
+                : (Guid?)null;
 
         var progress = (await _progressProvider.GetProgressAsync([campaign.PublicId], ct))[campaign.PublicId];
 

@@ -7,7 +7,8 @@ namespace CreatorPlatform.Marketing.Application.Interfaces;
 /// <see cref="ICreatorContextProvider.ResolveLandingPageIdAsync"/> / ResolveProductIdAsync at campaign
 /// creation time, or read it back off the already-validated Campaign row at send time) and pass it in
 /// directly. Exactly one of <paramref name="landingPageId"/>/<paramref name="productId"/> is expected,
-/// matching <paramref name="audienceType"/> — same invariant the Campaign entity itself enforces.</summary>
+/// matching <paramref name="audienceType"/> — same invariant the Campaign entity itself enforces; for
+/// <see cref="CampaignAudienceType.All"/> both are null.</summary>
 public interface IAudienceService
 {
     /// <summary>COUNT(DISTINCT email) — never materializes the audience list.</summary>
