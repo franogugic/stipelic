@@ -96,7 +96,7 @@ public sealed class CampaignService : ICampaignService
             : await _progressProvider.GetProgressAsync(campaigns.Select(c => c.PublicId).ToList(), ct);
 
         var totalsByMonth = campaigns
-            .GroupBy(c => c.QueuedAt!.Value.UtcDateTime.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            .GroupBy(c => c.QueuedAt.UtcDateTime.ToString("yyyy-MM", CultureInfo.InvariantCulture))
             .ToDictionary(
                 g => g.Key,
                 g => (Sent: g.Sum(c => sentByCampaign[c.PublicId].SentCount), Opens: g.Sum(c => c.UniqueOpenCount)));
