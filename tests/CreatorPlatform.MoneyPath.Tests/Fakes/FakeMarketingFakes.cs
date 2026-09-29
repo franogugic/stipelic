@@ -213,9 +213,39 @@ public sealed class FakeCampaignRecipientRepository : ICampaignRecipientReposito
     private static readonly PropertyInfo IdProperty =
         typeof(CampaignRecipient).GetProperty(nameof(CampaignRecipient.Id))!;
 
+    private static readonly PropertyInfo FirstOpenedAtProperty =
+        typeof(CampaignRecipient).GetProperty(nameof(CampaignRecipient.FirstOpenedAt))!;
+
+    private static readonly PropertyInfo UniqueOpenCountProperty =
+        typeof(Campaign).GetProperty(nameof(Campaign.UniqueOpenCount))!;
+
+    private readonly FakeCampaignRepository? _campaignRepository;
     private int _nextId = 1;
 
+    /// <param name="campaignRepository">Optional — only needed by tests that record opens, since the real
+    /// statement bumps the campaign's counter in the same breath as the recipient's timestamp.</param>
+    public FakeCampaignRecipientRepository(FakeCampaignRepository? campaignRepository = null)
+    {
+        _campaignRepository = campaignRepository;
+    }
+
     public List<CampaignRecipient> Recipients { get; } = [];
+
+    /// <summary>Faithful in-memory version of the real single statement: only the first call for a known
+    /// recipient stamps <c>FirstOpenedAt</c> and bumps its campaign's <c>UniqueOpenCount</c>.</summary>
+    public Task RecordFirstOpenAsync(int recipientId, CancellationToken ct)
+    {
+        var recipient = Recipients.FirstOrDefault(r => r.Id == recipientId);
+        if (recipient is null || recipient.FirstOpenedAt is not null)
+            return Task.CompletedTask;
+
+        FirstOpenedAtProperty.SetValue(recipient, DateTimeOffset.UtcNow);
+
+        var campaign = _campaignRepository!.Campaigns.Single(c => c.Id == recipient.CampaignId);
+        UniqueOpenCountProperty.SetValue(campaign, campaign.UniqueOpenCount + 1);
+
+        return Task.CompletedTask;
+    }
 
     public Task AddRangeAsync(IEnumerable<CampaignRecipient> recipients, CancellationToken ct)
     {

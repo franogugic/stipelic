@@ -24,6 +24,7 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<ICampaignSendService, CampaignSendService>();
         services.AddScoped<IEmailTemplateService, EmailTemplateService>();
+        services.AddScoped<IOpenTrackingService, OpenTrackingService>();
         services.AddScoped<ICampaignProgressProvider, CampaignProgressProvider>();
         services.AddSingleton<ICampaignEmailRenderer, CampaignEmailRenderer>();
         services.AddScoped<IEmailSendFailureHandler, CampaignBroadcastFailureHandler>();
