@@ -1,5 +1,6 @@
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
 using CreatorPlatform.LandingPages.Domain.LandingPages;
+using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Domain.Campaigns;
 using CreatorPlatform.Marketing.Domain.Contacts;
@@ -98,7 +99,69 @@ public sealed class AudienceService : IAudienceService
         return (emails, hasMore);
     }
 
+    public async Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct)
+    {
+        var allCount = await BuildAudienceQuery(CampaignAudienceType.All, null, null, creatorId).CountAsync(ct);
+
+        // LEFT JOINs keep targets with no captures yet (count 0). The unsubscribe filter sits in the JOIN
+        // condition (not WHERE) for the same reason, and COUNT(DISTINCT) dedupes an email captured twice.
+        var landingPages = await _context.Database.SqlQuery<LandingPageAudienceRow>($"""
+            SELECT lp."PublicId" AS "PublicId", lp."Title" AS "Title", COUNT(DISTINCT ec."Email")::int AS "RecipientCount"
+            FROM landing_pages.landing_pages lp
+            LEFT JOIN analytics.email_captures ec
+                ON ec."LandingPageId" = lp."Id"
+               AND NOT EXISTS (
+                   SELECT 1 FROM marketing.unsubscribes u
+                   WHERE u."CreatorId" = {creatorId} AND u."Email" = ec."Email"
+               )
+            WHERE lp."CreatorId" = {creatorId} AND lp."Status" = 'Published'
+            GROUP BY lp."Id", lp."PublicId", lp."Title"
+            ORDER BY "RecipientCount" DESC, lp."Title", lp."Id"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        // Product audience mirrors BuildAudienceQuery: captures tagged with the product directly UNION
+        // captures on any of the creator's landing pages that point at it (the UNION dedupes both sides).
+        var products = await _context.Database.SqlQuery<ProductAudienceRow>($"""
+            SELECT p."PublicId" AS "PublicId", p."Name" AS "Name", COUNT(DISTINCT x."Email")::int AS "RecipientCount"
+            FROM products.products p
+            LEFT JOIN (
+                SELECT ec."ProductId" AS "ProductId", ec."Email" AS "Email"
+                FROM analytics.email_captures ec
+                WHERE ec."ProductId" IN (
+                    SELECT p2."Id" FROM products.products p2
+                    WHERE p2."CreatorId" = {creatorId} AND p2."Status" = 'Active'
+                )
+                UNION
+                SELECT lp."ProductId" AS "ProductId", ec."Email" AS "Email"
+                FROM landing_pages.landing_pages lp
+                JOIN analytics.email_captures ec ON ec."LandingPageId" = lp."Id"
+                WHERE lp."CreatorId" = {creatorId} AND lp."ProductId" IS NOT NULL
+            ) x
+                ON x."ProductId" = p."Id"
+               AND NOT EXISTS (
+                   SELECT 1 FROM marketing.unsubscribes u
+                   WHERE u."CreatorId" = {creatorId} AND u."Email" = x."Email"
+               )
+            WHERE p."CreatorId" = {creatorId} AND p."Status" = 'Active'
+            GROUP BY p."Id", p."PublicId", p."Name"
+            ORDER BY "RecipientCount" DESC, p."Name", p."Id"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        return new CampaignAudiencesDto(
+            new AllAudienceDto(allCount),
+            landingPages.Select(r => new LandingPageAudienceDto(r.PublicId, r.Title, r.RecipientCount)).ToList(),
+            products.Select(r => new ProductAudienceDto(r.PublicId, r.Name, r.RecipientCount)).ToList());
+    }
+
     private sealed record EmailRow(string Email);
+
+    private sealed record LandingPageAudienceRow(Guid PublicId, string Title, int RecipientCount);
+
+    private sealed record ProductAudienceRow(Guid PublicId, string Name, int RecipientCount);
 
     private IQueryable<string> BuildAudienceQuery(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId)

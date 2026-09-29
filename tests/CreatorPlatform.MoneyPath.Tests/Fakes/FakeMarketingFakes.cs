@@ -1,5 +1,6 @@
 using System.Reflection;
 using CreatorPlatform.Creators.Application.Interfaces;
+using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Domain.Campaigns;
 using CreatorPlatform.Marketing.Domain.Templates;
@@ -69,6 +70,11 @@ public sealed class FakeAudienceService : IAudienceService
         GetAudienceEmailsCallCount++;
         return Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll() : Emails);
     }
+
+    public CampaignAudiencesDto Overview { get; set; } = new(new AllAudienceDto(0), [], []);
+
+    public Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult(Overview);
 
     private List<string> ResolveAll()
         => AllContactEmails.Where(e => !UnsubscribedEmails.Contains(e)).Distinct().ToList();

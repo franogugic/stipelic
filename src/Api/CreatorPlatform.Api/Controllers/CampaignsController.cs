@@ -66,6 +66,22 @@ public sealed class CampaignsController : ControllerBase
             page));
     }
 
+    /// <summary>Every targetable audience (All, Published landing pages, Active products) with its
+    /// recipient count — feeds the composer's audience picker.</summary>
+    [HttpGet("audiences")]
+    [EnableRateLimiting("CampaignInsights")]
+    public async Task<ActionResult<ApiResponse<CampaignAudiencesDto>>> GetAudiences(string slug, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var audiences = await _campaignService.GetAudiencesAsync(slug, currentUser.Id, ct);
+
+        return Ok(ApiResponse<CampaignAudiencesDto>.Success(
+            StatusCodes.Status200OK,
+            "Campaign audiences loaded.",
+            audiences));
+    }
+
     /// <summary>Send history — last 50 sends with progress.</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<CampaignListItemDto>>>> List(string slug, CancellationToken ct)

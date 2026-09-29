@@ -68,6 +68,13 @@ public sealed class CampaignService : ICampaignService
         return new AudienceRecipientsPageDto(emails, hasMore);
     }
 
+    public async Task<CampaignAudiencesDto> GetAudiencesAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        return await _audienceService.GetAudienceOverviewAsync(context.CreatorId, ct);
+    }
+
     public async Task<List<CampaignListItemDto>> ListAsync(string slug, int ownerUserId, CancellationToken ct)
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);

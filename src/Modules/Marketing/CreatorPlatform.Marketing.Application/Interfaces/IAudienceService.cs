@@ -1,3 +1,4 @@
+using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Domain.Campaigns;
 
 namespace CreatorPlatform.Marketing.Application.Interfaces;
@@ -25,4 +26,9 @@ public interface IAudienceService
     Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
         string? afterEmail, int limit, CancellationToken ct);
+
+    /// <summary>Recipient counts for the All audience plus every Published landing page and Active product
+    /// of the creator, with the same semantics as <see cref="GetAudienceCountAsync"/> (deduplicated, minus
+    /// unsubscribes) — resolved with a fixed three queries, never one per target.</summary>
+    Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct);
 }
