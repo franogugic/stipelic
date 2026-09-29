@@ -12,4 +12,5 @@ public sealed record CampaignListItemDto(
     string? Note,
     DateTimeOffset CreatedAt,
     int SentCount,
-    int FailedCount);
+    int FailedCount,
+    int UniqueOpenCount);

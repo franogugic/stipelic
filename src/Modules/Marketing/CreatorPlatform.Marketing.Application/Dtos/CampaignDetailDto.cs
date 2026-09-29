@@ -16,4 +16,5 @@ public sealed record CampaignDetailDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     int SentCount,
-    int FailedCount);
+    int FailedCount,
+    int UniqueOpenCount);

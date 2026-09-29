@@ -198,7 +198,8 @@ public sealed class CampaignService : ICampaignService
             campaign.Note,
             campaign.CreatedAt,
             campaignProgress.SentCount,
-            campaignProgress.FailedCount);
+            campaignProgress.FailedCount,
+            campaign.UniqueOpenCount);
     }
 
     private static CampaignDetailDto ToDetailDto(Campaign campaign, Guid? targetPublicId, CampaignProgressDto progress)
@@ -219,6 +220,7 @@ public sealed class CampaignService : ICampaignService
             campaign.CreatedAt,
             campaign.UpdatedAt,
             progress.SentCount,
-            progress.FailedCount);
+            progress.FailedCount,
+            campaign.UniqueOpenCount);
     }
 }

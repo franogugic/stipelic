@@ -464,6 +464,7 @@ public sealed class CampaignSendService : ICampaignSendService
             campaign.CreatedAt,
             campaign.UpdatedAt,
             progress.SentCount,
-            progress.FailedCount);
+            progress.FailedCount,
+            campaign.UniqueOpenCount);
     }
 }
