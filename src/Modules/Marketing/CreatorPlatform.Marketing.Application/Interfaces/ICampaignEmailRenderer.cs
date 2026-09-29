@@ -5,9 +5,10 @@ public sealed record CampaignEmailContent(string Subject, string HtmlBody, strin
 public interface ICampaignEmailRenderer
 {
     /// <summary>Renders ONCE per campaign, not per recipient — the returned HTML/plain-text bodies
-    /// contain a literal <c>{{UNSUBSCRIBE_URL}}</c> placeholder that the caller substitutes per
-    /// recipient at queue time (see the send pipeline), so this (branded, potentially large) template is
-    /// never rebuilt per recipient.</summary>
+    /// contain a literal <c>{{UNSUBSCRIBE_URL}}</c> placeholder (and the HTML one a literal
+    /// <c>{{OPEN_PIXEL_URL}}</c> placeholder) that the caller substitutes per recipient at queue time (see
+    /// the send pipeline), so this (branded, potentially large) template is never rebuilt per
+    /// recipient.</summary>
     CampaignEmailContent Render(
         string subject,
         string bodyText,

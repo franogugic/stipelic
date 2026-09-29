@@ -5,8 +5,9 @@ namespace CreatorPlatform.Marketing.Infrastructure.Services;
 
 /// <summary>Brand-neutral-except-for-creator-colors HTML template: inline styles only (no external CSS —
 /// most email clients strip &lt;style&gt; blocks or class-based CSS), max-width 600px, plain-text version
-/// always produced alongside. The <c>{{UNSUBSCRIBE_URL}}</c> placeholder is left in both bodies for the
-/// send pipeline to substitute per recipient.</summary>
+/// always produced alongside. The <c>{{UNSUBSCRIBE_URL}}</c> placeholder is left in both bodies, and
+/// <c>{{OPEN_PIXEL_URL}}</c> in the HTML body only (the plain-text version carries no tracking pixel), for
+/// the send pipeline to substitute per recipient.</summary>
 public sealed class CampaignEmailRenderer : ICampaignEmailRenderer
 {
     private const string HtmlTemplate = """
@@ -29,6 +30,7 @@ public sealed class CampaignEmailRenderer : ICampaignEmailRenderer
               </td>
             </tr>
           </table>
+          <img src="{{OPEN_PIXEL_URL}}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">
         </body>
         </html>
         """;

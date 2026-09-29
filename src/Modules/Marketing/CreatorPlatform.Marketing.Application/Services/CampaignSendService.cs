@@ -26,6 +26,7 @@ public sealed class CampaignSendService : ICampaignSendService
     private readonly ICampaignEmailRenderer _renderer;
     private readonly IEmailOutboxService _emailOutboxService;
     private readonly IUnsubscribeTokenService _unsubscribeTokenService;
+    private readonly IOpenTrackingTokenService _openTrackingTokenService;
     private readonly ICampaignProgressProvider _progressProvider;
     private readonly IMarketingUnitOfWork _unitOfWork;
     private readonly ILogger<CampaignSendService> _logger;
@@ -40,6 +41,7 @@ public sealed class CampaignSendService : ICampaignSendService
         ICampaignEmailRenderer renderer,
         IEmailOutboxService emailOutboxService,
         IUnsubscribeTokenService unsubscribeTokenService,
+        IOpenTrackingTokenService openTrackingTokenService,
         ICampaignProgressProvider progressProvider,
         IMarketingUnitOfWork unitOfWork,
         ILogger<CampaignSendService> logger)
@@ -53,6 +55,7 @@ public sealed class CampaignSendService : ICampaignSendService
         _renderer = renderer;
         _emailOutboxService = emailOutboxService;
         _unsubscribeTokenService = unsubscribeTokenService;
+        _openTrackingTokenService = openTrackingTokenService;
         _progressProvider = progressProvider;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -317,12 +320,15 @@ public sealed class CampaignSendService : ICampaignSendService
         foreach (var recipient in recipients)
         {
             var unsubscribeUrl = _unsubscribeTokenService.BuildUnsubscribeUrl(context.CreatorId, recipient.Email);
+            var openPixelUrl = _openTrackingTokenService.BuildPixelUrl(recipient.Id);
             var correlationKey = $"{campaign.PublicId}:{recipient.Id}";
 
             await _emailOutboxService.QueueCampaignAsync(
                 recipient.Email,
                 rendered.Subject,
-                rendered.HtmlBody.Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl),
+                rendered.HtmlBody
+                    .Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl)
+                    .Replace("{{OPEN_PIXEL_URL}}", openPixelUrl),
                 rendered.PlainTextBody.Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl),
                 replyTo,
                 unsubscribeUrl,

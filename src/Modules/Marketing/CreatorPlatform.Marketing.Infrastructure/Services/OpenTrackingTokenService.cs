@@ -16,6 +16,7 @@ public sealed class OpenTrackingTokenService : IOpenTrackingTokenService
     private const string Purpose = "open-pixel|";
 
     private readonly byte[] _secretBytes;
+    private readonly string _apiBaseUrl;
 
     public OpenTrackingTokenService(IOptions<MarketingOptions> options)
     {
@@ -25,6 +26,12 @@ public sealed class OpenTrackingTokenService : IOpenTrackingTokenService
                 "open-tracking tokens and inflate any campaign's open count.");
 
         _secretBytes = Encoding.UTF8.GetBytes(options.Value.OpenTrackingSecret);
+        _apiBaseUrl = options.Value.ApiBaseUrl.TrimEnd('/');
+    }
+
+    public string BuildPixelUrl(int recipientId)
+    {
+        return $"{_apiBaseUrl}/api/public/o/{Create(recipientId)}.gif";
     }
 
     public string Create(int recipientId)

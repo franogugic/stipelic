@@ -56,6 +56,8 @@ public class CampaignSendServiceTests
         var renderer = new CampaignEmailRenderer();
         var tokenService = new UnsubscribeTokenService(
             Options.Create(new MarketingOptions { UnsubscribeTokenSecret = "test-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
+        var openTrackingTokenService = new OpenTrackingTokenService(
+            Options.Create(new MarketingOptions { OpenTrackingSecret = "test-open-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
 
         var service = new CampaignSendService(
             contextProvider,
@@ -67,6 +69,7 @@ public class CampaignSendServiceTests
             renderer,
             emailOutboxService,
             tokenService,
+            openTrackingTokenService,
             progressProvider,
             unitOfWork,
             NullLogger<CampaignSendService>.Instance);
