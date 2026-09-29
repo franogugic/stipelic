@@ -123,8 +123,8 @@ public sealed class CampaignsController : ControllerBase
             recipients));
     }
 
-    /// <summary>Sends an Active template to an audience — creates a new Queued send record directly (no
-    /// Draft step; see 02R rework).</summary>
+    /// <summary>Sends an Active template and/or inline-composed content to an audience — creates a new
+    /// Queued send record directly (no Draft step; see 02R rework).</summary>
     [HttpPost("send")]
     [EnableRateLimiting("SendCampaign")]
     public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> Send(

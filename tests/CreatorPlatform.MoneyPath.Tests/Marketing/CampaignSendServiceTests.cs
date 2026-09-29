@@ -262,6 +262,64 @@ public class CampaignSendServiceTests
         }
     }
 
+    // --- R2.4: inline content ---
+
+    private static SendCampaignRequestDto BuildInlineRequest(
+        string? subject, string? bodyText, string? ctaLabel = null, string? ctaUrl = null, Guid? templatePublicId = null) => new()
+    {
+        TemplatePublicId = templatePublicId,
+        Subject = subject,
+        BodyText = bodyText,
+        CtaLabel = ctaLabel,
+        CtaUrl = ctaUrl,
+        AudienceType = "LandingPage",
+        TargetPublicId = LandingPagePublicId,
+    };
+
+    [Theory]
+    [InlineData("Only a subject", null, null, null)]
+    [InlineData("Subject", "Body", "Click me", null)]
+    [InlineData("Subject", "Body", "Click me", "javascript:alert(1)")]
+    public async Task SendAsync_InvalidInlineContent_ThrowsBadRequest_NothingWritten(
+        string subject, string? bodyText, string? ctaLabel, string? ctaUrl)
+    {
+        var h = BuildHarness();
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await Assert.ThrowsAsync<BadRequestException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildInlineRequest(subject, bodyText, ctaLabel, ctaUrl), CancellationToken.None));
+
+        Assert.Empty(h.CampaignRepository.Campaigns);
+        Assert.Empty(h.UsageService.ConsumeCalls);
+        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task SendAsync_InlineContentWithTemplate_SnapshotsRequestContentAndKeepsTemplateReference()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+        typeof(EmailTemplate).GetProperty(nameof(EmailTemplate.Id))!.SetValue(template, 77);
+
+        var result = await h.Service.SendAsync(
+            Slug,
+            OwnerUserId,
+            BuildInlineRequest("Inline subject", "Inline body", "Buy", "https://acme.test/buy", template.PublicId),
+            CancellationToken.None);
+
+        Assert.Equal("Inline subject", result.Subject);
+        Assert.Equal("Inline body", result.BodyText);
+        Assert.Equal("Buy", result.CtaLabel);
+        Assert.Equal("https://acme.test/buy", result.CtaUrl);
+
+        var campaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.Equal("Inline subject", campaign.Subject);
+        Assert.Equal(77, campaign.TemplateId);
+        Assert.NotEqual(template.Subject, campaign.Subject);
+    }
+
     // --- R2.1: All audience ---
 
     private static SendCampaignRequestDto BuildAllRequest(Guid templatePublicId) => new()
