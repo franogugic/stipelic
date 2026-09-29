@@ -2,9 +2,10 @@ using CreatorPlatform.Marketing.Domain.Mail;
 
 namespace CreatorPlatform.Marketing.Domain.Campaigns;
 
-/// <summary>A record of one send — content is a snapshot of an <see cref="Templates.EmailTemplate"/> taken
-/// at the moment of send (editing or archiving the template afterward never changes this row). Created
-/// directly as <see cref="CampaignStatus.Queued"/> by <see cref="CreateQueuedFromTemplate"/> inside the
+/// <summary>A record of one send — content is a snapshot (of an <see cref="Templates.EmailTemplate"/> or of
+/// content composed inline) taken at the moment of send (editing or archiving the template afterward never
+/// changes this row). Created directly as <see cref="CampaignStatus.Queued"/> by
+/// <see cref="CreateQueued"/> / <see cref="CreateQueuedFromTemplate"/> inside the
 /// send transaction; <see cref="CampaignStatus.Draft"/> remains in the enum only for pre-rework history —
 /// nothing constructs one anymore.</summary>
 public sealed class Campaign
@@ -16,7 +17,7 @@ public sealed class Campaign
     private Campaign(
         Guid publicId,
         int creatorId,
-        int templateId,
+        int? templateId,
         string subject,
         string bodyText,
         string? ctaLabel,
@@ -48,14 +49,34 @@ public sealed class Campaign
         UpdatedAt = createdAt;
     }
 
-    /// <summary>Snapshots <paramref name="subject"/>/<paramref name="bodyText"/>/CTA (the template's
-    /// current content, read by the caller just before this call) and creates the send record directly in
-    /// <see cref="CampaignStatus.Queued"/> — there is no Draft step anymore; the send pipeline resolves
-    /// the audience and consumes the usage limit before ever calling this, so <paramref name="recipientCount"/>
-    /// is already known and final.</summary>
+    /// <summary>Snapshots the template's current content (read by the caller just before this call) and
+    /// creates the send record directly in <see cref="CampaignStatus.Queued"/> — see
+    /// <see cref="CreateQueued"/> for the guards and the no-Draft-step rationale.</summary>
     public static Campaign CreateQueuedFromTemplate(
         int creatorId,
         int templateId,
+        string subject,
+        string bodyText,
+        string? ctaLabel,
+        string? ctaUrl,
+        CampaignAudienceType audienceType,
+        int? landingPageId,
+        int? productId,
+        int recipientCount,
+        DateTimeOffset queuedAt)
+        => CreateQueued(
+            creatorId, templateId, subject, bodyText, ctaLabel, ctaUrl,
+            audienceType, landingPageId, productId, recipientCount, queuedAt);
+
+    /// <summary>Creates the send record directly in <see cref="CampaignStatus.Queued"/> from content handed
+    /// in as-is (a template snapshot or content composed inline — either way a snapshot, never a live
+    /// link) — there is no Draft step anymore; the send pipeline resolves the audience and consumes the
+    /// usage limit before ever calling this, so <paramref name="recipientCount"/> is already known and
+    /// final. <paramref name="templateId"/> is only a reference to the template the content came from, if
+    /// any.</summary>
+    public static Campaign CreateQueued(
+        int creatorId,
+        int? templateId,
         string subject,
         string bodyText,
         string? ctaLabel,
@@ -90,15 +111,16 @@ public sealed class Campaign
             createdAt: queuedAt);
     }
 
-    /// <summary>Snapshots the template's current content (same principle as <see cref="CreateQueuedFromTemplate"/>)
-    /// but does NOT touch audience/limit/recipients/outbox — the real audience is resolved again at
-    /// dispatch time (<see cref="MarkQueuedFromSchedule"/>), never frozen here, so an unsubscribe between
-    /// scheduling and dispatch is always honored. <paramref name="recipientCount"/> is unknown until then,
+    /// <summary>Snapshots the given content (same principle as <see cref="CreateQueued"/>; the content is a
+    /// template snapshot or composed inline, <paramref name="templateId"/> is only an optional reference to
+    /// the template it came from) but does NOT touch audience/limit/recipients/outbox — the real audience is
+    /// resolved again at dispatch time (<see cref="MarkQueuedFromSchedule"/>), never frozen here, so an
+    /// unsubscribe between scheduling and dispatch is always honored. <paramref name="recipientCount"/> is unknown until then,
     /// so it's fixed at 0 and deliberately NOT validated positive here (contrast
-    /// <see cref="CreateQueuedFromTemplate"/> — that guard moves to <see cref="MarkQueuedFromSchedule"/>).</summary>
+    /// <see cref="CreateQueued"/> — that guard moves to <see cref="MarkQueuedFromSchedule"/>).</summary>
     public static Campaign CreateScheduled(
         int creatorId,
-        int templateId,
+        int? templateId,
         string subject,
         string bodyText,
         string? ctaLabel,
@@ -131,7 +153,7 @@ public sealed class Campaign
     }
 
     /// <summary>Dispatch-time transition once the audience has actually been resolved and the usage limit
-    /// consumed — guard mirrors <see cref="CreateQueuedFromTemplate"/>'s positive-recipient-count check,
+    /// consumed — guard mirrors <see cref="CreateQueued"/>'s positive-recipient-count check,
     /// moved here since it wasn't knowable at scheduling time.</summary>
     public void MarkQueuedFromSchedule(int recipientCount, DateTimeOffset queuedAt)
     {
@@ -196,7 +218,8 @@ public sealed class Campaign
 
     public int CreatorId { get; private set; }
 
-    /// <summary>Null only for pre-rework rows sent before templates existed ("legacy inline send").</summary>
+    /// <summary>Only a reference to the template the content was snapshotted from — null for pre-rework rows
+    /// and for sends composed inline without a template.</summary>
     public int? TemplateId { get; private set; }
 
     public string Subject { get; private set; } = string.Empty;
