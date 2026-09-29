@@ -66,6 +66,10 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
 
         builder.Property(c => c.ScheduledAt);
 
+        builder.Property(c => c.UniqueOpenCount)
+            .HasDefaultValue(0)
+            .IsRequired();
+
         builder.Property(c => c.Note)
             .HasMaxLength(500);
 

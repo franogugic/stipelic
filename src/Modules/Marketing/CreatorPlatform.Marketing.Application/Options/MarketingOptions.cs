@@ -9,6 +9,13 @@ public sealed class MarketingOptions
     /// rotated only with awareness that rotating it invalidates every unsubscribe link already sent.</summary>
     public string UnsubscribeTokenSecret { get; init; } = string.Empty;
 
+    /// <summary>HMAC-SHA256 signing secret for open-tracking pixel tokens (see IOpenTrackingTokenService).
+    /// Deliberately separate from <see cref="UnsubscribeTokenSecret"/> so an open token can never be
+    /// replayed as an unsubscribe token or the other way round. The API validates pixel tokens and the
+    /// Worker mints them, so both processes must be configured with the same value; rotating it makes
+    /// every pixel already sent stop counting.</summary>
+    public string OpenTrackingSecret { get; init; } = string.Empty;
+
     /// <summary>Base URL of this API — used to build the per-recipient unsubscribe link embedded in
     /// campaign emails (<c>{ApiBaseUrl}/api/public/unsubscribe/{token}</c>).</summary>
     public string ApiBaseUrl { get; init; } = string.Empty;

@@ -244,6 +244,11 @@ public sealed class Campaign
 
     public DateTimeOffset? ScheduledAt { get; private set; }
 
+    /// <summary>Recipients whose pixel has loaded at least once — incremented only by the pixel endpoint's
+    /// raw SQL, in the same statement that stamps <see cref="CampaignRecipient.FirstOpenedAt"/>, so it
+    /// never drifts from the recipient rows.</summary>
+    public int UniqueOpenCount { get; private set; }
+
     /// <summary>Failure reason, set only by <see cref="MarkFailed"/> — null for every other status.</summary>
     public string? Note { get; private set; }
 

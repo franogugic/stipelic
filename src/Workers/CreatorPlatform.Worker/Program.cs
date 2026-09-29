@@ -63,6 +63,7 @@ builder.Services.AddScoped<IMarketingUnitOfWork, MarketingUnitOfWork>();
 builder.Services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
 builder.Services.AddSingleton<ICampaignEmailRenderer, CampaignEmailRenderer>();
 builder.Services.AddSingleton<IUnsubscribeTokenService, UnsubscribeTokenService>();
+builder.Services.AddSingleton<IOpenTrackingTokenService, OpenTrackingTokenService>();
 builder.Services.AddScoped<ICampaignSendService, CampaignSendService>();
 
 builder.Services.AddHostedService<EmailOutboxWorker>();

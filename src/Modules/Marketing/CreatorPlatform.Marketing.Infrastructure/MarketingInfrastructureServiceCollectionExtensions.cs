@@ -18,6 +18,7 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<IUnsubscribeRepository, UnsubscribeRepository>();
         services.AddScoped<IMarketingUnitOfWork, MarketingUnitOfWork>();
         services.AddSingleton<IUnsubscribeTokenService, UnsubscribeTokenService>();
+        services.AddSingleton<IOpenTrackingTokenService, OpenTrackingTokenService>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<IAudienceService, AudienceService>();
         services.AddScoped<ICampaignService, CampaignService>();

@@ -31,4 +31,10 @@ public sealed class CampaignRecipient
     public string Email { get; private set; } = string.Empty;
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    /// <summary>When the tracking pixel first loaded for this recipient — null until then. Set exactly once
+    /// by the pixel endpoint's raw SQL (together with <see cref="Campaign.UniqueOpenCount"/>), never through
+    /// this type, so there is deliberately no public mutator. Apple Mail Privacy Protection and image
+    /// proxies pre-load pixels, so this over-reports opens for some clients.</summary>
+    public DateTimeOffset? FirstOpenedAt { get; private set; }
 }
