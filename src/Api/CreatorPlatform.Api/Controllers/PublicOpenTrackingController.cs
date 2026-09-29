@@ -31,7 +31,7 @@ public sealed class PublicOpenTrackingController : ControllerBase
     /// <summary>Always answers with the same GIF — for a valid token, a forged one, an unknown recipient and
     /// a failing database alike — so the endpoint can't be used to probe which recipient ids exist.</summary>
     [HttpGet("{token}.gif")]
-    [EnableRateLimiting("OpenPixel")]
+    [DisableRateLimiting]
     public async Task<IActionResult> Get(string token, CancellationToken ct)
     {
         try

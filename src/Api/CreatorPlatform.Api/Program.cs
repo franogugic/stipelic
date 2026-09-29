@@ -59,8 +59,14 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
+    // The open-tracking pixel is exempt: Gmail and Apple fetch images through shared proxy IPs, so a per-IP
+    // limit would drop genuine opens (and a rejection answers JSON, not the GIF). Safe without a limit: a
+    // forged token is rejected by the HMAC check before any database query, and a repeated valid token
+    // is an idempotent UPDATE that changes nothing.
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
+        httpContext.Request.Path.StartsWithSegments("/api/public/o", StringComparison.OrdinalIgnoreCase)
+            ? RateLimitPartition.GetNoLimiter("open-pixel")
+            : RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             factory: _ => new FixedWindowRateLimiterOptions
             {
@@ -297,17 +303,6 @@ builder.Services.AddRateLimiter(options =>
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 60,
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            }));
-
-    options.AddPolicy("OpenPixel", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 120,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
