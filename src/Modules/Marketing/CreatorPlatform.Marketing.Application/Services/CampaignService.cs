@@ -1,3 +1,4 @@
+using System.Globalization;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
@@ -12,6 +13,8 @@ public sealed class CampaignService : ICampaignService
     private const int ListPageSize = 50;
     private const int DefaultRecipientsPageLimit = 50;
     private const int MaxRecipientsPageLimit = 100;
+    private const int MinTrendMonths = 1;
+    private const int MaxTrendMonths = 12;
 
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IAudienceService _audienceService;
@@ -74,6 +77,47 @@ public sealed class CampaignService : ICampaignService
 
         return await _audienceService.GetAudienceOverviewAsync(context.CreatorId, ct);
     }
+
+    public async Task<OpenRateTrendDto> GetOpenRateTrendAsync(string slug, int ownerUserId, int months, CancellationToken ct)
+    {
+        if (months is < MinTrendMonths or > MaxTrendMonths)
+            throw new BadRequestException($"Months must be between {MinTrendMonths} and {MaxTrendMonths}.");
+
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var now = DateTimeOffset.UtcNow;
+        var currentMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var windowStart = currentMonthStart.AddMonths(-(months - 1));
+
+        var campaigns = await _campaignRepository.GetQueuedSinceAsync(context.CreatorId, windowStart, ct);
+
+        var sentByCampaign = campaigns.Count == 0
+            ? []
+            : await _progressProvider.GetProgressAsync(campaigns.Select(c => c.PublicId).ToList(), ct);
+
+        var totalsByMonth = campaigns
+            .GroupBy(c => c.QueuedAt!.Value.UtcDateTime.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            .ToDictionary(
+                g => g.Key,
+                g => (Sent: g.Sum(c => sentByCampaign[c.PublicId].SentCount), Opens: g.Sum(c => c.UniqueOpenCount)));
+
+        var points = Enumerable.Range(0, months)
+            .Select(offset => windowStart.AddMonths(offset).UtcDateTime.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            .Select(month =>
+            {
+                var (sent, opens) = totalsByMonth.GetValueOrDefault(month);
+                return new OpenRateTrendPointDto(month, Rate(opens, sent), sent, opens);
+            })
+            .ToList();
+
+        return new OpenRateTrendDto(
+            points,
+            points[^1].Rate,
+            Rate(points.Sum(p => p.Opens), points.Sum(p => p.Sent)));
+    }
+
+    private static double? Rate(int opens, int delivered)
+        => delivered > 0 ? (double)opens / delivered : null;
 
     public async Task<List<CampaignListItemDto>> ListAsync(string slug, int ownerUserId, CancellationToken ct)
     {

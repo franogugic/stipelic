@@ -169,6 +169,11 @@ public sealed class FakeCampaignRepository : ICampaignRepository
             .Take(take)
             .ToList());
 
+    public Task<List<Campaign>> GetQueuedSinceAsync(int creatorId, DateTimeOffset since, CancellationToken ct)
+        => Task.FromResult(Campaigns
+            .Where(c => c.CreatorId == creatorId && c.QueuedAt >= since)
+            .ToList());
+
     public Task<List<Guid>> GetDueScheduledPublicIdsAsync(int limit, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
