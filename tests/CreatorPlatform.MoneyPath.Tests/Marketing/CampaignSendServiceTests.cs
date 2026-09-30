@@ -56,6 +56,8 @@ public class CampaignSendServiceTests
         var renderer = new CampaignEmailRenderer();
         var tokenService = new UnsubscribeTokenService(
             Options.Create(new MarketingOptions { UnsubscribeTokenSecret = "test-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
+        var openTrackingTokenService = new OpenTrackingTokenService(
+            Options.Create(new MarketingOptions { OpenTrackingSecret = "test-open-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
 
         var service = new CampaignSendService(
             contextProvider,
@@ -67,6 +69,7 @@ public class CampaignSendServiceTests
             renderer,
             emailOutboxService,
             tokenService,
+            openTrackingTokenService,
             progressProvider,
             unitOfWork,
             NullLogger<CampaignSendService>.Instance);
@@ -260,6 +263,115 @@ public class CampaignSendServiceTests
             Assert.Equal(CreatorId, payload!.CreatorId);
             Assert.Equal(message.ToEmail, payload.Email);
         }
+    }
+
+    // --- R2.4: inline content ---
+
+    private static SendCampaignRequestDto BuildInlineRequest(
+        string? subject, string? bodyText, string? ctaLabel = null, string? ctaUrl = null, Guid? templatePublicId = null) => new()
+    {
+        TemplatePublicId = templatePublicId,
+        Subject = subject,
+        BodyText = bodyText,
+        CtaLabel = ctaLabel,
+        CtaUrl = ctaUrl,
+        AudienceType = "LandingPage",
+        TargetPublicId = LandingPagePublicId,
+    };
+
+    [Theory]
+    [InlineData("Only a subject", null, null, null)]
+    [InlineData("Subject", "Body", "Click me", null)]
+    [InlineData("Subject", "Body", "Click me", "javascript:alert(1)")]
+    public async Task SendAsync_InvalidInlineContent_ThrowsBadRequest_NothingWritten(
+        string subject, string? bodyText, string? ctaLabel, string? ctaUrl)
+    {
+        var h = BuildHarness();
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await Assert.ThrowsAsync<BadRequestException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildInlineRequest(subject, bodyText, ctaLabel, ctaUrl), CancellationToken.None));
+
+        Assert.Empty(h.CampaignRepository.Campaigns);
+        Assert.Empty(h.UsageService.ConsumeCalls);
+        Assert.Equal(0, h.UnitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task SendAsync_InlineContentWithTemplate_SnapshotsRequestContentAndKeepsTemplateReference()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+        typeof(EmailTemplate).GetProperty(nameof(EmailTemplate.Id))!.SetValue(template, 77);
+
+        var result = await h.Service.SendAsync(
+            Slug,
+            OwnerUserId,
+            BuildInlineRequest("Inline subject", "Inline body", "Buy", "https://acme.test/buy", template.PublicId),
+            CancellationToken.None);
+
+        Assert.Equal("Inline subject", result.Subject);
+        Assert.Equal("Inline body", result.BodyText);
+        Assert.Equal("Buy", result.CtaLabel);
+        Assert.Equal("https://acme.test/buy", result.CtaUrl);
+
+        var campaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.Equal("Inline subject", campaign.Subject);
+        Assert.Equal(77, campaign.TemplateId);
+        Assert.NotEqual(template.Subject, campaign.Subject);
+    }
+
+    // --- R2.1: All audience ---
+
+    private static SendCampaignRequestDto BuildAllRequest(Guid templatePublicId) => new()
+    {
+        TemplatePublicId = templatePublicId,
+        AudienceType = "All",
+    };
+
+    [Fact]
+    public async Task SendAsync_AllAudience_ExcludesUnsubscribedAndHasNoDuplicates()
+    {
+        var h = BuildHarness();
+        h.ContextProvider.LandingPageId = null; // proves the All path never resolves a landing page/product
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.AllContactEmails = ["a@test.com", "b@test.com", "b@test.com", "gone@test.com"];
+        h.AudienceService.UnsubscribedEmails = ["gone@test.com"];
+
+        var result = await h.Service.SendAsync(Slug, OwnerUserId, BuildAllRequest(template.PublicId), CancellationToken.None);
+
+        Assert.Equal("All", result.AudienceType);
+        Assert.Null(result.TargetPublicId);
+        Assert.Equal(2, result.RecipientCount);
+        Assert.Equal(["a@test.com", "b@test.com"], h.RecipientRepository.Recipients.Select(r => r.Email).Order());
+        Assert.Equal(2, h.EmailOutboxService.QueuedCampaignMessages.Count);
+
+        var campaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.Equal(CampaignAudienceType.All, campaign.AudienceType);
+        Assert.Null(campaign.LandingPageId);
+        Assert.Null(campaign.ProductId);
+    }
+
+    [Fact]
+    public async Task SendAsync_AllAudienceOverLimit_IsRejectedAndUsageCounterUnchanged()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.AllContactEmails = ["a@test.com", "b@test.com", "c@test.com"];
+        h.ContextProvider.PlanLimit = 2;
+        h.UsageService.Used[(CreatorId, "max_email_sends_per_month")] = 1;
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildAllRequest(template.PublicId), CancellationToken.None));
+
+        Assert.Equal(1, h.UsageService.Used[(CreatorId, "max_email_sends_per_month")]);
+        Assert.Empty(h.CampaignRepository.Campaigns);
+        Assert.Empty(h.RecipientRepository.Recipients);
+        Assert.Empty(h.EmailOutboxService.QueuedCampaignMessages);
     }
 
     // --- Task 14: scheduled sends ---

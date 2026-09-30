@@ -58,6 +58,7 @@ public sealed class OrderRepository : IOrderRepository
         string creatorSlug,
         int ownerUserId,
         Guid? productPublicId,
+        Guid? landingPagePublicId,
         OrderStatus? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
@@ -80,6 +81,7 @@ public sealed class OrderRepository : IOrderRepository
             where c.Slug == creatorSlug
                 && c.OwnerUserId == ownerUserId
                 && (!productPublicId.HasValue || p.PublicId == productPublicId.Value)
+                && (!landingPagePublicId.HasValue || lp.PublicId == landingPagePublicId.Value)
                 && (!status.HasValue || o.Status == status.Value)
             select new { o, ProductName = p.Name, LandingPageTitle = (string?)lp.Title };
 

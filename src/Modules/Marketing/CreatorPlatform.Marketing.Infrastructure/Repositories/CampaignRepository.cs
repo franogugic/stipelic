@@ -42,6 +42,15 @@ public sealed class CampaignRepository : ICampaignRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<QueuedCampaignOpenStats>> GetQueuedSinceAsync(int creatorId, DateTimeOffset since, CancellationToken ct)
+    {
+        return await _context.Set<Campaign>()
+            .AsNoTracking()
+            .Where(c => c.CreatorId == creatorId && c.QueuedAt >= since)
+            .Select(c => new QueuedCampaignOpenStats(c.PublicId, c.QueuedAt!.Value, c.UniqueOpenCount))
+            .ToListAsync(ct);
+    }
+
     public async Task<List<Guid>> GetDueScheduledPublicIdsAsync(int limit, CancellationToken ct)
     {
         return await _context.Database.SqlQuery<Guid>($"""

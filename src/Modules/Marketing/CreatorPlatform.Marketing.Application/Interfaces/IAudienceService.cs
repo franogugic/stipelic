@@ -1,3 +1,4 @@
+using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Domain.Campaigns;
 
 namespace CreatorPlatform.Marketing.Application.Interfaces;
@@ -7,7 +8,8 @@ namespace CreatorPlatform.Marketing.Application.Interfaces;
 /// <see cref="ICreatorContextProvider.ResolveLandingPageIdAsync"/> / ResolveProductIdAsync at campaign
 /// creation time, or read it back off the already-validated Campaign row at send time) and pass it in
 /// directly. Exactly one of <paramref name="landingPageId"/>/<paramref name="productId"/> is expected,
-/// matching <paramref name="audienceType"/> — same invariant the Campaign entity itself enforces.</summary>
+/// matching <paramref name="audienceType"/> — same invariant the Campaign entity itself enforces; for
+/// <see cref="CampaignAudienceType.All"/> both are null.</summary>
 public interface IAudienceService
 {
     /// <summary>COUNT(DISTINCT email) — never materializes the audience list.</summary>
@@ -24,4 +26,9 @@ public interface IAudienceService
     Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
         string? afterEmail, int limit, CancellationToken ct);
+
+    /// <summary>Recipient counts for the All audience plus every Published landing page and Active product
+    /// of the creator, with the same semantics as <see cref="GetAudienceCountAsync"/> (deduplicated, minus
+    /// unsubscribes) — resolved with a fixed three queries, never one per target.</summary>
+    Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct);
 }

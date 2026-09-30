@@ -89,6 +89,8 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.HasIndex(o => new { o.CreatorId, o.ProductId, o.CreatedAt });
 
+        builder.HasIndex(o => new { o.CreatorId, o.LandingPageId, o.CreatedAt });
+
         builder.HasIndex(o => o.LandingPageId);
 
         builder.HasIndex(o => o.Email);

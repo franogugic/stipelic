@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(CreatorPlatformDbContext))]
-    partial class CreatorPlatformDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260929105440_AddAllCampaignAudience")]
+    partial class AddAllCampaignAudience
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1243,11 +1246,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int?>("TemplateId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("UniqueOpenCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0);
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1290,9 +1288,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
-
-                    b.Property<DateTimeOffset?>("FirstOpenedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

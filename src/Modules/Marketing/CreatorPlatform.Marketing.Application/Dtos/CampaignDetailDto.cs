@@ -7,7 +7,7 @@ public sealed record CampaignDetailDto(
     string? CtaLabel,
     string? CtaUrl,
     string AudienceType,
-    Guid TargetPublicId,
+    Guid? TargetPublicId,
     string Status,
     int RecipientCount,
     DateTimeOffset? QueuedAt,
@@ -16,4 +16,5 @@ public sealed record CampaignDetailDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     int SentCount,
-    int FailedCount);
+    int FailedCount,
+    int UniqueOpenCount);

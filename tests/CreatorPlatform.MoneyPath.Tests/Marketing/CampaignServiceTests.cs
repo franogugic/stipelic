@@ -200,4 +200,48 @@ public class CampaignServiceTests
         Assert.Equal(77, call.ProductId);
         Assert.Null(call.LandingPageId);
     }
+
+    [Fact]
+    public async Task GetOpenRateTrendAsync_MonthWithoutDelivery_HasNullRate()
+    {
+        var campaignRepository = new FakeCampaignRepository();
+        var progressProvider = new FakeCampaignProgressProvider();
+        var service = new CampaignService(
+            new FakeMarketingCreatorContextProvider { Context = BuildContext() },
+            new FakeAudienceService(),
+            new FakeCreatorUsageService(),
+            campaignRepository,
+            progressProvider);
+
+        var now = DateTimeOffset.UtcNow;
+
+        // This month: 10 delivered, 4 opened. Last month: queued, but nothing was actually delivered.
+        // The month before that: no campaign at all.
+        var thisMonth = await AddQueuedCampaignAsync(campaignRepository, now, opens: 4);
+        var lastMonth = await AddQueuedCampaignAsync(campaignRepository, now.AddMonths(-1), opens: 0);
+        progressProvider.Progress[thisMonth.PublicId] = new CampaignProgressDto(10, 0);
+        progressProvider.Progress[lastMonth.PublicId] = new CampaignProgressDto(0, 5);
+
+        var trend = await service.GetOpenRateTrendAsync(Slug, OwnerUserId, 3, CancellationToken.None);
+
+        Assert.Equal(3, trend.Points.Count);
+        Assert.Equal(now.AddMonths(-2).ToString("yyyy-MM"), trend.Points[0].Month);
+        Assert.Null(trend.Points[0].Rate);
+        Assert.Null(trend.Points[1].Rate);
+        Assert.Equal(0, trend.Points[1].Sent);
+        Assert.Equal(0.4, trend.Points[2].Rate);
+        Assert.Equal(10, trend.Points[2].Sent);
+        Assert.Equal(4, trend.Points[2].Opens);
+        Assert.Equal(0.4, trend.CurrentRate);
+        Assert.Equal(0.4, trend.AverageRate);
+    }
+
+    private static async Task<Campaign> AddQueuedCampaignAsync(FakeCampaignRepository repository, DateTimeOffset queuedAt, int opens)
+    {
+        var campaign = Campaign.CreateQueued(
+            CreatorId, null, "Subject", "Body", null, null, CampaignAudienceType.All, null, null, 1, queuedAt);
+        typeof(Campaign).GetProperty(nameof(Campaign.UniqueOpenCount))!.SetValue(campaign, opens);
+        await repository.AddAsync(campaign, CancellationToken.None);
+        return campaign;
+    }
 }

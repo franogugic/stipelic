@@ -66,6 +66,38 @@ public sealed class CampaignsController : ControllerBase
             page));
     }
 
+    /// <summary>Every targetable audience (All, Published landing pages, Active products) with its
+    /// recipient count — feeds the composer's audience picker.</summary>
+    [HttpGet("audiences")]
+    [EnableRateLimiting("CampaignInsights")]
+    public async Task<ActionResult<ApiResponse<CampaignAudiencesDto>>> GetAudiences(string slug, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var audiences = await _campaignService.GetAudiencesAsync(slug, currentUser.Id, ct);
+
+        return Ok(ApiResponse<CampaignAudiencesDto>.Success(
+            StatusCodes.Status200OK,
+            "Campaign audiences loaded.",
+            audiences));
+    }
+
+    /// <summary>Monthly open rate for the last <paramref name="months"/> months (1–12, default 6).</summary>
+    [HttpGet("open-rate-trend")]
+    [EnableRateLimiting("CampaignInsights")]
+    public async Task<ActionResult<ApiResponse<OpenRateTrendDto>>> GetOpenRateTrend(
+        string slug, [FromQuery] int months = 6, CancellationToken ct = default)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var trend = await _campaignService.GetOpenRateTrendAsync(slug, currentUser.Id, months, ct);
+
+        return Ok(ApiResponse<OpenRateTrendDto>.Success(
+            StatusCodes.Status200OK,
+            "Open rate trend loaded.",
+            trend));
+    }
+
     /// <summary>Send history — last 50 sends with progress.</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<CampaignListItemDto>>>> List(string slug, CancellationToken ct)
@@ -107,8 +139,8 @@ public sealed class CampaignsController : ControllerBase
             recipients));
     }
 
-    /// <summary>Sends an Active template to an audience — creates a new Queued send record directly (no
-    /// Draft step; see 02R rework).</summary>
+    /// <summary>Sends an Active template and/or inline-composed content to an audience — creates a new
+    /// Queued send record directly (no Draft step; see 02R rework).</summary>
     [HttpPost("send")]
     [EnableRateLimiting("SendCampaign")]
     public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> Send(

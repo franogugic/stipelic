@@ -66,6 +66,10 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
 
         builder.Property(c => c.ScheduledAt);
 
+        builder.Property(c => c.UniqueOpenCount)
+            .HasDefaultValue(0)
+            .IsRequired();
+
         builder.Property(c => c.Note)
             .HasMaxLength(500);
 
@@ -83,7 +87,8 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_campaigns_Audience_Matches_Fk",
             "(\"AudienceType\" = 'LandingPage' AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) " +
-            "OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL)"));
+            "OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) " +
+            "OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)"));
 
         builder.HasOne<Creator>()
             .WithMany()

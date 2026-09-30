@@ -23,6 +23,7 @@ public sealed class OrderService : IOrderService
         string creatorSlug,
         int ownerUserId,
         Guid? productId,
+        Guid? landingPageId,
         string? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
@@ -34,7 +35,7 @@ public sealed class OrderService : IOrderService
 
         // Fetch one extra row to detect a next page without a separate COUNT query, then trim it.
         var rows = await _orderRepository.GetByCreatorSlugAsync(
-            creatorSlug, ownerUserId, productId, parsedStatus, afterCreatedAt, afterId, clampedLimit + 1, ct);
+            creatorSlug, ownerUserId, productId, landingPageId, parsedStatus, afterCreatedAt, afterId, clampedLimit + 1, ct);
 
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.Take(clampedLimit).ToList() : rows;

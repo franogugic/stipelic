@@ -8,6 +8,7 @@ public interface IOrderService
         string creatorSlug,
         int ownerUserId,
         Guid? productId,
+        Guid? landingPageId,
         string? status,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,

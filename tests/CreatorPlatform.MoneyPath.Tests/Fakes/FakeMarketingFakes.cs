@@ -1,5 +1,6 @@
 using System.Reflection;
 using CreatorPlatform.Creators.Application.Interfaces;
+using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Domain.Campaigns;
 using CreatorPlatform.Marketing.Domain.Templates;
@@ -50,20 +51,33 @@ public sealed class FakeAudienceService : IAudienceService
     /// suppression-filtered, exactly as the real query would hand back rows before keyset slicing.</summary>
     public List<string> PageableEmails { get; set; } = [];
 
+    /// <summary>Raw contact_summaries rows and unsubscribes backing the All audience — resolved like the real
+    /// query does (minus unsubscribes, deduplicated), unlike <see cref="Emails"/> which is handed back as-is.</summary>
+    public List<string> AllContactEmails { get; set; } = [];
+    public List<string> UnsubscribedEmails { get; set; } = [];
+
     public List<(CampaignAudienceType AudienceType, int? LandingPageId, int? ProductId, int CreatorId, string? AfterEmail, int Limit)> GetPageCalls { get; } = [];
 
     public int GetAudienceEmailsCallCount { get; private set; }
 
     public Task<int> GetAudienceCountAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
-        => Task.FromResult(Count);
+        => Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll().Count : Count);
 
     public Task<List<string>> GetAudienceEmailsAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
     {
         GetAudienceEmailsCallCount++;
-        return Task.FromResult(Emails);
+        return Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll() : Emails);
     }
+
+    public CampaignAudiencesDto Overview { get; set; } = new(new AllAudienceDto(0), [], []);
+
+    public Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult(Overview);
+
+    private List<string> ResolveAll()
+        => AllContactEmails.Where(e => !UnsubscribedEmails.Contains(e)).Distinct().ToList();
 
     /// <summary>Faithful in-memory keyset reimplementation over <see cref="PageableEmails"/> — sorts
     /// ordinally, slices strictly after <paramref name="afterEmail"/>, fetches one extra row to compute
@@ -155,6 +169,12 @@ public sealed class FakeCampaignRepository : ICampaignRepository
             .Take(take)
             .ToList());
 
+    public Task<List<QueuedCampaignOpenStats>> GetQueuedSinceAsync(int creatorId, DateTimeOffset since, CancellationToken ct)
+        => Task.FromResult(Campaigns
+            .Where(c => c.CreatorId == creatorId && c.QueuedAt >= since)
+            .Select(c => new QueuedCampaignOpenStats(c.PublicId, c.QueuedAt!.Value, c.UniqueOpenCount))
+            .ToList());
+
     public Task<List<Guid>> GetDueScheduledPublicIdsAsync(int limit, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
@@ -199,9 +219,39 @@ public sealed class FakeCampaignRecipientRepository : ICampaignRecipientReposito
     private static readonly PropertyInfo IdProperty =
         typeof(CampaignRecipient).GetProperty(nameof(CampaignRecipient.Id))!;
 
+    private static readonly PropertyInfo FirstOpenedAtProperty =
+        typeof(CampaignRecipient).GetProperty(nameof(CampaignRecipient.FirstOpenedAt))!;
+
+    private static readonly PropertyInfo UniqueOpenCountProperty =
+        typeof(Campaign).GetProperty(nameof(Campaign.UniqueOpenCount))!;
+
+    private readonly FakeCampaignRepository? _campaignRepository;
     private int _nextId = 1;
 
+    /// <param name="campaignRepository">Optional — only needed by tests that record opens, since the real
+    /// statement bumps the campaign's counter in the same breath as the recipient's timestamp.</param>
+    public FakeCampaignRecipientRepository(FakeCampaignRepository? campaignRepository = null)
+    {
+        _campaignRepository = campaignRepository;
+    }
+
     public List<CampaignRecipient> Recipients { get; } = [];
+
+    /// <summary>Faithful in-memory version of the real single statement: only the first call for a known
+    /// recipient stamps <c>FirstOpenedAt</c> and bumps its campaign's <c>UniqueOpenCount</c>.</summary>
+    public Task RecordFirstOpenAsync(int recipientId, CancellationToken ct)
+    {
+        var recipient = Recipients.FirstOrDefault(r => r.Id == recipientId);
+        if (recipient is null || recipient.FirstOpenedAt is not null)
+            return Task.CompletedTask;
+
+        FirstOpenedAtProperty.SetValue(recipient, DateTimeOffset.UtcNow);
+
+        var campaign = _campaignRepository!.Campaigns.Single(c => c.Id == recipient.CampaignId);
+        UniqueOpenCountProperty.SetValue(campaign, campaign.UniqueOpenCount + 1);
+
+        return Task.CompletedTask;
+    }
 
     public Task AddRangeAsync(IEnumerable<CampaignRecipient> recipients, CancellationToken ct)
     {

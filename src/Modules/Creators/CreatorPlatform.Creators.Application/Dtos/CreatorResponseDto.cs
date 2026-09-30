@@ -14,7 +14,13 @@ public sealed class CreatorResponseDto
 
     public string PlanCode { get; init; } = string.Empty;
 
+    /// <summary>Display name of the current plan (e.g. "Pro"); empty when the creator has no subscription.</summary>
+    public string PlanName { get; init; } = string.Empty;
+
     public bool CancelAtPeriodEnd { get; init; }
+
+    /// <summary>End of the current billing period — the renewal or cancellation date; null when unknown (e.g. the free plan).</summary>
+    public DateTimeOffset? CurrentPeriodEnd { get; init; }
 
     public string CountryCode { get; init; } = string.Empty;
 
