@@ -19,7 +19,9 @@ public class AuthServiceTests
         FakePasswordResetTokenRepository PasswordResetTokenRepository,
         FakeUserSessionRepository UserSessionRepository,
         FakeEmailOutboxService EmailOutboxService,
-        FakeTokenGenerator TokenGenerator) BuildService()
+        FakeTokenGenerator TokenGenerator) BuildService(
+        FakeEmailVerificationTokenRepository? emailVerificationTokenRepository = null,
+        FakeUnitOfWork? unitOfWork = null)
     {
         var userRepository = new FakeUserRepository();
         var passwordResetTokenRepository = new FakePasswordResetTokenRepository();
@@ -32,9 +34,9 @@ public class AuthServiceTests
             new FakePasswordHasher(),
             tokenGenerator,
             new FakeTokenHasher(),
-            new FakeEmailVerificationTokenRepository(),
+            emailVerificationTokenRepository ?? new FakeEmailVerificationTokenRepository(),
             passwordResetTokenRepository,
-            new FakeUnitOfWork(),
+            unitOfWork ?? new FakeUnitOfWork(),
             new FakeUserRoleRepository(),
             emailOutboxService,
             NullLogger<AuthService>.Instance,
@@ -254,5 +256,77 @@ public class AuthServiceTests
         Assert.NotNull(user.TermsAcceptedAt);
         Assert.InRange(user.TermsAcceptedAt!.Value, before, DateTimeOffset.UtcNow);
         Assert.Equal(user.CreatedAt, user.TermsAcceptedAt);
+    }
+
+    private static EmailVerificationToken AddVerificationToken(
+        FakeEmailVerificationTokenRepository repository,
+        User user,
+        string rawToken,
+        DateTimeOffset expiresAt)
+    {
+        var token = EmailVerificationToken.Create(user, new FakeTokenHasher().Hash(rawToken), expiresAt, DateTimeOffset.UtcNow.AddHours(-25));
+        repository.Tokens.Add(token);
+        return token;
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_ExpiredToken_ReturnsExpiredWithEmailAndWritesNothing()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens, unitOfWork);
+        var user = CreateUser(userRepository);
+        var token = AddVerificationToken(tokens, user, "expired-token", DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        var response = await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "expired-token" }, CancellationToken.None);
+
+        Assert.Equal(VerifyEmailOutcome.Expired, response.Outcome);
+        Assert.Equal(user.Email, response.Email);
+        Assert.Null(response.FirstName);
+        Assert.False(user.IsEmailVerified);
+        Assert.False(token.IsUsed);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_UsedTokenForUnverifiedUser_ReturnsExpired()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens);
+        var user = CreateUser(userRepository);
+        var token = AddVerificationToken(tokens, user, "used-token", DateTimeOffset.UtcNow.AddHours(1));
+        token.MarkAsUsed(DateTimeOffset.UtcNow.AddMinutes(-5));
+
+        var response = await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "used-token" }, CancellationToken.None);
+
+        Assert.Equal(VerifyEmailOutcome.Expired, response.Outcome);
+        Assert.Equal(user.Email, response.Email);
+        Assert.False(user.IsEmailVerified);
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_UnknownToken_ThrowsBadRequest()
+    {
+        var (service, _, _, _, _, _) = BuildService();
+
+        await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "no-such-token" }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_ValidToken_VerifiesUserAndReturnsFirstName()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens);
+        var user = CreateUser(userRepository);
+        var token = AddVerificationToken(tokens, user, "valid-token", DateTimeOffset.UtcNow.AddHours(1));
+
+        var response = await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "valid-token" }, CancellationToken.None);
+
+        Assert.Equal(VerifyEmailOutcome.Verified, response.Outcome);
+        Assert.Equal(user.FirstName, response.FirstName);
+        Assert.Null(response.Email);
+        Assert.True(user.IsEmailVerified);
+        Assert.True(token.IsUsed);
     }
 }

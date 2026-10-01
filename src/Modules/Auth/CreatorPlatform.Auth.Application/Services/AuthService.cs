@@ -17,6 +17,7 @@ public sealed class AuthService : IAuthService
 {
     private const string InvalidEmailVerificationTokenMessage = "Invalid or expired email verification token.";
     private const string EmailVerifiedSuccessfullyMessage = "Email verified successfully.";
+    private const string EmailVerificationLinkExpiredMessage = "This verification link has expired.";
     private const string LoggedOutSuccessfullyMessage = "Logged out successfully.";
     private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
     private const string InvalidLoginCredentialsMessage = "Invalid email or password.";
@@ -209,27 +210,38 @@ public sealed class AuthService : IAuthService
         var now = DateTimeOffset.UtcNow;
 
 
-        if (emailVerificationToken.User.IsEmailVerified)
+        var user = emailVerificationToken.User;
+
+        if (user.IsEmailVerified)
+            return CreateEmailVerifiedResponse(user);
+
+        // A real token mailed to this address, but no longer usable: tell the holder which address it was for
+        // (they received it there) so a fresh link can be sent. Nothing is written.
+        if (emailVerificationToken.IsUsed || emailVerificationToken.IsExpired(now))
         {
             return new VerifyEmailResponseDto
             {
-                Message = EmailVerifiedSuccessfullyMessage
+                Message = EmailVerificationLinkExpiredMessage,
+                Outcome = VerifyEmailOutcome.Expired,
+                Email = user.Email
             };
         }
 
-        if (emailVerificationToken.IsUsed || emailVerificationToken.IsExpired(now))
-        {
-            throw new BadRequestException(InvalidEmailVerificationTokenMessage);
-        }
-
-        emailVerificationToken.User.VerifyEmail(now);
+        user.VerifyEmail(now);
         emailVerificationToken.MarkAsUsed(now);
 
         await _unitOfWork.SaveChangesAsync(ct);
 
+        return CreateEmailVerifiedResponse(user);
+    }
+
+    private static VerifyEmailResponseDto CreateEmailVerifiedResponse(User user)
+    {
         return new VerifyEmailResponseDto
         {
-            Message = EmailVerifiedSuccessfullyMessage
+            Message = EmailVerifiedSuccessfullyMessage,
+            Outcome = VerifyEmailOutcome.Verified,
+            FirstName = user.FirstName
         };
     }
 

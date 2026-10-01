@@ -70,10 +70,12 @@ public sealed class FakeUserRoleRepository : IUserRoleRepository
 
 public sealed class FakeEmailVerificationTokenRepository : IEmailVerificationTokenRepository
 {
+    public List<EmailVerificationToken> Tokens { get; } = [];
+
     public Task AddAsync(EmailVerificationToken token, CancellationToken ct) => Task.CompletedTask;
 
     public Task<EmailVerificationToken?> GetByTokenHashAsync(string tokenHash, CancellationToken ct)
-        => Task.FromResult<EmailVerificationToken?>(null);
+        => Task.FromResult(Tokens.FirstOrDefault(token => token.TokenHash == tokenHash));
 
     public Task<IReadOnlyList<EmailVerificationToken>> GetUnusedByUserIdAsync(int userId, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<EmailVerificationToken>>([]);
