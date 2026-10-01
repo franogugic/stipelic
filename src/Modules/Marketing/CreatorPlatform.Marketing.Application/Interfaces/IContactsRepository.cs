@@ -1,6 +1,14 @@
 namespace CreatorPlatform.Marketing.Application.Interfaces;
 
-public sealed record ContactRow(string Email, DateTimeOffset FirstCapturedAt, int SourcesCount, string Sources, bool IsUnsubscribed);
+public sealed record ContactRow(
+    string Email,
+    DateTimeOffset FirstCapturedAt,
+    int SourcesCount,
+    string Sources,
+    bool IsUnsubscribed,
+    List<ContactSourceRow> SourceList);
+
+public sealed record ContactSourceRow(Guid LandingPagePublicId, string Title);
 
 public sealed record ContactStatsCountsRow(int Total, int Active, int NewThisMonth, int Unsubscribed);
 
@@ -17,8 +25,10 @@ public interface IContactsRepository
 {
     /// <summary>Returns up to <paramref name="limit"/> + 1 rows ordered by <c>Email</c> ascending (keyset
     /// pagination) — the extra row lets the caller detect a next page without a separate COUNT query,
-    /// then trims it before returning to the API.</summary>
-    Task<List<ContactRow>> SearchAsync(int creatorId, string? search, string? afterEmail, int limit, CancellationToken ct);
+    /// then trims it before returning to the API. <paramref name="landingPageId"/> (internal id, already
+    /// ownership-checked by the caller) restricts the page to contacts captured on that landing page.</summary>
+    Task<List<ContactRow>> SearchAsync(
+        int creatorId, string? search, int? landingPageId, string? afterEmail, int limit, CancellationToken ct);
 
     /// <summary>Headline counts in one scan of the creator's summaries (plus a count of their opt-outs).
     /// <paramref name="monthStart"/> is the inclusive lower bound for <c>NewThisMonth</c>.</summary>

@@ -26,13 +26,15 @@ public sealed class ContactsController : ControllerBase
     public async Task<ActionResult<ApiResponse<ContactsPageDto>>> Search(
         string slug,
         [FromQuery] string? search,
+        [FromQuery] Guid? landingPageId,
         [FromQuery] string? afterEmail,
         [FromQuery] int limit,
         CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
-        var page = await _contactsService.SearchAsync(slug, currentUser.Id, search, afterEmail, limit, ct);
+        var page = await _contactsService.SearchAsync(
+            slug, currentUser.Id, search, landingPageId, afterEmail, limit, ct);
 
         return Ok(ApiResponse<ContactsPageDto>.Success(
             StatusCodes.Status200OK,

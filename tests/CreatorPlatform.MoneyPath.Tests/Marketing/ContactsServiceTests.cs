@@ -25,7 +25,7 @@ public class ContactsServiceTests
     }
 
     private static ContactRow BuildRow(string email) =>
-        new(email, DateTimeOffset.UtcNow, 1, "Landing Page", false);
+        new(email, DateTimeOffset.UtcNow, 1, "Landing Page", false, [new ContactSourceRow(Guid.NewGuid(), "Landing Page")]);
 
     [Fact]
     public async Task SearchAsync_UnknownCreator_ThrowsNotFound()
@@ -34,7 +34,7 @@ public class ContactsServiceTests
         contextProvider.Context = null;
 
         await Assert.ThrowsAsync<NotFoundException>(
-            () => service.SearchAsync(Slug, OwnerUserId, null, null, 50, CancellationToken.None));
+            () => service.SearchAsync(Slug, OwnerUserId, null, null, null, 50, CancellationToken.None));
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class ContactsServiceTests
         var (service, _, repository) = BuildService();
         repository.Rows = [BuildRow("a@test.com"), BuildRow("b@test.com")];
 
-        var page = await service.SearchAsync(Slug, OwnerUserId, null, null, 2, CancellationToken.None);
+        var page = await service.SearchAsync(Slug, OwnerUserId, null, null, null, 2, CancellationToken.None);
 
         Assert.Equal(2, page.Contacts.Count);
         Assert.False(page.HasMore);
@@ -55,7 +55,7 @@ public class ContactsServiceTests
         var (service, _, repository) = BuildService();
         repository.Rows = [BuildRow("a@test.com"), BuildRow("b@test.com"), BuildRow("c@test.com")];
 
-        var page = await service.SearchAsync(Slug, OwnerUserId, null, null, 2, CancellationToken.None);
+        var page = await service.SearchAsync(Slug, OwnerUserId, null, null, null, 2, CancellationToken.None);
 
         Assert.Equal(2, page.Contacts.Count);
         Assert.True(page.HasMore);
@@ -68,7 +68,7 @@ public class ContactsServiceTests
         var (service, _, repository) = BuildService();
         repository.Rows = [BuildRow("a@test.com")];
 
-        await service.SearchAsync(Slug, OwnerUserId, null, null, 0, CancellationToken.None);
+        await service.SearchAsync(Slug, OwnerUserId, null, null, null, 0, CancellationToken.None);
 
         Assert.Equal(50, repository.LastCall!.Value.Limit);
     }
@@ -79,7 +79,7 @@ public class ContactsServiceTests
         var (service, _, repository) = BuildService();
         repository.Rows = [BuildRow("a@test.com")];
 
-        await service.SearchAsync(Slug, OwnerUserId, null, null, 5000, CancellationToken.None);
+        await service.SearchAsync(Slug, OwnerUserId, null, null, null, 5000, CancellationToken.None);
 
         Assert.Equal(100, repository.LastCall!.Value.Limit);
     }
@@ -90,7 +90,7 @@ public class ContactsServiceTests
         var (service, _, repository) = BuildService();
         repository.Rows = [];
 
-        await service.SearchAsync(Slug, OwnerUserId, "lead", "a@test.com", 50, CancellationToken.None);
+        await service.SearchAsync(Slug, OwnerUserId, "lead", null, "a@test.com", 50, CancellationToken.None);
 
         Assert.Equal(CreatorId, repository.LastCall!.Value.CreatorId);
         Assert.Equal("lead", repository.LastCall!.Value.Search);

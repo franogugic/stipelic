@@ -7,9 +7,9 @@ using Microsoft.EntityFrameworkCore;
 namespace CreatorPlatform.Marketing.Infrastructure.Repositories;
 
 /// <summary>Reads exclusively from the materialized <c>marketing.contact_summaries</c> table — never
-/// re-aggregates <c>analytics.email_captures</c> on a page load. Source landing page names and the
-/// unsubscribed flag are resolved in two extra queries bounded to the page being returned (≤ limit + 1
-/// rows), not per-row correlated subqueries.</summary>
+/// re-aggregates <c>analytics.email_captures</c> on a page load. Source landing pages and the unsubscribed
+/// flag are resolved in two extra queries bounded to the page being returned (≤ limit + 1 rows), not
+/// per-row correlated subqueries.</summary>
 public sealed class ContactsRepository : IContactsRepository
 {
     private sealed record SummaryRow(string Email, DateTimeOffset FirstCapturedAt, List<int> SourceLandingPageIds);
@@ -21,13 +21,17 @@ public sealed class ContactsRepository : IContactsRepository
         _context = context;
     }
 
-    public async Task<List<ContactRow>> SearchAsync(int creatorId, string? search, string? afterEmail, int limit, CancellationToken ct)
+    public async Task<List<ContactRow>> SearchAsync(
+        int creatorId, string? search, int? landingPageId, string? afterEmail, int limit, CancellationToken ct)
     {
         var searchPrefix = string.IsNullOrWhiteSpace(search) ? null : search.Trim().ToLowerInvariant();
         var after = afterEmail?.Trim().ToLowerInvariant() ?? string.Empty;
         var fetchLimit = limit + 1;
 
         // Plain keyset scan on the (CreatorId, Email) unique index — no aggregation over capture history.
+        // The source filter is written as containment (@>), not `= ANY(...)`: only @> can use the GIN index on
+        // SourceLandingPageIds, which is what keeps a rare source fast (the btree walk would otherwise scan the
+        // creator's whole directory to fill one page). A null filter folds away at plan time.
         var summaries = await _context.Database.SqlQuery<SummaryRow>($"""
             SELECT
                 "Email" AS "Email",
@@ -37,6 +41,7 @@ public sealed class ContactsRepository : IContactsRepository
             WHERE "CreatorId" = {creatorId}
               AND "Email" > {after}
               AND ({searchPrefix}::text IS NULL OR "Email" LIKE {searchPrefix}::text || '%')
+              AND ({landingPageId}::int IS NULL OR "SourceLandingPageIds" @> ARRAY[{landingPageId}::int])
             ORDER BY "Email"
             LIMIT {fetchLimit}
             """)
@@ -46,14 +51,15 @@ public sealed class ContactsRepository : IContactsRepository
         if (summaries.Count == 0)
             return [];
 
-        // Resolve source landing page titles only for ids that actually appear on this page (bounded by
-        // fetchLimit rows, not the creator's whole history) — one query, not one per contact.
+        // Resolve source landing pages only for ids that actually appear on this page (bounded by fetchLimit
+        // rows, not the creator's whole history) — one query, not one per contact. No status filter: archived
+        // pages still label their contacts.
         var landingPageIds = summaries.SelectMany(s => s.SourceLandingPageIds).Distinct().ToList();
-        var titlesById = await _context.Set<LandingPage>()
+        var sourcesById = await _context.Set<LandingPage>()
             .AsNoTracking()
-            .Where(lp => landingPageIds.Contains(lp.Id))
-            .Select(lp => new { lp.Id, lp.Title })
-            .ToDictionaryAsync(lp => lp.Id, lp => lp.Title, ct);
+            .Where(lp => lp.CreatorId == creatorId && landingPageIds.Contains(lp.Id))
+            .Select(lp => new { lp.Id, lp.PublicId, lp.Title })
+            .ToDictionaryAsync(lp => lp.Id, lp => new ContactSourceRow(lp.PublicId, lp.Title), ct);
 
         // Same bound: unsubscribed status resolved for just the emails on this page, one query.
         var emails = summaries.Select(s => s.Email).ToList();
@@ -67,9 +73,15 @@ public sealed class ContactsRepository : IContactsRepository
         return summaries
             .Select(s =>
             {
-                var titles = s.SourceLandingPageIds
-                    .Select(id => titlesById.GetValueOrDefault(id))
-                    .Where(title => title is not null)
+                // SourceLandingPageIds is appended to on each new page's first capture, so array order is
+                // first-capture order.
+                var sourceList = s.SourceLandingPageIds
+                    .Select(id => sourcesById.GetValueOrDefault(id))
+                    .OfType<ContactSourceRow>()
+                    .ToList();
+
+                var titles = sourceList
+                    .Select(source => source.Title)
                     .OrderBy(title => title, StringComparer.Ordinal)
                     .Take(3);
 
@@ -78,7 +90,8 @@ public sealed class ContactsRepository : IContactsRepository
                     s.FirstCapturedAt,
                     s.SourceLandingPageIds.Count,
                     string.Join(", ", titles),
-                    unsubscribedEmails.Contains(s.Email));
+                    unsubscribedEmails.Contains(s.Email),
+                    sourceList);
             })
             .ToList();
     }

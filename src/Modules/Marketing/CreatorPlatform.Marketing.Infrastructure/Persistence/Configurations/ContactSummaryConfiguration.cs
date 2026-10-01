@@ -36,6 +36,10 @@ public sealed class ContactSummaryConfiguration : IEntityTypeConfiguration<Conta
         builder.HasIndex(c => new { c.CreatorId, c.Email })
             .IsUnique();
 
+        // Serves the Contacts directory's source filter ("SourceLandingPageIds" @> ARRAY[id]).
+        builder.HasIndex(c => c.SourceLandingPageIds)
+            .HasMethod("gin");
+
         builder.HasOne<Creator>()
             .WithMany()
             .HasForeignKey(c => c.CreatorId)
