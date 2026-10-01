@@ -329,4 +329,89 @@ public class AuthServiceTests
         Assert.True(user.IsEmailVerified);
         Assert.True(token.IsUsed);
     }
+
+    private static PasswordResetToken AddResetToken(
+        FakePasswordResetTokenRepository repository, User user, string rawToken, DateTimeOffset expiresAt)
+    {
+        var token = PasswordResetToken.Create(user, new FakeTokenHasher().Hash(rawToken), expiresAt, DateTimeOffset.UtcNow.AddMinutes(-30));
+        repository.Tokens.Add(token);
+        return token;
+    }
+
+    [Fact]
+    public async Task InspectPasswordResetTokenAsync_ValidToken_ReturnsValidWithEmailAndWritesNothing()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, resetTokens, _, _, _) = BuildService(unitOfWork: unitOfWork);
+        var user = CreateUser(userRepository);
+        var token = AddResetToken(resetTokens, user, "valid-reset-token", DateTimeOffset.UtcNow.AddMinutes(30));
+        var originalPasswordHash = user.PasswordHash;
+
+        var response = await service.InspectPasswordResetTokenAsync(
+            new InspectPasswordResetTokenRequestDto { Token = "  valid-reset-token  " }, CancellationToken.None);
+
+        Assert.Equal(PasswordResetTokenStatus.Valid, response.Status);
+        Assert.Equal(user.Email, response.Email);
+        Assert.False(token.IsUsed);
+        Assert.Equal(originalPasswordHash, user.PasswordHash);
+        Assert.Single(resetTokens.Tokens);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task InspectPasswordResetTokenAsync_ExpiredToken_ReturnsExpiredWithoutEmailAndWritesNothing()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, resetTokens, _, _, _) = BuildService(unitOfWork: unitOfWork);
+        var user = CreateUser(userRepository);
+        var token = AddResetToken(resetTokens, user, "expired-reset-token", DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        var response = await service.InspectPasswordResetTokenAsync(
+            new InspectPasswordResetTokenRequestDto { Token = "expired-reset-token" }, CancellationToken.None);
+
+        Assert.Equal(PasswordResetTokenStatus.Expired, response.Status);
+        Assert.Null(response.Email);
+        Assert.False(token.IsUsed);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task InspectPasswordResetTokenAsync_UsedToken_ReturnsExpiredWithoutEmailAndWritesNothing()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, resetTokens, _, _, _) = BuildService(unitOfWork: unitOfWork);
+        var user = CreateUser(userRepository);
+        var token = AddResetToken(resetTokens, user, "used-reset-token", DateTimeOffset.UtcNow.AddMinutes(30));
+        var usedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        token.MarkAsUsed(usedAt);
+
+        var response = await service.InspectPasswordResetTokenAsync(
+            new InspectPasswordResetTokenRequestDto { Token = "used-reset-token" }, CancellationToken.None);
+
+        Assert.Equal(PasswordResetTokenStatus.Expired, response.Status);
+        Assert.Null(response.Email);
+        Assert.Equal(usedAt, token.UsedAt);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Theory]
+    [InlineData("no-such-token")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public async Task InspectPasswordResetTokenAsync_UnknownOrBlankToken_ThrowsGenericErrorAndWritesNothing(string? rawToken)
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, resetTokens, _, _, _) = BuildService(unitOfWork: unitOfWork);
+        var user = CreateUser(userRepository);
+        var otherToken = AddResetToken(resetTokens, user, "someone-elses-token", DateTimeOffset.UtcNow.AddMinutes(30));
+
+        var exception = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.InspectPasswordResetTokenAsync(
+                new InspectPasswordResetTokenRequestDto { Token = rawToken }, CancellationToken.None));
+
+        Assert.Equal("Invalid or expired reset link.", exception.Message);
+        Assert.False(otherToken.IsUsed);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
 }

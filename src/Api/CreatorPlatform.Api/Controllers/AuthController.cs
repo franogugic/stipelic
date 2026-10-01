@@ -149,6 +149,17 @@ public sealed class AuthController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>Read-only check of a reset link. POST so the token never lands in URLs or access logs.</summary>
+    [HttpPost("reset-password/inspect")]
+    [EnableRateLimiting("InspectResetToken")]
+    public async Task<ActionResult<InspectPasswordResetTokenResponseDto>> InspectResetPasswordToken(
+        InspectPasswordResetTokenRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.InspectPasswordResetTokenAsync(request, ct);
+        return Ok(response);
+    }
+
     private CookieOptions CreateSessionCookieOptions(DateTimeOffset? expires = null)
     {
         var options = new CookieOptions

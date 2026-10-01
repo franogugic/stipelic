@@ -422,6 +422,37 @@ public sealed class AuthService : IAuthService
         };
     }
 
+    public async Task<InspectPasswordResetTokenResponseDto> InspectPasswordResetTokenAsync(
+        InspectPasswordResetTokenRequestDto request,
+        CancellationToken ct)
+    {
+        // Read-only: lets the reset page show whom the link is for (or that it is dead) before anything is
+        // typed. Never saves — the token stays exactly as usable as it was.
+        if (string.IsNullOrWhiteSpace(request.Token))
+            throw new BadRequestException(InvalidPasswordResetTokenMessage);
+
+        var tokenHash = _tokenHasher.Hash(request.Token.Trim());
+        var passwordResetToken = await _passwordResetTokenRepository.GetByTokenHashAsync(tokenHash, ct);
+
+        if (passwordResetToken is null)
+            throw new BadRequestException(InvalidPasswordResetTokenMessage);
+
+        // Same rule as ResetPasswordAsync: used and expired are one state, and a dead link reveals no email.
+        if (passwordResetToken.IsUsed || passwordResetToken.IsExpired(DateTimeOffset.UtcNow))
+        {
+            return new InspectPasswordResetTokenResponseDto
+            {
+                Status = PasswordResetTokenStatus.Expired
+            };
+        }
+
+        return new InspectPasswordResetTokenResponseDto
+        {
+            Status = PasswordResetTokenStatus.Valid,
+            Email = passwordResetToken.User.Email
+        };
+    }
+
     private static RequestPasswordResetResponseDto CreateRequestPasswordResetResponse()
     {
         return new RequestPasswordResetResponseDto

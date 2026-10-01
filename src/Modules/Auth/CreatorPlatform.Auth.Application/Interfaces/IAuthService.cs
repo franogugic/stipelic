@@ -15,4 +15,7 @@ public interface IAuthService
         RequestPasswordResetRequestDto request,
         CancellationToken ct);
     Task<ResetPasswordResponseDto> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken ct);
+    Task<InspectPasswordResetTokenResponseDto> InspectPasswordResetTokenAsync(
+        InspectPasswordResetTokenRequestDto request,
+        CancellationToken ct);
 }
