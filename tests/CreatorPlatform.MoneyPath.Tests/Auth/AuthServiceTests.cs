@@ -220,4 +220,39 @@ public class AuthServiceTests
             CancellationToken.None);
         Assert.False(string.IsNullOrWhiteSpace(response.Message));
     }
+
+    private static RegisterUserRequestDto RegisterRequest(bool acceptTerms) => new()
+    {
+        FirstName = "Ana",
+        LastName = "Horvat",
+        Email = "ana@example.com",
+        Password = "Adriatic20!",
+        AcceptTerms = acceptTerms
+    };
+
+    [Fact]
+    public async Task RegisterAsync_TermsNotAccepted_ThrowsBadRequestAndCreatesNoUser()
+    {
+        var (service, userRepository, _, _, _, _) = BuildService();
+
+        var exception = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.RegisterAsync(RegisterRequest(acceptTerms: false), CancellationToken.None));
+
+        Assert.Equal("You must accept the Terms and Privacy Policy.", exception.Message);
+        Assert.Empty(userRepository.AddedUsers);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_TermsAccepted_RecordsTermsAcceptedAt()
+    {
+        var (service, userRepository, _, _, _, _) = BuildService();
+        var before = DateTimeOffset.UtcNow;
+
+        await service.RegisterAsync(RegisterRequest(acceptTerms: true), CancellationToken.None);
+
+        var user = Assert.Single(userRepository.AddedUsers);
+        Assert.NotNull(user.TermsAcceptedAt);
+        Assert.InRange(user.TermsAcceptedAt!.Value, before, DateTimeOffset.UtcNow);
+        Assert.Equal(user.CreatedAt, user.TermsAcceptedAt);
+    }
 }

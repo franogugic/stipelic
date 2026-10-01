@@ -71,6 +71,9 @@ public sealed class AuthService : IAuthService
     public async Task<RegisterUserResponseDto> RegisterAsync(RegisterUserRequestDto request,
         CancellationToken ct)
     {
+        if (!request.AcceptTerms)
+            throw new BadRequestException("You must accept the Terms and Privacy Policy.");
+
         var email = request.Email.Trim().ToLowerInvariant();
         var doesExist = await _userRepository.ExistsByEmailAsync(email, ct);
         if (doesExist)
@@ -92,6 +95,7 @@ public sealed class AuthService : IAuthService
             firstName,
             lastName,
             createdAt);
+        user.AcceptTerms(createdAt);
         
         var rawEmailVerificationToken = _tokenGenerator.GenerateToken();
         var hashedEmailVerificationToken = _tokenHasher.Hash(rawEmailVerificationToken);

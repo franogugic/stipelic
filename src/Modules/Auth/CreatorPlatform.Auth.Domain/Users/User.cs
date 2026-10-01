@@ -49,6 +49,13 @@ public sealed class User
         UpdatedAt = verifiedAt;
     }
 
+    /// <summary>Records when the user agreed to the Terms and Privacy Policy (set once, at registration).</summary>
+    public void AcceptTerms(DateTimeOffset acceptedAt)
+    {
+        TermsAcceptedAt = acceptedAt;
+        UpdatedAt = acceptedAt;
+    }
+
     public void SetPassword(string newPasswordHash, DateTimeOffset updatedAt)
     {
         PasswordHash = newPasswordHash;
@@ -70,6 +77,9 @@ public sealed class User
     public string LastName { get; private set; } = string.Empty;
 
     public DateTimeOffset? EmailVerifiedAt { get; private set; }
+
+    /// <summary>NULL for users who registered before terms acceptance was recorded.</summary>
+    public DateTimeOffset? TermsAcceptedAt { get; private set; }
 
     public UserStatus Status { get; private set; }
 

@@ -10,6 +10,8 @@ public sealed class FakeUserRepository : IUserRepository
 {
     public Dictionary<string, User> UsersByEmail { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public List<User> AddedUsers { get; } = [];
+
     public Task<bool> ExistsByEmailAsync(string email, CancellationToken ct)
         => Task.FromResult(UsersByEmail.ContainsKey(email));
 
@@ -22,7 +24,11 @@ public sealed class FakeUserRepository : IUserRepository
     public Task<UserWithRoles?> GetByIdWithRolesAsync(int id, CancellationToken ct)
         => Task.FromResult<UserWithRoles?>(null);
 
-    public Task AddAsync(User user, CancellationToken ct) => Task.CompletedTask;
+    public Task AddAsync(User user, CancellationToken ct)
+    {
+        AddedUsers.Add(user);
+        return Task.CompletedTask;
+    }
 
     public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
 }
