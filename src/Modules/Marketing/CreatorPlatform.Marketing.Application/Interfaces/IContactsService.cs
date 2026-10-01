@@ -6,4 +6,6 @@ public interface IContactsService
 {
     Task<ContactsPageDto> SearchAsync(
         string slug, int ownerUserId, string? search, string? afterEmail, int limit, CancellationToken ct);
+
+    Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct);
 }

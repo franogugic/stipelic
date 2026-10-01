@@ -8,6 +8,7 @@ public sealed class ContactsService : IContactsService
 {
     private const int DefaultLimit = 50;
     private const int MaxLimit = 100;
+    private const int GrowthMonths = 12;
 
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IContactsRepository _contactsRepository;
@@ -21,9 +22,7 @@ public sealed class ContactsService : IContactsService
     public async Task<ContactsPageDto> SearchAsync(
         string slug, int ownerUserId, string? search, string? afterEmail, int limit, CancellationToken ct)
     {
-        var context = await _creatorContextProvider.GetBySlugForOwnerAsync(slug, ownerUserId, ct);
-        if (context is null)
-            throw new NotFoundException("Creator workspace not found.");
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
         var clampedLimit = limit <= 0 ? DefaultLimit : Math.Min(limit, MaxLimit);
 
@@ -37,5 +36,33 @@ public sealed class ContactsService : IContactsService
             .ToList();
 
         return new ContactsPageDto(contacts, hasMore);
+    }
+
+    public async Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var now = DateTimeOffset.UtcNow;
+        var currentMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var windowStart = currentMonthStart.AddMonths(-(GrowthMonths - 1));
+
+        // Sequential on purpose: the queries share one scoped DbContext, which allows no concurrent use.
+        var counts = await _contactsRepository.GetStatsCountsAsync(context.CreatorId, currentMonthStart, ct);
+        var growth = await _contactsRepository.GetGrowthAsync(context.CreatorId, windowStart, currentMonthStart, ct);
+        var sources = await _contactsRepository.GetSourceCountsAsync(context.CreatorId, ct);
+
+        return new ContactStatsDto(
+            counts.Total,
+            counts.Active,
+            counts.NewThisMonth,
+            counts.Unsubscribed,
+            growth.Select(g => new ContactGrowthPointDto(g.Month, g.Total)).ToList(),
+            sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList());
+    }
+
+    private async Task<MarketingCreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        return await _creatorContextProvider.GetBySlugForOwnerAsync(slug, ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
     }
 }

@@ -40,6 +40,21 @@ public sealed class ContactsController : ControllerBase
             page));
     }
 
+    /// <summary>Headline counts, 12-month cumulative growth and per-landing-page counts for the
+    /// subscribers overview.</summary>
+    [HttpGet("stats")]
+    public async Task<ActionResult<ApiResponse<ContactStatsDto>>> GetStats(string slug, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var stats = await _contactsService.GetStatsAsync(slug, currentUser.Id, ct);
+
+        return Ok(ApiResponse<ContactStatsDto>.Success(
+            StatusCodes.Status200OK,
+            "Contact stats loaded.",
+            stats));
+    }
+
     /// <summary>Returns the authenticated user or throws 401.</summary>
     private CurrentUserDto GetAuthenticatedUser()
     {

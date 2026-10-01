@@ -82,4 +82,88 @@ public sealed class ContactsRepository : IContactsRepository
             })
             .ToList();
     }
+
+    public async Task<ContactStatsCountsRow> GetStatsCountsAsync(int creatorId, DateTimeOffset monthStart, CancellationToken ct)
+    {
+        // One pass over the creator's summaries. Active is an anti-join written as LEFT JOIN … IS NULL so the
+        // planner can hash the (small) unsubscribe set once; a NOT EXISTS inside the aggregate FILTER runs as
+        // a per-row SubPlan instead (~150 ms vs ~14 ms at 100k contacts). No row multiplication: unsubscribes
+        // is unique on (CreatorId, Email). An aggregate without GROUP BY always yields exactly one row.
+        var rows = await _context.Database.SqlQuery<ContactStatsCountsRow>($"""
+            SELECT
+                COUNT(*)::int AS "Total",
+                (COUNT(*) FILTER (WHERE u."Id" IS NULL))::int AS "Active",
+                (COUNT(*) FILTER (WHERE cs."FirstCapturedAt" >= {monthStart}))::int AS "NewThisMonth",
+                (SELECT COUNT(*) FROM marketing.unsubscribes u2 WHERE u2."CreatorId" = {creatorId})::int AS "Unsubscribed"
+            FROM marketing.contact_summaries cs
+            LEFT JOIN marketing.unsubscribes u
+                ON u."CreatorId" = {creatorId}
+               AND u."Email" = cs."Email"
+            WHERE cs."CreatorId" = {creatorId}
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        return rows.Single();
+    }
+
+    public async Task<List<ContactGrowthRow>> GetGrowthAsync(
+        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, CancellationToken ct)
+    {
+        var windowEnd = lastMonthStart.AddMonths(1);
+
+        // Month arithmetic runs on UTC `timestamp` values (AT TIME ZONE 'UTC'), never on timestamptz, so the
+        // buckets don't depend on the session TimeZone (adding '1 month' to a timestamptz is DST-sensitive).
+        // Contacts from before the window are clamped into the first bucket by GREATEST, so the running
+        // SUM() OVER starts from the creator's whole base instead of zero — one query, no second COUNT.
+        return await _context.Database.SqlQuery<ContactGrowthRow>($"""
+            SELECT
+                to_char(m."MonthStart", 'YYYY-MM') AS "Month",
+                (SUM(COALESCE(b."Count", 0)) OVER (ORDER BY m."MonthStart"))::int AS "Total"
+            FROM generate_series(
+                {windowStart}::timestamptz AT TIME ZONE 'UTC',
+                {lastMonthStart}::timestamptz AT TIME ZONE 'UTC',
+                interval '1 month') AS m("MonthStart")
+            LEFT JOIN (
+                SELECT
+                    GREATEST(
+                        date_trunc('month', cs."FirstCapturedAt" AT TIME ZONE 'UTC'),
+                        {windowStart}::timestamptz AT TIME ZONE 'UTC') AS "Bucket",
+                    COUNT(*) AS "Count"
+                FROM marketing.contact_summaries cs
+                WHERE cs."CreatorId" = {creatorId}
+                  AND cs."FirstCapturedAt" < {windowEnd}
+                GROUP BY 1
+            ) b ON b."Bucket" = m."MonthStart"
+            ORDER BY m."MonthStart"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct)
+    {
+        // Aggregate on the internal id first, then join only the distinct pages for their public id/title.
+        // No status filter: archived pages still own their captured contacts. The CreatorId condition on the
+        // join is defence in depth — SourceLandingPageIds only ever holds this creator's pages.
+        return await _context.Database.SqlQuery<ContactSourceCountRow>($"""
+            SELECT
+                lp."PublicId" AS "LandingPagePublicId",
+                lp."Title" AS "Title",
+                s."Count" AS "Count"
+            FROM (
+                SELECT src."LandingPageId", COUNT(*)::int AS "Count"
+                FROM marketing.contact_summaries cs
+                CROSS JOIN LATERAL unnest(cs."SourceLandingPageIds") AS src("LandingPageId")
+                WHERE cs."CreatorId" = {creatorId}
+                GROUP BY src."LandingPageId"
+            ) s
+            JOIN landing_pages.landing_pages lp
+                ON lp."Id" = s."LandingPageId"
+               AND lp."CreatorId" = {creatorId}
+            ORDER BY s."Count" DESC, lp."Title", lp."Id"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
 }
