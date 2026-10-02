@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Services;
 using CreatorPlatform.Creators.Domain.Creators;
@@ -27,7 +28,8 @@ public class CreatorServicePayoutProfileTests
             new FakeCreatorsUnitOfWork(),
             new FakeSubscriptionCheckoutSessionService(),
             new FakeSubscriptionCancellationService(),
-            new FakeBillingPortalService());
+            new FakeBillingPortalService(),
+            NullLogger<CreatorService>.Instance);
 
         return (service, profileRepository);
     }

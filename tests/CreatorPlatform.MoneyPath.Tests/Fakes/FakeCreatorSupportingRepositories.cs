@@ -81,6 +81,8 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
         return Task.FromResult<CreatorSubscription?>(null);
     }
 
+    public Task LockForUpdateAsync(int id, CancellationToken ct) => Task.CompletedTask;
+
     public Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(string providerSubscriptionId, CancellationToken ct)
     {
         return Task.FromResult(
@@ -98,6 +100,11 @@ public sealed class FakeSubscriptionCheckoutSessionService : ISubscriptionChecko
 {
     public Task<SubscriptionCheckoutSessionDto> CreateAsync(
         string stripePriceId, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
+
+    public Task<CheckoutSessionExpireOutcome> ExpireAsync(string checkoutSessionId, CancellationToken ct)
     {
         throw new InvalidOperationException("Not expected to be called in this scenario.");
     }

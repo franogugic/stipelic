@@ -4,6 +4,7 @@ using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -17,15 +18,18 @@ public sealed class CreatorsController : ControllerBase
     private readonly ICreatorService _creatorService;
     private readonly ICreatorConnectService _creatorConnectService;
     private readonly ICurrentUserContext _currentUserContext;
+    private readonly IHomeSummaryCache _homeSummaryCache;
 
     public CreatorsController(
         ICreatorService creatorService,
         ICreatorConnectService creatorConnectService,
-        ICurrentUserContext currentUserContext)
+        ICurrentUserContext currentUserContext,
+        IHomeSummaryCache homeSummaryCache)
     {
         _creatorService = creatorService;
         _creatorConnectService = creatorConnectService;
         _currentUserContext = currentUserContext;
+        _homeSummaryCache = homeSummaryCache;
     }
 
     [HttpGet("current")]
@@ -142,6 +146,24 @@ public sealed class CreatorsController : ControllerBase
             StatusCodes.Status200OK,
             "Subscription scheduled for cancellation at the end of the current billing period.",
             null));
+    }
+
+    /// <summary>Payment-cancelled screen: leave the unpaid plan and use the workspace on Free.</summary>
+    [HttpPost("current/subscription/continue-free")]
+    [EnableRateLimiting("ContinueFree")]
+    public async Task<ActionResult<ApiResponse<CreatorResponseDto>>> ContinueOnFreePlan(CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var response = await _creatorService.ContinueOnFreePlanAsync(currentUser.Id, ct);
+
+        // The home summary carries plan-dependent numbers (the monthly email limit).
+        _homeSummaryCache.Remove(response.Slug);
+
+        return Ok(ApiResponse<CreatorResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Workspace switched to the Free plan.",
+            response));
     }
 
     [HttpPost("current/connect/onboarding-link")]

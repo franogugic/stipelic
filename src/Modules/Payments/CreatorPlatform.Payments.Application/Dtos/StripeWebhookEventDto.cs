@@ -25,6 +25,8 @@ public sealed class AccountUpdatedData
 
 public sealed class CheckoutSessionCompletedData
 {
+    public required string EventId { get; init; }
+
     public required string SessionId { get; init; }
     public required string StripeSubscriptionId { get; init; }
     public required string StripeCustomerId { get; init; }

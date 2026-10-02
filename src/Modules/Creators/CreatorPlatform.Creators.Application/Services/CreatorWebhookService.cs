@@ -101,6 +101,32 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                 return;
             }
 
+            // The workspace switched to the Free plan (ContinueOnFreePlanAsync) but the customer still paid —
+            // normally impossible because the session is expired first, but a legacy pending subscription has no
+            // stored session to expire. Never activate it: record a webhook failure so an admin can refund the
+            // charge and cancel the Stripe subscription.
+            if (subscription.Status == CreatorSubscriptionStatus.Cancelled)
+            {
+                _logger.LogWarning(
+                    "Checkout completed for a cancelled pending subscription; not activating. SubscriptionId: {SubscriptionId}, StripeSubscriptionId: {StripeSubscriptionId}, SessionId: {SessionId}",
+                    subscriptionId, data.StripeSubscriptionId, data.SessionId);
+
+                var failure = WebhookFailure.Create(
+                    provider: "stripe",
+                    eventId: data.EventId,
+                    eventType: "checkout.session.completed",
+                    payload: $"CreatorId={creatorId}, SubscriptionId={subscriptionId}, SessionId={data.SessionId}, " +
+                        $"StripeSubscriptionId={data.StripeSubscriptionId}, StripeCustomerId={data.StripeCustomerId}",
+                    errorMessage: "Checkout was paid after the pending subscription was cancelled (the workspace " +
+                        "switched to the Free plan). The paid plan was not activated — refund the charge and cancel " +
+                        "the Stripe subscription.",
+                    occurredAt: now);
+
+                await _webhookFailureRepository.AddAsync(failure, ct);
+                await _unitOfWork.SaveChangesAsync(ct);
+                return;
+            }
+
             if (subscription.Status != CreatorSubscriptionStatus.PendingPayment
                 && subscription.Status != CreatorSubscriptionStatus.Active)
             {

@@ -40,6 +40,12 @@ public sealed class CreatorSubscriptionRepository : ICreatorSubscriptionReposito
             .FirstOrDefaultAsync(subscription => subscription.Id == id, ct);
     }
 
+    public async Task LockForUpdateAsync(int id, CancellationToken ct)
+    {
+        await _context.Database.ExecuteSqlAsync(
+            $"""SELECT 1 FROM creators.creator_subscriptions WHERE "Id" = {id} FOR UPDATE""", ct);
+    }
+
     public async Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(
         string providerSubscriptionId,
         CancellationToken ct)

@@ -129,6 +129,18 @@ public sealed class CreatorSubscription
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>Records the Stripe Checkout session opened for this pending subscription, replacing any
+    /// earlier one (a re-checkout creates a new session), so it can be expired if the creator abandons the
+    /// payment.</summary>
+    public void AttachCheckoutSession(string checkoutSessionId, DateTimeOffset updatedAt)
+    {
+        if (string.IsNullOrWhiteSpace(checkoutSessionId))
+            throw new ArgumentException("Checkout session id is required.", nameof(checkoutSessionId));
+
+        CheckoutSessionId = checkoutSessionId;
+        UpdatedAt = updatedAt;
+    }
+
     public void Cancel(DateTimeOffset cancelledAt)
     {
         Status = CreatorSubscriptionStatus.Cancelled;
@@ -162,6 +174,10 @@ public sealed class CreatorSubscription
     public DateTimeOffset? TrialEndsAt { get; private set; }
 
     public bool CancelAtPeriodEnd { get; private set; }
+
+    /// <summary>The latest Stripe Checkout session opened for this subscription while it was pending; null
+    /// for free subscriptions and for pending ones created before this was recorded.</summary>
+    public string? CheckoutSessionId { get; private set; }
 
     public DateTimeOffset? CancelledAt { get; private set; }
 

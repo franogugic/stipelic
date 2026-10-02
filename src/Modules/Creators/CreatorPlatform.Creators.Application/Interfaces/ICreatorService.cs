@@ -22,6 +22,11 @@ public interface ICreatorService
 
     Task CancelSubscriptionAsync(int ownerUserId, CancellationToken ct);
 
+    /// <summary>For a workspace still waiting for its first payment: expires the open Checkout session, cancels
+    /// the pending paid subscription and activates the workspace on the Free plan. 409 when the workspace is not
+    /// waiting for payment, or when the customer already paid.</summary>
+    Task<CreatorResponseDto> ContinueOnFreePlanAsync(int ownerUserId, CancellationToken ct);
+
     Task<string> GetBillingPortalUrlAsync(int ownerUserId, CancellationToken ct);
 
     Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);

@@ -88,6 +88,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
             EventType = stripeEvent.Type,
             CheckoutSessionCompleted = new CheckoutSessionCompletedData
             {
+                EventId = stripeEvent.Id,
                 SessionId = session.Id,
                 StripeSubscriptionId = session.SubscriptionId ?? string.Empty,
                 StripeCustomerId = session.CustomerId ?? string.Empty,

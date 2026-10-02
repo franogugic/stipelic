@@ -16,6 +16,9 @@ public sealed class TestData
     /// <summary>Seeded by the migrations: the free plan (max_contacts = 500).</summary>
     public const int FreePlanId = 1;
 
+    /// <summary>Seeded by the migrations: the paid "basic" plan (has a Stripe price id).</summary>
+    public const int BasicPlanId = 2;
+
     private readonly PostgresFixture _fixture;
 
     public TestData(PostgresFixture fixture)
@@ -58,6 +61,86 @@ public sealed class TestData
             """);
 
         return new SeededCreator(creatorId, userId, slug);
+    }
+
+    /// <summary>A workspace that picked a paid plan and has not paid yet: creator and subscription both
+    /// PendingPayment, optionally with a stored Checkout session.</summary>
+    public async Task<SeededCreator> CreatePendingCreatorAsync(string? checkoutSessionId, int planId = BasicPlanId)
+    {
+        await using var db = _fixture.CreateDbContext();
+        var now = DateTimeOffset.UtcNow;
+        var slug = $"c-{Guid.NewGuid():N}"[..30];
+
+        var userId = await ScalarAsync(db, $"""
+            INSERT INTO auth.users ("PublicId", "Email", "PasswordHash", "FirstName", "LastName", "EmailVerifiedAt",
+                                    "Status", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {UniqueEmail("owner")}, 'not-a-real-hash', 'Test', 'Owner', {now},
+                    'Active', {now}, {now})
+            RETURNING "Id" AS "Value"
+            """);
+
+        var creatorId = await ScalarAsync(db, $"""
+            INSERT INTO creators.creators ("PublicId", "OwnerUserId", "Name", "Slug", "Status", "DefaultCurrency",
+                                           "CountryCode", "PayoutMode", "StripeConnectDetailsSubmitted",
+                                           "StripeConnectChargesEnabled", "StripeConnectPayoutsEnabled",
+                                           "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {userId}, 'Pending Creator', {slug}, 'PendingPayment', 'Eur',
+                    'HR', 'StripeConnect', false, false, false, {now}, {now})
+            RETURNING "Id" AS "Value"
+            """);
+
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO creators.creator_subscriptions ("CreatorId", "PlanId", "Status", "BillingInterval", "Provider",
+                                                        "CancelAtPeriodEnd", "CheckoutSessionId", "CreatedAt",
+                                                        "UpdatedAt")
+            VALUES ({creatorId}, {planId}, 'PendingPayment', 'Monthly', 'Internal', false, {checkoutSessionId},
+                    {now}, {now})
+            """);
+
+        return new SeededCreator(creatorId, userId, slug);
+    }
+
+    public sealed record SubscriptionRow(
+        int Id,
+        string PlanCode,
+        string Status,
+        string Provider,
+        DateTimeOffset? CancelledAt,
+        string? CheckoutSessionId,
+        string? ProviderSubscriptionId);
+
+    /// <summary>Every subscription of the creator, oldest first.</summary>
+    public async Task<List<SubscriptionRow>> GetSubscriptionsAsync(int creatorId)
+    {
+        await using var db = _fixture.CreateDbContext();
+
+        return await db.Database.SqlQuery<SubscriptionRow>($"""
+            SELECT s."Id" AS "Id", p."Code" AS "PlanCode", s."Status" AS "Status", s."Provider" AS "Provider",
+                   s."CancelledAt" AS "CancelledAt", s."CheckoutSessionId" AS "CheckoutSessionId",
+                   s."ProviderSubscriptionId" AS "ProviderSubscriptionId"
+            FROM creators.creator_subscriptions s
+            JOIN creators.creator_plans p ON p."Id" = s."PlanId"
+            WHERE s."CreatorId" = {creatorId}
+            ORDER BY s."Id"
+            """).ToListAsync();
+    }
+
+    public async Task<string> GetCreatorStatusAsync(int creatorId)
+    {
+        await using var db = _fixture.CreateDbContext();
+
+        return (await db.Database.SqlQuery<string>($"""
+            SELECT "Status" AS "Value" FROM creators.creators WHERE "Id" = {creatorId}
+            """).ToListAsync()).Single();
+    }
+
+    public async Task<List<string>> GetWebhookFailureMessagesAsync(string eventId)
+    {
+        await using var db = _fixture.CreateDbContext();
+
+        return await db.Database.SqlQuery<string>($"""
+            SELECT "ErrorMessage" AS "Value" FROM payments.webhook_failures WHERE "EventId" = {eventId}
+            """).ToListAsync();
     }
 
     public async Task<int> CreateLandingPageAsync(int creatorId)

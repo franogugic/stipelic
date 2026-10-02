@@ -10,6 +10,11 @@ public interface ICreatorSubscriptionRepository
 
     Task<CreatorSubscription?> GetByIdForUpdateAsync(int id, CancellationToken ct);
 
+    /// <summary>Takes a row lock (<c>SELECT … FOR UPDATE</c>) on the subscription until the surrounding
+    /// transaction ends, so concurrent state changes to it serialize. Must run inside a transaction, before the
+    /// row is loaded for update (so the load sees the committed state after any concurrent change).</summary>
+    Task LockForUpdateAsync(int id, CancellationToken ct);
+
     Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(
         string providerSubscriptionId,
         CancellationToken ct);
