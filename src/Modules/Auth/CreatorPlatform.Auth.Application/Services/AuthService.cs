@@ -422,6 +422,37 @@ public sealed class AuthService : IAuthService
         };
     }
 
+    public async Task<LoginUserResponseDto> UpdateProfileAsync(
+        CurrentUserDto currentUser,
+        UpdateProfileRequestDto request,
+        CancellationToken ct)
+    {
+        var firstName = request.FirstName.Trim();
+        var lastName = request.LastName.Trim();
+
+        CheckName(firstName, nameof(request.FirstName));
+        CheckName(lastName, nameof(request.LastName));
+
+        var user = await _userRepository.GetByIdForUpdateAsync(currentUser.Id, ct)
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        user.UpdateName(firstName, lastName, DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Profile updated. UserPublicId: {UserPublicId}.", user.PublicId);
+
+        return new LoginUserResponseDto
+        {
+            PublicId = user.PublicId,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email,
+            IsEmailVerified = user.IsEmailVerified,
+            Status = user.Status.ToString(),
+            Roles = currentUser.Roles
+        };
+    }
+
     public async Task<InspectPasswordResetTokenResponseDto> InspectPasswordResetTokenAsync(
         InspectPasswordResetTokenRequestDto request,
         CancellationToken ct)

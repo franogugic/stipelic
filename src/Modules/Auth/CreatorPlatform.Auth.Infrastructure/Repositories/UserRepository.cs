@@ -38,6 +38,13 @@ public sealed class UserRepository : IUserRepository
             .FirstOrDefaultAsync(user => user.Id == id, ct);
     }
 
+    public async Task<User?> GetByIdForUpdateAsync(int id, CancellationToken ct)
+    {
+        return await _context
+            .Set<User>()
+            .FirstOrDefaultAsync(user => user.Id == id, ct);
+    }
+
     public async Task<UserWithRoles?> GetByIdWithRolesAsync(int id, CancellationToken ct)
     {
         var rows = await (

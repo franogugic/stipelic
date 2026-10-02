@@ -21,6 +21,9 @@ public sealed class FakeUserRepository : IUserRepository
     public Task<User?> GetByIdAsync(int id, CancellationToken ct)
         => Task.FromResult(UsersByEmail.Values.FirstOrDefault(u => u.Id == id));
 
+    public Task<User?> GetByIdForUpdateAsync(int id, CancellationToken ct)
+        => Task.FromResult(UsersByEmail.Values.FirstOrDefault(u => u.Id == id));
+
     public Task<UserWithRoles?> GetByIdWithRolesAsync(int id, CancellationToken ct)
         => Task.FromResult<UserWithRoles?>(null);
 

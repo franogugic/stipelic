@@ -84,6 +84,29 @@ public sealed class AuthController : ControllerBase
         });
     }
 
+    /// <summary>Settings → Profile: first and last name. Returns the updated current user (same shape as /me).</summary>
+    [HttpPut("me/profile")]
+    [EnableRateLimiting("UpdateProfile")]
+    public async Task<ActionResult<LoginUserResponseDto>> UpdateProfile(
+        [FromServices] ICurrentUserContext currentUserContext,
+        UpdateProfileRequestDto request,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiErrorResponse
+            {
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = "Authentication is required.",
+                Code = "UNAUTHORIZED"
+            });
+        }
+
+        var response = await _authService.UpdateProfileAsync(currentUser, request, ct);
+        return Ok(response);
+    }
+
     [HttpPost("logout")]
     public async Task<ActionResult<LogoutResponseDto>> Logout(
         [FromServices] ICurrentUserContext currentUserContext,

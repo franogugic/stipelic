@@ -56,6 +56,15 @@ public sealed class User
         UpdatedAt = acceptedAt;
     }
 
+    /// <summary>Replaces the display name. Values arrive already trimmed and validated (same rules as
+    /// registration).</summary>
+    public void UpdateName(string firstName, string lastName, DateTimeOffset updatedAt)
+    {
+        FirstName = firstName;
+        LastName = lastName;
+        UpdatedAt = updatedAt;
+    }
+
     public void SetPassword(string newPasswordHash, DateTimeOffset updatedAt)
     {
         PasswordHash = newPasswordHash;
