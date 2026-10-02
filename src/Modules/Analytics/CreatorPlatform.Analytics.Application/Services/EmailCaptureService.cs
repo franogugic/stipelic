@@ -9,6 +9,7 @@ namespace CreatorPlatform.Analytics.Application.Services;
 public sealed class EmailCaptureService : IEmailCaptureService
 {
     private const string MaxContactsLimitKey = "max_contacts";
+    private const string SignUpsClosedMessage = "Sign-ups are temporarily closed.";
 
     private readonly IEmailCaptureRepository _repository;
     private readonly ICreatorContextProvider _creatorContextProvider;
@@ -31,14 +32,7 @@ public sealed class EmailCaptureService : IEmailCaptureService
     {
         var limit = await _creatorContextProvider.GetActivePlanLimitAsync(creatorId, MaxContactsLimitKey, ct);
         if (limit is null)
-            throw new ConflictException("Sign-ups are temporarily closed.");
-
-        if (limit >= 0)
-        {
-            var usedSoFar = await _usageService.GetUsedAsync(creatorId, MaxContactsLimitKey, UsagePeriod.AllTime, ct);
-            if (usedSoFar >= limit)
-                throw new ConflictException("Sign-ups are temporarily closed.");
-        }
+            throw new ConflictException(SignUpsClosedMessage);
 
         var capture = new EmailCapture
         {
@@ -49,13 +43,27 @@ public sealed class EmailCaptureService : IEmailCaptureService
             CapturedAt = DateTimeOffset.UtcNow
         };
 
-        var inserted = await _repository.AddAsync(capture, ct);
-        if (inserted)
+        // One transaction, so a sign-up rejected by the limit leaves no capture or summary behind.
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            await _usageService.TryConsumeAsync(creatorId, MaxContactsLimitKey, 1, limit.Value, UsagePeriod.AllTime, ct);
-            await _repository.UpsertContactSummaryAsync(creatorId, landingPageId, capture.Email, capture.CapturedAt, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
-        }
+            // Already captured on this page: nothing changes.
+            if (!await _repository.AddAsync(capture, ct))
+                return;
+
+            // max_contacts counts contacts, not captures: a known contact signing up on another page takes no
+            // new slot and is never blocked by the limit.
+            var isNewContact = await _repository.UpsertContactSummaryAsync(
+                creatorId, landingPageId, capture.Email, capture.CapturedAt, ct);
+            if (!isNewContact)
+                return;
+
+            // TryConsumeAsync is a conditional atomic upsert, so parallel sign-ups can't overshoot the limit.
+            // Throwing rolls back the capture and summary inserted above.
+            var consumed = await _usageService.TryConsumeAsync(
+                creatorId, MaxContactsLimitKey, 1, limit.Value, UsagePeriod.AllTime, ct);
+            if (!consumed)
+                throw new ConflictException(SignUpsClosedMessage);
+        }, ct);
     }
 
     public Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct) =>

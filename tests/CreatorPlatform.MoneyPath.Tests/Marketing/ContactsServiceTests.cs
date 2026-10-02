@@ -147,7 +147,7 @@ public class ContactsServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_NormalisesEmailRefundsCapturesInTransactionAndReturnsAffectedPages()
+    public async Task DeleteAsync_NormalisesEmailRefundsOneSlotInTransactionAndReturnsAffectedPages()
     {
         var (service, _, repository, unitOfWork, usageService) = BuildServiceWithFakes();
         repository.DeletionResult = new ContactDeletionRow([11, 12, 13]);
@@ -157,19 +157,19 @@ public class ContactsServiceTests
         Assert.Equal((CreatorId, "lead@test.com"), repository.LastDeleteCall);
         Assert.True(unitOfWork.TransactionCommitted);
         var refund = Assert.Single(usageService.RefundCalls);
-        Assert.Equal((CreatorId, "max_contacts", 3, UsagePeriod.AllTime), (refund.CreatorId, refund.UsageKey, refund.Amount, refund.Period));
+        Assert.Equal((CreatorId, "max_contacts", 1, UsagePeriod.AllTime), (refund.CreatorId, refund.UsageKey, refund.Amount, refund.Period));
         Assert.Equal([11, 12, 13], result.AffectedLandingPageIds.OrderBy(id => id));
     }
 
     [Fact]
-    public async Task DeleteAsync_SummaryWithoutCaptures_DeletesWithoutRefund()
+    public async Task DeleteAsync_SummaryWithoutCaptures_StillRefundsTheContactsSlot()
     {
         var (service, _, repository, _, usageService) = BuildServiceWithFakes();
         repository.DeletionResult = new ContactDeletionRow([]);
 
         var result = await service.DeleteAsync(Slug, OwnerUserId, "a@test.com", CancellationToken.None);
 
-        Assert.Empty(usageService.RefundCalls);
+        Assert.Equal(1, Assert.Single(usageService.RefundCalls).Amount);
         Assert.Empty(result.AffectedLandingPageIds);
     }
 }

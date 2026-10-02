@@ -15,8 +15,10 @@ public interface IEmailCaptureRepository
     /// <summary>Upserts the (creatorId, email) row in <c>marketing.contact_summaries</c> — call only when
     /// <see cref="AddAsync"/> actually inserted a new capture row. Idempotent: a second capture of the
     /// same email on the same landing page updates <c>LastCapturedAt</c> only (the landing page id is
-    /// already in the array); a capture on a landing page not yet in the array appends it.</summary>
-    Task UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct);
+    /// already in the array); a capture on a landing page not yet in the array appends it. Returns true when
+    /// the row was inserted — a contact this creator has never captured before — and false when an existing
+    /// contact was updated.</summary>
+    Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct);
 }
 
 public sealed record CapturesBucketRow(

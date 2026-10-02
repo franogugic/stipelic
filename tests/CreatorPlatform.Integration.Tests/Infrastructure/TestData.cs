@@ -1,6 +1,7 @@
 using CreatorPlatform.Analytics.Application.Services;
 using CreatorPlatform.Analytics.Infrastructure.Persistence;
 using CreatorPlatform.Analytics.Infrastructure.Repositories;
+using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Infrastructure.Services;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,11 @@ public sealed class TestData
 
     /// <summary>Seeded by the migrations: the paid "basic" plan (has a Stripe price id).</summary>
     public const int BasicPlanId = 2;
+
+    /// <summary>The free plan's max_contacts limit, as seeded.</summary>
+    public const int FreePlanContactLimit = 500;
+
+    private const string MaxContactsKey = "max_contacts";
 
     private readonly PostgresFixture _fixture;
 
@@ -243,14 +249,40 @@ public sealed class TestData
             """);
     }
 
-    /// <summary>The creator's all-time max_contacts usage (0 when no counter row exists yet).</summary>
+    /// <summary>The creator's all-time max_contacts usage exactly as the app reads it (0 when no counter row).</summary>
     public async Task<int> GetContactsUsageAsync(int creatorId)
     {
         await using var db = _fixture.CreateDbContext();
 
+        return await new CreatorUsageService(db).GetUsedAsync(
+            creatorId, MaxContactsKey, UsagePeriod.AllTime, CancellationToken.None);
+    }
+
+    /// <summary>Number of max_contacts counter rows of the creator, whatever their period.</summary>
+    public async Task<int> CountContactsUsageRowsAsync(int creatorId)
+    {
+        await using var db = _fixture.CreateDbContext();
+
         return await ScalarAsync(db, $"""
-            SELECT COALESCE(SUM("UsedValue"), 0)::int AS "Value" FROM creators.creator_usage_counters
+            SELECT COUNT(*)::int AS "Value" FROM creators.creator_usage_counters
             WHERE "CreatorId" = {creatorId} AND "UsageKey" = 'max_contacts'
+            """);
+    }
+
+    /// <summary>Forces the creator's all-time max_contacts counter (the row the app reads) to
+    /// <paramref name="usedValue"/>, creating it if missing.</summary>
+    public async Task SetContactsUsageAsync(int creatorId, int usedValue)
+    {
+        await using var db = _fixture.CreateDbContext();
+        var (periodStart, periodEnd) = UsagePeriodResolver.Resolve(UsagePeriod.AllTime, DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO creators.creator_usage_counters
+                ("CreatorId", "UsageKey", "UsedValue", "PeriodStart", "PeriodEnd", "CreatedAt", "UpdatedAt")
+            VALUES ({creatorId}, 'max_contacts', {usedValue}, {periodStart}, {periodEnd}, {now}, {now})
+            ON CONFLICT ("CreatorId", "UsageKey", "PeriodStart", "PeriodEnd")
+            DO UPDATE SET "UsedValue" = {usedValue}, "UpdatedAt" = {now}
             """);
     }
 

@@ -106,15 +106,12 @@ public sealed class ContactsService : IContactsService
             if (deleted is null)
                 throw new NotFoundException(ContactNotFoundMessage);
 
-            // Give the plan quota back in the same transaction. EmailCaptureService consumes one unit of
-            // max_contacts per inserted capture, so the refund is the number of capture rows deleted. AllTime
-            // counters have a single fixed period row, so asOf does not select anything here.
-            if (deleted.CaptureLandingPageIds.Count > 0)
-            {
-                await _usageService.RefundAsync(
-                    context.CreatorId, MaxContactsLimitKey, deleted.CaptureLandingPageIds.Count,
-                    UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
-            }
+            // Give the contact's plan slot back in the same transaction: max_contacts counts unique contacts
+            // (EmailCaptureService consumes one unit when a sign-up creates the summary row), so one deleted
+            // contact refunds exactly one. AllTime counters have a single fixed period row, so asOf selects
+            // nothing here.
+            await _usageService.RefundAsync(
+                context.CreatorId, MaxContactsLimitKey, 1, UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
         }, ct);
 
         return new ContactDeletionResult(deleted!.CaptureLandingPageIds.Distinct().ToList());

@@ -38,10 +38,12 @@ public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
     public Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<CapturesBucketRow>());
 
-    public Task UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
+    /// <summary>Reports "new contact" for the first upsert of a (creator, email), like the real RETURNING (xmax = 0).</summary>
+    public Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
     {
+        var isNew = !ContactSummaryUpserts.Any(u => u.CreatorId == creatorId && u.Email == email);
         ContactSummaryUpserts.Add((creatorId, landingPageId, email, capturedAt));
-        return Task.CompletedTask;
+        return Task.FromResult(isNew);
     }
 }
 
@@ -57,9 +59,19 @@ public sealed class FakeAnalyticsUnitOfWork : IAnalyticsUnitOfWork
 {
     public int SaveChangesCallCount { get; private set; }
 
+    /// <summary>True when the last transaction's operation completed without throwing.</summary>
+    public bool? LastTransactionCommitted { get; private set; }
+
     public Task SaveChangesAsync(CancellationToken ct)
     {
         SaveChangesCallCount++;
         return Task.CompletedTask;
+    }
+
+    public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct)
+    {
+        LastTransactionCommitted = false;
+        await operation();
+        LastTransactionCommitted = true;
     }
 }

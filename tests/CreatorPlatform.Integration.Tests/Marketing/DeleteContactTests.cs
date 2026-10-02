@@ -138,7 +138,7 @@ public sealed class DeleteContactTests
     }
 
     [Fact]
-    public async Task Delete_RefundsQuotaByTheNumberOfDeletedCaptures()
+    public async Task Delete_RefundsOneSlotForTheContactWhateverItsCaptureCount()
     {
         var creator = await _data.CreateCreatorAsync();
         var pageA = await _data.CreateLandingPageAsync(creator.CreatorId);
@@ -148,7 +148,7 @@ public sealed class DeleteContactTests
         await _data.CaptureAsync(creator.CreatorId, pageA, email);
         await _data.CaptureAsync(creator.CreatorId, pageB, email);
         await _data.CaptureAsync(creator.CreatorId, pageA, keptContact);
-        Assert.Equal(3, await _data.GetContactsUsageAsync(creator.CreatorId));
+        Assert.Equal(2, await _data.GetContactsUsageAsync(creator.CreatorId));
 
         await DeleteAsync(creator, email);
 

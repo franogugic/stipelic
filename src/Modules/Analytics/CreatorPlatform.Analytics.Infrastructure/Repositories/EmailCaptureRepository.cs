@@ -43,9 +43,13 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             .ToListAsync(ct);
     }
 
-    public async Task UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
+    public async Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
     {
-        await _context.Database.ExecuteSqlAsync(
+        // xmax = 0 only on the row version this statement freshly inserted; the DO UPDATE branch stamps it with
+        // the current transaction id. So RETURNING (xmax = 0) tells insert (new contact) from update (known one)
+        // in the same atomic statement — a concurrent first capture of the same email on another page waits on
+        // the unique index and then takes the update branch, so exactly one of them reports "new".
+        var inserted = await _context.Database.SqlQuery<bool>(
             $"""
              INSERT INTO marketing.contact_summaries
                  ("CreatorId", "Email", "FirstCapturedAt", "LastCapturedAt", "SourceLandingPageIds")
@@ -57,8 +61,11 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
                          THEN contact_summaries."SourceLandingPageIds"
                      ELSE array_append(contact_summaries."SourceLandingPageIds", {landingPageId})
                  END
-             """,
-            ct);
+             RETURNING (xmax = 0) AS "Value"
+             """)
+            .ToListAsync(ct);
+
+        return inserted.Single();
     }
 
     public async Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(

@@ -34,19 +34,20 @@ public class EmailCaptureServiceTests
     }
 
     [Fact]
-    public async Task CaptureAsync_AtLimit_ThrowsConflictAndWritesNothing()
+    public async Task CaptureAsync_NewContactAtLimit_ThrowsConflictAndRollsBack()
     {
-        var (service, repository, _, usageService, _) = BuildService(planLimit: 500);
+        var (service, _, _, usageService, unitOfWork) = BuildService(planLimit: 500);
         usageService.Used[(CreatorId, "max_contacts")] = 500;
 
         await Assert.ThrowsAsync<ConflictException>(
             () => service.CaptureAsync(LandingPageId, null, CreatorId, "visitor@example.com", CancellationToken.None));
 
-        Assert.Empty(repository.Added);
+        Assert.False(unitOfWork.LastTransactionCommitted);
+        Assert.Equal(500, usageService.Used[(CreatorId, "max_contacts")]);
     }
 
     [Fact]
-    public async Task CaptureAsync_UnderLimit_InsertsAndConsumesOneUnitOfUsage()
+    public async Task CaptureAsync_NewContactUnderLimit_InsertsAndConsumesOneUnitOfUsage()
     {
         var (service, repository, _, usageService, unitOfWork) = BuildService(planLimit: 500);
         usageService.Used[(CreatorId, "max_contacts")] = 100;
@@ -56,7 +57,7 @@ public class EmailCaptureServiceTests
         Assert.Single(repository.Added);
         Assert.Equal("visitor@example.com", repository.Added[0].Email);
         Assert.Equal(101, usageService.Used[(CreatorId, "max_contacts")]);
-        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        Assert.True(unitOfWork.LastTransactionCommitted);
 
         var upsert = Assert.Single(repository.ContactSummaryUpserts);
         Assert.Equal(CreatorId, upsert.CreatorId);
@@ -65,9 +66,23 @@ public class EmailCaptureServiceTests
     }
 
     [Fact]
-    public async Task CaptureAsync_DuplicateCapture_DoesNotIncrementUsage()
+    public async Task CaptureAsync_KnownContactOnAnotherPage_UsesNoSlotEvenAtTheLimit()
     {
         var (service, repository, _, usageService, unitOfWork) = BuildService(planLimit: 500);
+        usageService.Used[(CreatorId, "max_contacts")] = 499;
+        await service.CaptureAsync(LandingPageId, null, CreatorId, "visitor@example.com", CancellationToken.None);
+
+        await service.CaptureAsync(LandingPageId + 1, null, CreatorId, "visitor@example.com", CancellationToken.None);
+
+        Assert.Equal(2, repository.Added.Count);
+        Assert.Equal(500, usageService.Used[(CreatorId, "max_contacts")]);
+        Assert.True(unitOfWork.LastTransactionCommitted);
+    }
+
+    [Fact]
+    public async Task CaptureAsync_DuplicateCapture_DoesNotIncrementUsage()
+    {
+        var (service, repository, _, usageService, _) = BuildService(planLimit: 500);
         usageService.Used[(CreatorId, "max_contacts")] = 100;
         repository.NextInsertResult = false; // simulate ON CONFLICT DO NOTHING (already captured)
 
@@ -75,7 +90,6 @@ public class EmailCaptureServiceTests
 
         Assert.Empty(repository.Added);
         Assert.Equal(100, usageService.Used[(CreatorId, "max_contacts")]);
-        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
         Assert.Empty(repository.ContactSummaryUpserts);
     }
 
