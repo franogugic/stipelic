@@ -10,6 +10,7 @@ public interface IOrderService
         Guid? productId,
         Guid? landingPageId,
         string? status,
+        string? search,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,

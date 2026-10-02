@@ -28,6 +28,7 @@ public sealed class OrdersController : ControllerBase
         [FromQuery] Guid? productId,
         [FromQuery] Guid? landingPageId,
         [FromQuery] string? status,
+        [FromQuery] string? search,
         [FromQuery] DateTimeOffset? afterCreatedAt,
         [FromQuery] Guid? afterId,
         [FromQuery] int limit,
@@ -36,7 +37,8 @@ public sealed class OrdersController : ControllerBase
         var user = _currentUserContext.User
             ?? throw new UnauthorizedException("Authentication is required.");
 
-        var orders = await _orderService.ListAsync(slug, user.Id, productId, landingPageId, status, afterCreatedAt, afterId, limit, ct);
+        var orders = await _orderService.ListAsync(
+            slug, user.Id, productId, landingPageId, status, search, afterCreatedAt, afterId, limit, ct);
 
         return Ok(ApiResponse<OrdersPageDto>.Success(
             StatusCodes.Status200OK,

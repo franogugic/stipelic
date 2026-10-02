@@ -9,6 +9,7 @@ public sealed class OrderService : IOrderService
 {
     private const int DefaultLimit = 10;
     private const int MaxLimit = 100;
+    private const int MaxSearchLength = 100;
 
     private readonly IOrderRepository _orderRepository;
     private readonly IHomeSummaryCache _homeSummaryCache;
@@ -25,6 +26,7 @@ public sealed class OrderService : IOrderService
         Guid? productId,
         Guid? landingPageId,
         string? status,
+        string? search,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,
@@ -32,15 +34,30 @@ public sealed class OrderService : IOrderService
     {
         var clampedLimit = limit <= 0 ? DefaultLimit : Math.Min(limit, MaxLimit);
         var parsedStatus = ParseStatus(status);
+        var customerSearch = NormalizeSearch(search);
 
         // Fetch one extra row to detect a next page without a separate COUNT query, then trim it.
         var rows = await _orderRepository.GetByCreatorSlugAsync(
-            creatorSlug, ownerUserId, productId, landingPageId, parsedStatus, afterCreatedAt, afterId, clampedLimit + 1, ct);
+            creatorSlug, ownerUserId, productId, landingPageId, parsedStatus, customerSearch, afterCreatedAt, afterId,
+            clampedLimit + 1, ct);
 
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.Take(clampedLimit).ToList() : rows;
 
         return new OrdersPageDto(page, hasMore);
+    }
+
+    /// <summary>Trimmed customer search term; null when blank. Longer than 100 characters is rejected.</summary>
+    private static string? NormalizeSearch(string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+            return null;
+
+        var trimmed = search.Trim();
+        if (trimmed.Length > MaxSearchLength)
+            throw new BadRequestException($"Search cannot be longer than {MaxSearchLength} characters.");
+
+        return trimmed;
     }
 
     private static OrderStatus? ParseStatus(string? status)

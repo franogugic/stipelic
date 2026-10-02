@@ -25,7 +25,7 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
         => Task.FromResult(Order);
 
     public Task<List<OrderDto>> GetByCreatorSlugAsync(
-        string creatorSlug, int ownerUserId, Guid? productPublicId, Guid? landingPagePublicId, OrderStatus? status, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
+        string creatorSlug, int ownerUserId, Guid? productPublicId, Guid? landingPagePublicId, OrderStatus? status, string? customerSearch, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
         => Task.FromResult(new List<OrderDto>());
 
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)

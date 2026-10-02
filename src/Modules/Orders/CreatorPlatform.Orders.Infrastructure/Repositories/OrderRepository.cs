@@ -60,6 +60,7 @@ public sealed class OrderRepository : IOrderRepository
         Guid? productPublicId,
         Guid? landingPagePublicId,
         OrderStatus? status,
+        string? customerSearch,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,
@@ -84,6 +85,17 @@ public sealed class OrderRepository : IOrderRepository
                 && (!landingPagePublicId.HasValue || lp.PublicId == landingPagePublicId.Value)
                 && (!status.HasValue || o.Status == status.Value)
             select new { o, ProductName = p.Name, LandingPageTitle = (string?)lp.Title };
+
+        if (customerSearch is not null)
+        {
+            // Case-insensitive substring match on email OR name. Written as lower(column) LIKE '%term%' so it
+            // matches the GIN trigram indexes on lower("Email") / lower("Name") exactly (see migration
+            // AddOrderCustomerSearchIndexes). The term's own %, _ and \ are escaped so they match literally.
+            var pattern = "%" + EscapeLikePattern(customerSearch.ToLowerInvariant()) + "%";
+            query = query.Where(x =>
+                EF.Functions.Like(x.o.Email.ToLower(), pattern, LikeEscapeCharacter)
+                || (x.o.Name != null && EF.Functions.Like(x.o.Name.ToLower(), pattern, LikeEscapeCharacter)));
+        }
 
         if (afterCreatedAt.HasValue && afterId.HasValue)
         {
@@ -116,6 +128,14 @@ public sealed class OrderRepository : IOrderRepository
                 x.LandingPageTitle))
             .ToListAsync(ct);
     }
+
+    private const string LikeEscapeCharacter = "\\";
+
+    /// <summary>Escapes LIKE wildcards so a user's term matches literally: \ → \\, % → \%, _ → \_.</summary>
+    internal static string EscapeLikePattern(string term) => term
+        .Replace("\\", "\\\\")
+        .Replace("%", "\\%")
+        .Replace("_", "\\_");
 
     public async Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {

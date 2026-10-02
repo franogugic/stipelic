@@ -19,6 +19,7 @@ public interface IOrderRepository
         Guid? productPublicId,
         Guid? landingPagePublicId,
         OrderStatus? status,
+        string? customerSearch,
         DateTimeOffset? afterCreatedAt,
         Guid? afterId,
         int limit,
