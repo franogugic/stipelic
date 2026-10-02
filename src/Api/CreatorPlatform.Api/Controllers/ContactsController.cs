@@ -1,11 +1,14 @@
+using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
@@ -15,11 +18,19 @@ public sealed class ContactsController : ControllerBase
 {
     private readonly IContactsService _contactsService;
     private readonly ICurrentUserContext _currentUserContext;
+    private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly ILandingPageTimeSeriesCache _timeSeriesCache;
 
-    public ContactsController(IContactsService contactsService, ICurrentUserContext currentUserContext)
+    public ContactsController(
+        IContactsService contactsService,
+        ICurrentUserContext currentUserContext,
+        IHomeSummaryCache homeSummaryCache,
+        ILandingPageTimeSeriesCache timeSeriesCache)
     {
         _contactsService = contactsService;
         _currentUserContext = currentUserContext;
+        _homeSummaryCache = homeSummaryCache;
+        _timeSeriesCache = timeSeriesCache;
     }
 
     [HttpGet]
@@ -55,6 +66,26 @@ public sealed class ContactsController : ControllerBase
             StatusCodes.Status200OK,
             "Contact stats loaded.",
             stats));
+    }
+
+    /// <summary>Removes a contact (summary + captures on this creator's pages). The email is the URL-encoded
+    /// path segment, normalised server-side. Opt-outs and send history are kept.</summary>
+    [HttpDelete("{email}")]
+    [EnableRateLimiting("DeleteContact")]
+    public async Task<ActionResult<ApiResponse<object>>> Delete(string slug, string email, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var result = await _contactsService.DeleteAsync(slug, currentUser.Id, email, ct);
+
+        // Every cache that counts captures or contacts: the home summary's SubscriberCount, and each affected
+        // landing page's analytics time series (CaptureCount per bucket). The views summary holds only views and
+        // unique visitors, so it is unaffected.
+        _homeSummaryCache.Remove(slug);
+        foreach (var landingPageId in result.AffectedLandingPageIds)
+            _timeSeriesCache.Remove(landingPageId);
+
+        return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Contact deleted.", null));
     }
 
     /// <summary>Returns the authenticated user or throws 401.</summary>

@@ -17,6 +17,10 @@ public sealed record ContactGrowthRow(string Month, int Total);
 
 public sealed record ContactSourceCountRow(Guid LandingPagePublicId, string Title, int Count);
 
+/// <param name="CaptureLandingPageIds">Internal landing page id of every capture row that was deleted — one
+/// entry per row (an email captures at most once per page, so these are distinct).</param>
+public sealed record ContactDeletionRow(IReadOnlyList<int> CaptureLandingPageIds);
+
 /// <summary>Cross-landing-page contact directory for one creator — reads the materialized
 /// <c>marketing.contact_summaries</c> table (kept up to date incrementally at capture time; see
 /// <c>EmailCaptureService</c>), never <c>analytics.email_captures</c> directly, so this never
@@ -44,4 +48,10 @@ public interface IContactsRepository
     /// <summary>Contact count per landing page (archived pages included) for every page with at least one
     /// contact, ordered by count descending, then title.</summary>
     Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct);
+
+    /// <summary>Deletes the contact's summary row and every capture of <paramref name="email"/> (already
+    /// normalised) on this creator's landing pages. Never touches unsubscribes or campaign recipients. Null —
+    /// with nothing deleted — when the creator has no such contact. Two statements: the caller must run this
+    /// inside a transaction.</summary>
+    Task<ContactDeletionRow?> DeleteAsync(int creatorId, string email, CancellationToken ct);
 }

@@ -154,6 +154,36 @@ public sealed class ContactsRepository : IContactsRepository
             .ToListAsync(ct);
     }
 
+    public async Task<ContactDeletionRow?> DeleteAsync(int creatorId, string email, CancellationToken ct)
+    {
+        // Summary first: its RETURNING doubles as the existence check, so an unknown contact deletes nothing.
+        var deletedSummaryIds = await _context.Database.SqlQuery<int>($"""
+            DELETE FROM marketing.contact_summaries
+            WHERE "CreatorId" = {creatorId} AND "Email" = {email}
+            RETURNING "Id" AS "Value"
+            """)
+            .ToListAsync(ct);
+
+        if (deletedSummaryIds.Count == 0)
+            return null;
+
+        // Only captures on this creator's landing pages — the same address captured by another creator stays
+        // theirs. Probes the (LandingPageId, Email) unique index once per page of the creator.
+        // marketing.unsubscribes (an opt-out must outlive the contact) and marketing.campaign_recipients (send
+        // history) are deliberately left alone.
+        var captureLandingPageIds = await _context.Database.SqlQuery<int>($"""
+            DELETE FROM analytics.email_captures ec
+            USING landing_pages.landing_pages lp
+            WHERE lp."Id" = ec."LandingPageId"
+              AND lp."CreatorId" = {creatorId}
+              AND ec."Email" = {email}
+            RETURNING ec."LandingPageId" AS "Value"
+            """)
+            .ToListAsync(ct);
+
+        return new ContactDeletionRow(captureLandingPageIds);
+    }
+
     public async Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct)
     {
         // Aggregate on the internal id first, then join only the distinct pages for their public id/title.

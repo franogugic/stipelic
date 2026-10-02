@@ -1,3 +1,4 @@
+using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
@@ -9,14 +10,24 @@ public sealed class ContactsService : IContactsService
     private const int DefaultLimit = 50;
     private const int MaxLimit = 100;
     private const int GrowthMonths = 12;
+    private const string ContactNotFoundMessage = "Contact not found.";
+    private const string MaxContactsLimitKey = "max_contacts";
 
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IContactsRepository _contactsRepository;
+    private readonly IMarketingUnitOfWork _unitOfWork;
+    private readonly ICreatorUsageService _usageService;
 
-    public ContactsService(ICreatorContextProvider creatorContextProvider, IContactsRepository contactsRepository)
+    public ContactsService(
+        ICreatorContextProvider creatorContextProvider,
+        IContactsRepository contactsRepository,
+        IMarketingUnitOfWork unitOfWork,
+        ICreatorUsageService usageService)
     {
         _creatorContextProvider = creatorContextProvider;
         _contactsRepository = contactsRepository;
+        _unitOfWork = unitOfWork;
+        _usageService = usageService;
     }
 
     public async Task<ContactsPageDto> SearchAsync(
@@ -75,6 +86,38 @@ public sealed class ContactsService : IContactsService
             counts.Unsubscribed,
             growth.Select(g => new ContactGrowthPointDto(g.Month, g.Total)).ToList(),
             sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList());
+    }
+
+    public async Task<ContactDeletionResult> DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        // Same normalisation as capture time (EmailCaptureService) and the summary table.
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        if (normalizedEmail.Length == 0)
+            throw new NotFoundException(ContactNotFoundMessage);
+
+        ContactDeletionRow? deleted = null;
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            deleted = await _contactsRepository.DeleteAsync(context.CreatorId, normalizedEmail, ct);
+
+            // Nothing was deleted, so throwing here (rolling back an empty transaction) is safe.
+            if (deleted is null)
+                throw new NotFoundException(ContactNotFoundMessage);
+
+            // Give the plan quota back in the same transaction. EmailCaptureService consumes one unit of
+            // max_contacts per inserted capture, so the refund is the number of capture rows deleted. AllTime
+            // counters have a single fixed period row, so asOf does not select anything here.
+            if (deleted.CaptureLandingPageIds.Count > 0)
+            {
+                await _usageService.RefundAsync(
+                    context.CreatorId, MaxContactsLimitKey, deleted.CaptureLandingPageIds.Count,
+                    UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
+            }
+        }, ct);
+
+        return new ContactDeletionResult(deleted!.CaptureLandingPageIds.Distinct().ToList());
     }
 
     private async Task<MarketingCreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)
