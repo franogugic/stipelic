@@ -73,6 +73,9 @@ public sealed class FakeOrderRepository : IOrderRepository
         string creatorSlug, int ownerUserId, Guid? productPublicId, Guid? landingPagePublicId, OrderStatus? status, string? customerSearch, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
         => Task.FromResult(new List<OrderDto>());
 
+    public Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult(true);
+
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0));
 

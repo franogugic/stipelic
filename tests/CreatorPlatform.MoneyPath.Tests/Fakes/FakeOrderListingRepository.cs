@@ -10,6 +10,12 @@ public sealed class FakeOrderListingRepository : IOrderRepository
 {
     public List<OrderDto> RowsToReturn { get; set; } = [];
 
+    /// <summary>When set, the fake behaves like the real keyset query over these rows instead of returning
+    /// <see cref="RowsToReturn"/>.</summary>
+    public List<OrderDto>? AllRows { get; set; }
+
+    public int CallCount { get; private set; }
+
     public string? LastCreatorSlug { get; private set; }
     public int? LastOwnerUserId { get; private set; }
     public Guid? LastProductPublicId { get; private set; }
@@ -43,8 +49,26 @@ public sealed class FakeOrderListingRepository : IOrderRepository
         LastAfterCreatedAt = afterCreatedAt;
         LastAfterId = afterId;
         LastLimit = limit;
-        return Task.FromResult(RowsToReturn);
+        CallCount++;
+
+        if (AllRows is null)
+            return Task.FromResult(RowsToReturn);
+
+        // Keyset semantics of the real query: newest first, strictly after the (CreatedAt, PublicId) cursor.
+        return Task.FromResult(AllRows
+            .Where(o => afterCreatedAt is null || afterId is null
+                || o.CreatedAt < afterCreatedAt
+                || (o.CreatedAt == afterCreatedAt && o.PublicId.CompareTo(afterId.Value) < 0))
+            .OrderByDescending(o => o.CreatedAt)
+            .ThenByDescending(o => o.PublicId)
+            .Take(limit)
+            .ToList());
     }
+
+    public bool CreatorExists { get; set; } = true;
+
+    public Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult(CreatorExists);
 
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0));

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
@@ -10,6 +11,7 @@ public sealed class OrderService : IOrderService
     private const int DefaultLimit = 10;
     private const int MaxLimit = 100;
     private const int MaxSearchLength = 100;
+    private const int ExportBatchSize = 500;
 
     private readonly IOrderRepository _orderRepository;
     private readonly IHomeSummaryCache _homeSummaryCache;
@@ -45,6 +47,59 @@ public sealed class OrderService : IOrderService
         var page = hasMore ? rows.Take(clampedLimit).ToList() : rows;
 
         return new OrdersPageDto(page, hasMore);
+    }
+
+    public async Task<OrdersExport> StartExportAsync(
+        string creatorSlug,
+        int ownerUserId,
+        Guid? productId,
+        Guid? landingPageId,
+        string? status,
+        string? search,
+        CancellationToken ct)
+    {
+        var parsedStatus = ParseStatus(status);
+        var customerSearch = NormalizeSearch(search);
+
+        if (!await _orderRepository.CreatorExistsForOwnerAsync(creatorSlug, ownerUserId, ct))
+            throw new NotFoundException("Creator workspace not found.");
+
+        return new OrdersExport(
+            creatorSlug,
+            StreamOrdersAsync(creatorSlug, ownerUserId, productId, landingPageId, parsedStatus, customerSearch, ct));
+    }
+
+    // The list's own keyset query, batch after batch: (CreatedAt, PublicId) cursor, newest first, one batch in
+    // memory at a time.
+    private async IAsyncEnumerable<OrderDto> StreamOrdersAsync(
+        string creatorSlug,
+        int ownerUserId,
+        Guid? productId,
+        Guid? landingPageId,
+        OrderStatus? status,
+        string? customerSearch,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        DateTimeOffset? afterCreatedAt = null;
+        Guid? afterId = null;
+
+        while (true)
+        {
+            var rows = await _orderRepository.GetByCreatorSlugAsync(
+                creatorSlug, ownerUserId, productId, landingPageId, status, customerSearch, afterCreatedAt, afterId,
+                ExportBatchSize + 1, ct);
+            var hasMore = rows.Count > ExportBatchSize;
+
+            foreach (var order in hasMore ? rows.Take(ExportBatchSize) : rows)
+            {
+                afterCreatedAt = order.CreatedAt;
+                afterId = order.PublicId;
+                yield return order;
+            }
+
+            if (!hasMore)
+                yield break;
+        }
     }
 
     /// <summary>Trimmed customer search term; null when blank. Longer than 100 characters is rejected.</summary>

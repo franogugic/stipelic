@@ -2,8 +2,10 @@ using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
@@ -44,6 +46,32 @@ public sealed class OrdersController : ControllerBase
             StatusCodes.Status200OK,
             "Orders loaded.",
             orders));
+    }
+
+    /// <summary>CSV download of the orders (same filters as the list, incl. <paramref name="search"/>),
+    /// streamed batch by batch.</summary>
+    [HttpGet("export")]
+    [EnableRateLimiting("ExportOrders")]
+    public async Task Export(
+        string slug,
+        [FromQuery] Guid? productId,
+        [FromQuery] Guid? landingPageId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        CancellationToken ct)
+    {
+        var user = _currentUserContext.User
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        // Validation and ownership are checked here, so 400/401/404 still answer as JSON before any CSV.
+        var export = await _orderService.StartExportAsync(slug, user.Id, productId, landingPageId, status, search, ct);
+
+        await CsvResponseWriter.WriteAsync(
+            Response,
+            OrdersCsv.FileName(export.CreatorSlug, DateTimeOffset.UtcNow),
+            OrdersCsv.Header,
+            export.Orders.Select(OrdersCsv.Row),
+            ct);
     }
 
     [HttpGet("summary")]

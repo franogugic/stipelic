@@ -64,3 +64,36 @@ public class CsvFormatterTests
         Assert.Equal("2026-10-02T09:15:30Z", CsvFormatter.Timestamp(local));
     }
 }
+
+public class CsvMoneyFormattingTests
+{
+    [Theory]
+    [InlineData(2900L, "29.00")]
+    [InlineData(2999L, "29.99")]
+    [InlineData(5L, "0.05")]
+    [InlineData(50L, "0.50")]
+    [InlineData(0L, "0.00")]
+    [InlineData(100000000L, "1000000.00")]
+    [InlineData(-150L, "-1.50")]
+    [InlineData(-5L, "-0.05")]
+    [InlineData(long.MaxValue, "92233720368547758.07")]
+    public void Money_FormatsCentsWithTwoDecimalsAndADot(long cents, string expected)
+    {
+        Assert.Equal(expected, CsvFormatter.Money(cents));
+    }
+
+    [Fact]
+    public void Money_IgnoresTheCurrentCulture()
+    {
+        var original = Thread.CurrentThread.CurrentCulture;
+        try
+        {
+            Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("hr-HR"); // decimal comma
+            Assert.Equal("1234.56", CsvFormatter.Money(123456));
+        }
+        finally
+        {
+            Thread.CurrentThread.CurrentCulture = original;
+        }
+    }
+}

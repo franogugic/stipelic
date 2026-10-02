@@ -129,6 +129,15 @@ public sealed class OrderRepository : IOrderRepository
             .ToListAsync(ct);
     }
 
+    public async Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        return await _context.Set<Creator>()
+            .AsNoTracking()
+            .AnyAsync(c => c.Slug == creatorSlug
+                && c.OwnerUserId == ownerUserId
+                && c.Status != CreatorStatus.Disabled, ct);
+    }
+
     private const string LikeEscapeCharacter = "\\";
 
     /// <summary>Escapes LIKE wildcards so a user's term matches literally: \ → \\, % → \%, _ → \_.</summary>

@@ -25,6 +25,9 @@ public interface IOrderRepository
         int limit,
         CancellationToken ct);
 
+    /// <summary>True when the slug is an active (not Disabled) workspace owned by the user.</summary>
+    Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
+
     Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 
     Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct);

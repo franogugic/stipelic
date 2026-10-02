@@ -36,4 +36,15 @@ public static class CsvFormatter
     /// <summary>ISO 8601 UTC with second precision, e.g. 2026-10-02T09:15:00Z.</summary>
     public static string Timestamp(DateTimeOffset value) =>
         value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+
+    /// <summary>Cents as a decimal string with exactly two decimals and a dot, e.g. 2900 → "29.00", 5 → "0.05",
+    /// -150 → "-1.50". Integer arithmetic (no floating point) and culture-independent.</summary>
+    public static string Money(long cents)
+    {
+        var sign = cents < 0 ? "-" : string.Empty;
+        var absolute = cents < 0 ? -(decimal)cents : cents;
+        var units = decimal.Truncate(absolute / 100);
+        var remainder = absolute - units * 100;
+        return string.Create(CultureInfo.InvariantCulture, $"{sign}{units:0}.{remainder:00}");
+    }
 }
