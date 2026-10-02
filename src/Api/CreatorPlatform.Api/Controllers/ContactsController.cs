@@ -5,6 +5,7 @@ using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Marketing.Application.Services;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
@@ -66,6 +67,29 @@ public sealed class ContactsController : ControllerBase
             StatusCodes.Status200OK,
             "Contact stats loaded.",
             stats));
+    }
+
+    /// <summary>CSV download of the directory (same <paramref name="search"/> / <paramref name="landingPageId"/>
+    /// filters as the list), streamed batch by batch.</summary>
+    [HttpGet("export")]
+    [EnableRateLimiting("ExportContacts")]
+    public async Task Export(
+        string slug,
+        [FromQuery] string? search,
+        [FromQuery] Guid? landingPageId,
+        CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        // Ownership and the page filter are checked here, so a 401/403/404 still answers as JSON before any CSV.
+        var export = await _contactsService.StartExportAsync(slug, currentUser.Id, search, landingPageId, ct);
+
+        await CsvResponseWriter.WriteAsync(
+            Response,
+            ContactsCsv.FileName(export.CreatorSlug, DateTimeOffset.UtcNow),
+            ContactsCsv.Header,
+            export.Contacts.Select(ContactsCsv.Row),
+            ct);
     }
 
     /// <summary>Removes a contact (summary + captures on this creator's pages). The email is the URL-encoded

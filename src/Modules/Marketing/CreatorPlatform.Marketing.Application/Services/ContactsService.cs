@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
@@ -10,6 +11,7 @@ public sealed class ContactsService : IContactsService
     private const int DefaultLimit = 50;
     private const int MaxLimit = 100;
     private const int GrowthMonths = 12;
+    private const int ExportBatchSize = 500;
     private const string ContactNotFoundMessage = "Contact not found.";
     private const string MaxContactsLimitKey = "max_contacts";
 
@@ -35,15 +37,7 @@ public sealed class ContactsService : IContactsService
         CancellationToken ct)
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
-
-        int? sourceLandingPageId = null;
-        if (landingPageId is { } landingPagePublicId)
-        {
-            // Same 404 whether the page doesn't exist or belongs to another creator — no cross-tenant probing.
-            sourceLandingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(
-                    context.CreatorId, landingPagePublicId, ct)
-                ?? throw new NotFoundException("Landing page not found.");
-        }
+        var sourceLandingPageId = await ResolveSourceFilterAsync(context.CreatorId, landingPageId, ct);
 
         var clampedLimit = limit <= 0 ? DefaultLimit : Math.Min(limit, MaxLimit);
 
@@ -53,18 +47,61 @@ public sealed class ContactsService : IContactsService
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.Take(clampedLimit).ToList() : rows;
 
-        var contacts = page
-            .Select(r => new ContactDto(
-                r.Email,
-                r.FirstCapturedAt,
-                r.SourcesCount,
-                r.Sources,
-                r.IsUnsubscribed,
-                r.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList()))
-            .ToList();
-
-        return new ContactsPageDto(contacts, hasMore);
+        return new ContactsPageDto(page.Select(ToDto).ToList(), hasMore);
     }
+
+    public async Task<ContactExport> StartExportAsync(
+        string slug, int ownerUserId, string? search, Guid? landingPageId, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+        var sourceLandingPageId = await ResolveSourceFilterAsync(context.CreatorId, landingPageId, ct);
+
+        return new ContactExport(
+            context.Slug,
+            StreamContactsAsync(context.CreatorId, search, sourceLandingPageId, ct));
+    }
+
+    // The same keyset query as the directory page, batch after batch: each batch costs one summary scan plus one
+    // titles and one unsubscribe query (no N+1), and only one batch is held in memory at a time.
+    private async IAsyncEnumerable<ContactDto> StreamContactsAsync(
+        int creatorId, string? search, int? sourceLandingPageId, [EnumeratorCancellation] CancellationToken ct)
+    {
+        string? afterEmail = null;
+
+        while (true)
+        {
+            var rows = await _contactsRepository.SearchAsync(
+                creatorId, search, sourceLandingPageId, afterEmail, ExportBatchSize, ct);
+            var hasMore = rows.Count > ExportBatchSize;
+
+            foreach (var row in hasMore ? rows.Take(ExportBatchSize) : rows)
+            {
+                afterEmail = row.Email;
+                yield return ToDto(row);
+            }
+
+            if (!hasMore)
+                yield break;
+        }
+    }
+
+    private async Task<int?> ResolveSourceFilterAsync(int creatorId, Guid? landingPageId, CancellationToken ct)
+    {
+        if (landingPageId is not { } landingPagePublicId)
+            return null;
+
+        // Same 404 whether the page doesn't exist or belongs to another creator — no cross-tenant probing.
+        return await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, landingPagePublicId, ct)
+            ?? throw new NotFoundException("Landing page not found.");
+    }
+
+    private static ContactDto ToDto(ContactRow row) => new(
+        row.Email,
+        row.FirstCapturedAt,
+        row.SourcesCount,
+        row.Sources,
+        row.IsUnsubscribed,
+        row.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList());
 
     public async Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct)
     {
