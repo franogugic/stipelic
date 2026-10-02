@@ -119,43 +119,65 @@ public sealed class OrderRepository : IOrderRepository
 
     public async Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
-        var summary = await (
-            from o in _context.Set<Order>().AsNoTracking()
-            join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
-            where c.Slug == creatorSlug && c.OwnerUserId == ownerUserId
-            group o by c.DefaultCurrency into g
-            select new
-            {
-                Currency = g.Key,
-                PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
-                TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0)
-            }
-        ).FirstOrDefaultAsync(ct);
+        // One pass over the creator's orders via the (CreatorId, CreatedAt) index. The aggregate has no GROUP BY,
+        // so it always yields exactly one row — zeros (and a null currency) when the creator has no orders or the
+        // slug isn't this owner's. Disabled workspaces are excluded: their slug can be reused by a new workspace.
+        var rows = await _context.Database.SqlQuery<OrderSummaryRow>($"""
+            SELECT
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "PaidOrderCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPaidAmountCents",
+                COALESCE(SUM(o."PlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
+                COUNT(o."Id")::int AS "TotalOrderCount",
+                MAX(c."DefaultCurrency") FILTER (WHERE o."Id" IS NOT NULL) AS "Currency"
+            FROM creators.creators c
+            LEFT JOIN orders.orders o ON o."CreatorId" = c."Id"
+            WHERE c."Slug" = {creatorSlug}
+              AND c."OwnerUserId" = {ownerUserId}
+              AND c."Status" <> 'Disabled'
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
 
-        return summary is null
-            ? new OrderSummaryDto(0, 0, null)
-            : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
+        return ToSummaryDto(rows.Single());
     }
 
     public async Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
     {
-        var summary = await (
-            from o in _context.Set<Order>().AsNoTracking()
-            join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
-            where o.LandingPageId == landingPageId
-            group o by c.DefaultCurrency into g
-            select new
-            {
-                Currency = g.Key,
-                PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
-                TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0)
-            }
-        ).FirstOrDefaultAsync(ct);
+        var rows = await _context.Database.SqlQuery<OrderSummaryRow>($"""
+            SELECT
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "PaidOrderCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPaidAmountCents",
+                COALESCE(SUM(o."PlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
+                COUNT(o."Id")::int AS "TotalOrderCount",
+                MAX(c."DefaultCurrency") AS "Currency"
+            FROM orders.orders o
+            JOIN creators.creators c ON c."Id" = o."CreatorId"
+            WHERE o."LandingPageId" = {landingPageId}
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
 
-        return summary is null
-            ? new OrderSummaryDto(0, 0, null)
-            : new OrderSummaryDto(summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.Currency.ToString());
+        return ToSummaryDto(rows.Single());
     }
+
+    private sealed record OrderSummaryRow(
+        int PaidOrderCount,
+        int TotalPaidAmountCents,
+        int TotalPlatformFeeCents,
+        int RefundedOrderCount,
+        int TotalOrderCount,
+        string? Currency);
+
+    private static OrderSummaryDto ToSummaryDto(OrderSummaryRow row) => new(
+        row.PaidOrderCount,
+        row.TotalPaidAmountCents,
+        row.Currency,
+        row.TotalPlatformFeeCents,
+        row.TotalPaidAmountCents - row.TotalPlatformFeeCents,
+        row.RefundedOrderCount,
+        row.TotalOrderCount);
 
     public async Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(
         string creatorSlug, int ownerUserId, CancellationToken ct)
