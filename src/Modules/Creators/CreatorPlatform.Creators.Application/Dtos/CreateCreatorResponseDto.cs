@@ -7,6 +7,4 @@ public sealed class CreateCreatorResponseDto
     public bool RequiresPayment { get; init; }
 
     public string PaymentStatus { get; init; } = string.Empty;
-
-    public string? CheckoutUrl { get; init; }
 }

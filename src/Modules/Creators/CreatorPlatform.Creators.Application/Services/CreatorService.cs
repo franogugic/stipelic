@@ -14,6 +14,8 @@ namespace CreatorPlatform.Creators.Application.Services;
 public sealed partial class CreatorService : ICreatorService
 {
     private const string FreePlanCode = "free";
+    private const string SlugTakenMessage = "This creator URL is already taken.";
+    private const string AlreadyExistsMessage = "You already have a creator workspace.";
     private const string DefaultPrimaryColor = "#111827";
     private const string DefaultTimezone = "Europe/Sarajevo";
     private const string DefaultLanguage = "en";
@@ -79,10 +81,10 @@ public sealed partial class CreatorService : ICreatorService
         var language = NormalizeLanguage(request.Language);
 
         if (await _creatorRepository.SlugExistsAsync(slug, ct))
-            throw new ConflictException("This creator URL is already taken.");
+            throw new ConflictException(SlugTakenMessage, CreatorErrorCodes.SlugTaken);
 
         if (await _creatorRepository.ExistsByOwnerUserIdAsync(ownerUserId, ct))
-            throw new ConflictException("You already have a creator workspace.");
+            throw new ConflictException(AlreadyExistsMessage, CreatorErrorCodes.AlreadyExists);
 
         var plan = await GetAvailablePlanAsync(planCode, ct);
 
@@ -142,8 +144,7 @@ public sealed partial class CreatorService : ICreatorService
             RequiresPayment = requiresPayment,
             PaymentStatus = requiresPayment
                 ? CreatorSubscriptionStatus.PendingPayment.ToString()
-                : CreatorSubscriptionStatus.Active.ToString(),
-            CheckoutUrl = null
+                : CreatorSubscriptionStatus.Active.ToString()
         };
     }
 

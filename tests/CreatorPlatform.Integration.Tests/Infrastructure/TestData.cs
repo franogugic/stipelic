@@ -36,6 +36,21 @@ public sealed class TestData
 
     public static string UniqueEmail(string prefix = "contact") => $"{prefix}-{Guid.NewGuid():N}@example.test";
 
+    /// <summary>A verified user without a workspace.</summary>
+    public async Task<int> CreateUserAsync()
+    {
+        await using var db = _fixture.CreateDbContext();
+        var now = DateTimeOffset.UtcNow;
+
+        return await ScalarAsync(db, $"""
+            INSERT INTO auth.users ("PublicId", "Email", "PasswordHash", "FirstName", "LastName", "EmailVerifiedAt",
+                                    "Status", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {UniqueEmail("user")}, 'not-a-real-hash', 'Test', 'User', {now},
+                    'Active', {now}, {now})
+            RETURNING "Id" AS "Value"
+            """);
+    }
+
     public async Task<SeededCreator> CreateCreatorAsync(int planId = FreePlanId)
     {
         await using var db = _fixture.CreateDbContext();

@@ -1,3 +1,4 @@
+using CreatorPlatform.Creators.Application;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -24,9 +25,9 @@ public sealed class CreatorsUnitOfWork : ICreatorsUnitOfWork
         {
             await _context.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException exception) when (TryMapUniqueViolation(exception, out var message))
+        catch (DbUpdateException exception) when (TryMapUniqueViolation(exception, out var message, out var code))
         {
-            throw new ConflictException(message);
+            throw new ConflictException(message, code);
         }
     }
 
@@ -39,9 +40,12 @@ public sealed class CreatorsUnitOfWork : ICreatorsUnitOfWork
         await transaction.CommitAsync(ct);
     }
 
-    private static bool TryMapUniqueViolation(DbUpdateException exception, out string message)
+    // The race-path twin of CreatorService.CreateAsync's pre-checks: same messages and codes, so a client sees one
+    // contract whether the duplicate was caught before or by the unique index.
+    private static bool TryMapUniqueViolation(DbUpdateException exception, out string message, out string code)
     {
         message = string.Empty;
+        code = ConflictException.DefaultCode;
 
         if (exception.InnerException is not PostgresException postgresException ||
             postgresException.SqlState != PostgresErrorCodes.UniqueViolation)
@@ -49,11 +53,11 @@ public sealed class CreatorsUnitOfWork : ICreatorsUnitOfWork
             return false;
         }
 
-        message = postgresException.ConstraintName switch
+        (message, code) = postgresException.ConstraintName switch
         {
-            CreatorsOwnerUserIdIndexName => "You already have a creator workspace.",
-            CreatorsSlugIndexName => "This creator URL is already taken.",
-            _ => "Creator data conflicts with an existing record."
+            CreatorsOwnerUserIdIndexName => ("You already have a creator workspace.", CreatorErrorCodes.AlreadyExists),
+            CreatorsSlugIndexName => ("This creator URL is already taken.", CreatorErrorCodes.SlugTaken),
+            _ => ("Creator data conflicts with an existing record.", ConflictException.DefaultCode)
         };
 
         return true;

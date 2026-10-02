@@ -12,14 +12,16 @@ public class CreatorServiceCreateAsyncTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
 
-    private static CreatorService BuildService()
+    private static CreatorService BuildService() => BuildService(new FakeCreatorRepository());
+
+    private static CreatorService BuildService(FakeCreatorRepository creatorRepository)
     {
         var planRepository = new FakeCreatorPlanRepository();
         planRepository.PlansByCode["free"] = CreatorPlan.Create(
             "free", "Free", null, 0, Currency.Eur, BillingInterval.None, 1000, null, Now);
 
         return new CreatorService(
-            new FakeCreatorRepository(),
+            creatorRepository,
             new FakeCreatorMemberRepository(),
             planRepository,
             new FakeCreatorSettingsRepository(),
@@ -68,5 +70,35 @@ public class CreatorServiceCreateAsyncTests
         var response = await service.CreateAsync(1, BuildRequest("HR"), CancellationToken.None);
 
         Assert.Equal(nameof(PayoutMode.StripeConnect), response.Creator.PayoutMode);
+    }
+
+    [Fact]
+    public async Task CreateAsync_SlugTaken_ThrowsConflictWithSlugTakenCode()
+    {
+        var service = BuildService(new FakeCreatorRepository { SlugExists = true });
+
+        var exception = await Assert.ThrowsAsync<ConflictException>(
+            () => service.CreateAsync(1, BuildRequest("HR"), CancellationToken.None));
+
+        Assert.Equal("CREATOR_SLUG_TAKEN", exception.Code);
+        Assert.Equal("This creator URL is already taken.", exception.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OwnerAlreadyHasAWorkspace_ThrowsConflictWithAlreadyExistsCode()
+    {
+        var service = BuildService(new FakeCreatorRepository { ExistsByOwner = true });
+
+        var exception = await Assert.ThrowsAsync<ConflictException>(
+            () => service.CreateAsync(1, BuildRequest("HR"), CancellationToken.None));
+
+        Assert.Equal("CREATOR_ALREADY_EXISTS", exception.Code);
+        Assert.Equal("You already have a creator workspace.", exception.Message);
+    }
+
+    [Fact]
+    public void ConflictException_WithoutACode_KeepsTheGenericConflictCode()
+    {
+        Assert.Equal("CONFLICT", new ConflictException("Something conflicts.").Code);
     }
 }

@@ -63,7 +63,7 @@ public sealed class GlobalExceptionMiddleware
         {
             var statusCode = StatusCodes.Status409Conflict;
             _logger.LogWarning(e, "Conflict: {Message}", e.Message);
-            await HandleExceptionAsync(context, statusCode, e.Message, "CONFLICT");
+            await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
         }
         catch (NotFoundException e)
         {
