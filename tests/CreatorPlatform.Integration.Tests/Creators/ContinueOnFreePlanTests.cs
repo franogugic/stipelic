@@ -158,6 +158,7 @@ public sealed class ContinueOnFreePlanTests
                 new CreatorPlanRepository(db),
                 new WebhookFailureRepository(db),
                 new CreatorsUnitOfWork(db),
+                new FakeBillingPeriodService(),
                 NullLogger<CreatorWebhookService>.Instance);
 
             await webhooks.HandleCheckoutSessionCompletedAsync(new CheckoutSessionCompletedData
@@ -172,7 +173,6 @@ public sealed class ContinueOnFreePlanTests
                     ["subscriptionId"] = pendingSubscriptionId.ToString(),
                     ["planCode"] = "basic",
                 },
-                CurrentPeriodStart = DateTimeOffset.UtcNow,
             }, CancellationToken.None);
         }
 

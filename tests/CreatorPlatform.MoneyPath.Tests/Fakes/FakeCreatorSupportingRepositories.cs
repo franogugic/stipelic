@@ -110,6 +110,14 @@ public sealed class FakeSubscriptionCheckoutSessionService : ISubscriptionChecko
     }
 }
 
+public sealed class FakeSubscriptionBillingPeriodService : ISubscriptionBillingPeriodService
+{
+    public Task<SubscriptionBillingPeriodDto?> GetBillingPeriodAsync(string stripeSubscriptionId, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
+}
+
 public sealed class FakeSubscriptionCancellationService : ISubscriptionCancellationService
 {
     public Task CancelAtPeriodEndAsync(string stripeSubscriptionId, CancellationToken ct)

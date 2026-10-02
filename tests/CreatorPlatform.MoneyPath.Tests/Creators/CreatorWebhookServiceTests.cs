@@ -34,6 +34,7 @@ public class CreatorWebhookServiceTests
             planRepository,
             webhookFailureRepository,
             unitOfWork,
+            new FakeSubscriptionBillingPeriodService(),
             NullLogger<CreatorWebhookService>.Instance);
     }
 
@@ -148,7 +149,8 @@ public class CreatorWebhookServiceTests
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var proPlan = BuildPlan("pro", "price_pro", 250);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
         var planRepo = new FakeCreatorPlanRepository();
@@ -172,7 +174,8 @@ public class CreatorWebhookServiceTests
         var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
         var planRepo = new FakeCreatorPlanRepository(); // no plan registered for "price_unknown"
@@ -201,7 +204,8 @@ public class CreatorWebhookServiceTests
         var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
         var uow = new FakeCreatorsUnitOfWork();
@@ -220,7 +224,8 @@ public class CreatorWebhookServiceTests
         var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
         subscription.ScheduleCancel(Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };

@@ -113,7 +113,11 @@ public sealed class TestData
         string Provider,
         DateTimeOffset? CancelledAt,
         string? CheckoutSessionId,
-        string? ProviderSubscriptionId);
+        string? ProviderSubscriptionId,
+        DateTimeOffset? CurrentPeriodStart,
+        DateTimeOffset? CurrentPeriodEnd,
+        DateTimeOffset? ProviderEventAt,
+        bool CancelAtPeriodEnd);
 
     /// <summary>Every subscription of the creator, oldest first.</summary>
     public async Task<List<SubscriptionRow>> GetSubscriptionsAsync(int creatorId)
@@ -123,7 +127,9 @@ public sealed class TestData
         return await db.Database.SqlQuery<SubscriptionRow>($"""
             SELECT s."Id" AS "Id", p."Code" AS "PlanCode", s."Status" AS "Status", s."Provider" AS "Provider",
                    s."CancelledAt" AS "CancelledAt", s."CheckoutSessionId" AS "CheckoutSessionId",
-                   s."ProviderSubscriptionId" AS "ProviderSubscriptionId"
+                   s."ProviderSubscriptionId" AS "ProviderSubscriptionId",
+                   s."CurrentPeriodStart" AS "CurrentPeriodStart", s."CurrentPeriodEnd" AS "CurrentPeriodEnd",
+                   s."ProviderEventAt" AS "ProviderEventAt", s."CancelAtPeriodEnd" AS "CancelAtPeriodEnd"
             FROM creators.creator_subscriptions s
             JOIN creators.creator_plans p ON p."Id" = s."PlanId"
             WHERE s."CreatorId" = {creatorId}

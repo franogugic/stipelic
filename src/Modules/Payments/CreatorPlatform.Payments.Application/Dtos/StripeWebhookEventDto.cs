@@ -32,8 +32,6 @@ public sealed class CheckoutSessionCompletedData
     public required string StripeCustomerId { get; init; }
     public string? StripePaymentIntentId { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
-    public DateTimeOffset CurrentPeriodStart { get; init; }
-    public DateTimeOffset? CurrentPeriodEnd { get; init; }
 }
 
 public sealed class SubscriptionChangedData
@@ -46,9 +44,16 @@ public sealed class SubscriptionChangedData
     public required string Status { get; init; }
     public bool CancelAtPeriodEnd { get; init; }
     public string? StripePriceId { get; init; }
-    public DateTimeOffset CurrentPeriodStart { get; init; }
-    public DateTimeOffset CurrentPeriodEnd { get; init; }
+
+    /// <summary>Null when the subscription has no items to read the period from.</summary>
+    public DateTimeOffset? CurrentPeriodStart { get; init; }
+
+    public DateTimeOffset? CurrentPeriodEnd { get; init; }
     public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>The Stripe event's own timestamp (not when we received it) — Stripe does not guarantee delivery
+    /// order, so this rejects a stale/out-of-order subscription event.</summary>
+    public DateTimeOffset OccurredAt { get; init; }
 }
 
 public sealed class InvoicePaymentFailedData
@@ -66,6 +71,7 @@ public sealed class ChargeRefundedData
 public static class StripeEventTypes
 {
     public const string CheckoutSessionCompleted = "checkout.session.completed";
+    public const string CustomerSubscriptionCreated = "customer.subscription.created";
     public const string CustomerSubscriptionUpdated = "customer.subscription.updated";
     public const string CustomerSubscriptionDeleted = "customer.subscription.deleted";
     public const string InvoicePaymentFailed = "invoice.payment_failed";

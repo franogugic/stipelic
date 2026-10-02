@@ -37,6 +37,27 @@ public sealed class FakeCheckoutSessionService : ISubscriptionCheckoutSessionSer
     }
 }
 
+/// <summary>Stands in for reading a Stripe subscription's billing period: a programmed period, or a failure.</summary>
+public sealed class FakeBillingPeriodService : ISubscriptionBillingPeriodService
+{
+    public SubscriptionBillingPeriodDto? Period { get; set; }
+
+    /// <summary>When set, the read throws it — models Stripe being unreachable.</summary>
+    public Exception? Failure { get; set; }
+
+    public List<string> Reads { get; } = [];
+
+    public Task<SubscriptionBillingPeriodDto?> GetBillingPeriodAsync(string stripeSubscriptionId, CancellationToken ct)
+    {
+        Reads.Add(stripeSubscriptionId);
+
+        if (Failure is not null)
+            throw Failure;
+
+        return Task.FromResult(Period);
+    }
+}
+
 public sealed class UnexpectedSubscriptionCancellationService : ISubscriptionCancellationService
 {
     public Task CancelAtPeriodEndAsync(string stripeSubscriptionId, CancellationToken ct)

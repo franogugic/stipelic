@@ -52,6 +52,8 @@ public sealed class CreatorSubscriptionConfiguration : IEntityTypeConfiguration<
         builder.Property(subscription => subscription.CheckoutSessionId)
             .HasMaxLength(255);
 
+        builder.Property(subscription => subscription.ProviderEventAt);
+
         builder.Property(subscription => subscription.CurrentPeriodStart);
 
         builder.Property(subscription => subscription.CurrentPeriodEnd);

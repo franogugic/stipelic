@@ -165,6 +165,12 @@ public sealed class StripeWebhooksController : ControllerBase
                         ct);
                 break;
 
+            case StripeEventTypes.CustomerSubscriptionCreated
+                when webhookEvent.SubscriptionChanged is not null:
+                await _creatorWebhookService
+                    .HandleSubscriptionCreatedAsync(webhookEvent.SubscriptionChanged, ct);
+                break;
+
             case StripeEventTypes.CustomerSubscriptionUpdated
                 when webhookEvent.SubscriptionChanged is not null:
                 await _creatorWebhookService
