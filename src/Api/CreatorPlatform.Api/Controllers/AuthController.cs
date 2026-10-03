@@ -107,6 +107,45 @@ public sealed class AuthController : ControllerBase
         return Ok(response);
     }
 
+    /// <summary>Settings → Profile → change email: needs the current password; a confirmation link goes to the new
+    /// address. Always 202 for a valid request, whether or not the address is taken.</summary>
+    [HttpPost("me/email-change")]
+    [EnableRateLimiting("RequestEmailChange")]
+    public async Task<ActionResult<RequestEmailChangeResponseDto>> RequestEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        RequestEmailChangeRequestDto request,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiErrorResponse
+            {
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = "Authentication is required.",
+                Code = "UNAUTHORIZED"
+            });
+        }
+
+        var response = await emailChangeService.RequestAsync(currentUser, request, ct);
+        return StatusCode(StatusCodes.Status202Accepted, response);
+    }
+
+    /// <summary>The link from the confirmation email. Works signed in or not; when signed in as the same user,
+    /// that session stays signed in and every other one is revoked.</summary>
+    [HttpPost("email-change/confirm")]
+    [EnableRateLimiting("ConfirmEmailChange")]
+    public async Task<ActionResult<ConfirmEmailChangeResponseDto>> ConfirmEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        ConfirmEmailChangeRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await emailChangeService.ConfirmAsync(request, currentUserContext.User, ct);
+        return Ok(response);
+    }
+
     [HttpPost("logout")]
     public async Task<ActionResult<LogoutResponseDto>> Logout(
         [FromServices] ICurrentUserContext currentUserContext,

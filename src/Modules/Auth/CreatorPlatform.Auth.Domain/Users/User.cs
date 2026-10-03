@@ -65,6 +65,18 @@ public sealed class User
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>Switches the sign-in email to an address the user just proved they control (confirmation link),
+    /// so it counts as verified. A user still waiting for their first verification becomes Active; a Disabled
+    /// user stays Disabled.</summary>
+    public void ChangeEmail(string newEmail, DateTimeOffset changedAt)
+    {
+        Email = newEmail;
+        EmailVerifiedAt = changedAt;
+        if (Status == UserStatus.PendingEmailVerification)
+            Status = UserStatus.Active;
+        UpdatedAt = changedAt;
+    }
+
     public void SetPassword(string newPasswordHash, DateTimeOffset updatedAt)
     {
         PasswordHash = newPasswordHash;

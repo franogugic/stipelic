@@ -66,6 +66,21 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
         return Task.CompletedTask;
     }
 
+    public List<(string ToEmail, string UserPublicId, string Token)> QueuedEmailChangeVerifications { get; } = new();
+    public List<(string ToEmail, string UserPublicId, string NewEmail)> QueuedEmailChangedNotifications { get; } = new();
+
+    public Task QueueEmailChangeVerificationAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
+    {
+        QueuedEmailChangeVerifications.Add((toEmail, userPublicId, token));
+        return Task.CompletedTask;
+    }
+
+    public Task QueueEmailChangedNotificationAsync(string toEmail, string userPublicId, string newEmail, CancellationToken ct)
+    {
+        QueuedEmailChangedNotifications.Add((toEmail, userPublicId, newEmail));
+        return Task.CompletedTask;
+    }
+
     public Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct)
     {
         OrderAccessQueuedCount++;

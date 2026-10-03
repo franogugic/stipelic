@@ -67,6 +67,38 @@ public sealed class EmailOutboxService : IEmailOutboxService
         await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
     }
 
+    public async Task QueueEmailChangeVerificationAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
+    {
+        var confirmationUrl = BuildEmailChangeUrl(token);
+
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.EmailChangeVerification,
+            userPublicId,
+            toEmail,
+            EmailChangeVerificationTemplate.Subject,
+            EmailChangeVerificationTemplate.BuildHtml(confirmationUrl),
+            EmailChangeVerificationTemplate.BuildPlainText(confirmationUrl),
+            DateTimeOffset.UtcNow);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
+    public async Task QueueEmailChangedNotificationAsync(string toEmail, string userPublicId, string newEmail, CancellationToken ct)
+    {
+        var maskedNewEmail = EmailChangedTemplate.MaskEmail(newEmail);
+
+        var message = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.EmailChanged,
+            userPublicId,
+            toEmail,
+            EmailChangedTemplate.Subject,
+            EmailChangedTemplate.BuildHtml(maskedNewEmail),
+            EmailChangedTemplate.BuildPlainText(maskedNewEmail),
+            DateTimeOffset.UtcNow);
+
+        await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
+    }
+
     public async Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct)
     {
         var message = EmailOutboxMessage.Create(
@@ -135,6 +167,14 @@ public sealed class EmailOutboxService : IEmailOutboxService
         var encodedToken = Uri.EscapeDataString(token);
 
         return $"{baseUrl}/verify-email?token={encodedToken}";
+    }
+
+    private string BuildEmailChangeUrl(string token)
+    {
+        var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');
+        var encodedToken = Uri.EscapeDataString(token);
+
+        return $"{baseUrl}/confirm-email-change?token={encodedToken}";
     }
 
     private string BuildPasswordResetUrl(string token)

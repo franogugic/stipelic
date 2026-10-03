@@ -6,5 +6,7 @@ public enum EmailOutboxMessagePurpose
     OrderAccess = 2,
     PayoutRequested = 3,
     CampaignBroadcast = 4,
-    PasswordReset = 5
+    PasswordReset = 5,
+    EmailChangeVerification = 6,
+    EmailChanged = 7
 }

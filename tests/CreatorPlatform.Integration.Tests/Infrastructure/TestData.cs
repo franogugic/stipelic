@@ -36,6 +36,80 @@ public sealed class TestData
 
     public static string UniqueEmail(string prefix = "contact") => $"{prefix}-{Guid.NewGuid():N}@example.test";
 
+    public sealed record SeededUser(int Id, string Email);
+
+    /// <summary>A verified user with a real BCrypt hash of <paramref name="password"/>.</summary>
+    public async Task<SeededUser> CreateUserWithPasswordAsync(string password)
+    {
+        await using var db = _fixture.CreateDbContext();
+        var now = DateTimeOffset.UtcNow;
+        var email = UniqueEmail("user");
+        var hash = new CreatorPlatform.Auth.Infrastructure.Security.BCryptPasswordHasher().Hash(password);
+
+        var id = await ScalarAsync(db, $"""
+            INSERT INTO auth.users ("PublicId", "Email", "PasswordHash", "FirstName", "LastName", "EmailVerifiedAt",
+                                    "Status", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {email}, {hash}, 'Test', 'User', {now}, 'Active', {now}, {now})
+            RETURNING "Id" AS "Value"
+            """);
+
+        return new SeededUser(id, email);
+    }
+
+    /// <summary>An active session for the user; returns its id.</summary>
+    public async Task<Guid> CreateSessionAsync(int userId)
+    {
+        await using var db = _fixture.CreateDbContext();
+        var id = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO auth.user_sessions ("Id", "UserId", "SessionTokenHash", "ExpiresAt", "CreatedAt")
+            VALUES ({id}, {userId}, {Guid.NewGuid().ToString("N")}, {now.AddDays(7)}, {now})
+            """);
+        return id;
+    }
+
+    public async Task<bool> IsSessionRevokedAsync(Guid sessionId)
+    {
+        await using var db = _fixture.CreateDbContext();
+
+        return await ScalarAsync(db, $"""
+            SELECT (CASE WHEN "RevokedAt" IS NULL THEN 0 ELSE 1 END) AS "Value" FROM auth.user_sessions WHERE "Id" = {sessionId}
+            """) == 1;
+    }
+
+    public sealed record UserEmailRow(string Email, DateTimeOffset? EmailVerifiedAt);
+
+    public async Task<UserEmailRow> GetUserEmailAsync(int userId)
+    {
+        await using var db = _fixture.CreateDbContext();
+
+        return (await db.Database.SqlQuery<UserEmailRow>($"""
+            SELECT "Email" AS "Email", "EmailVerifiedAt" AS "EmailVerifiedAt" FROM auth.users WHERE "Id" = {userId}
+            """).ToListAsync()).Single();
+    }
+
+    /// <summary>Outbox messages of a purpose sent to an address.</summary>
+    public async Task<List<string>> GetOutboxSubjectsAsync(string toEmail, string purpose)
+    {
+        await using var db = _fixture.CreateDbContext();
+
+        return await db.Database.SqlQuery<string>($"""
+            SELECT "Subject" AS "Value" FROM email.email_outbox_messages WHERE "ToEmail" = {toEmail} AND "Purpose" = {purpose}
+            """).ToListAsync();
+    }
+
+    /// <summary>Moves every email-change token of the user into the past.</summary>
+    public async Task ExpireEmailChangeTokensAsync(int userId)
+    {
+        await using var db = _fixture.CreateDbContext();
+
+        await db.Database.ExecuteSqlAsync($"""
+            UPDATE auth.email_change_tokens SET "ExpiresAt" = now() - interval '1 minute' WHERE "UserId" = {userId}
+            """);
+    }
+
     /// <summary>A verified user without a workspace.</summary>
     public async Task<int> CreateUserAsync()
     {

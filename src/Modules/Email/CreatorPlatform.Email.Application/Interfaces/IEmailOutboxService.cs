@@ -8,6 +8,12 @@ public interface IEmailOutboxService
 
     Task QueuePasswordResetAsync(string toEmail, string userPublicId, string token, CancellationToken ct);
 
+    /// <summary>The confirmation link for a requested email change, sent to the NEW address.</summary>
+    Task QueueEmailChangeVerificationAsync(string toEmail, string userPublicId, string token, CancellationToken ct);
+
+    /// <summary>"Your email was changed" notice, sent to the OLD address after a confirmed change.</summary>
+    Task QueueEmailChangedNotificationAsync(string toEmail, string userPublicId, string newEmail, CancellationToken ct);
+
     Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct);
 
     Task QueuePayoutRequestedAsync(

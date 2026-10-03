@@ -64,6 +64,15 @@ public sealed class FakeUnitOfWork : IUnitOfWork
         SaveChangesCallCount++;
         return Task.CompletedTask;
     }
+
+    public bool? LastTransactionCommitted { get; private set; }
+
+    public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct = default)
+    {
+        LastTransactionCommitted = false;
+        await operation();
+        LastTransactionCommitted = true;
+    }
 }
 
 public sealed class FakeUserRoleRepository : IUserRoleRepository
@@ -125,4 +134,21 @@ public sealed class FakeUserSessionRepository : IUserSessionRepository
     public Task<IReadOnlyList<UserSession>> GetActiveByUserIdAsync(int userId, DateTimeOffset now, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<UserSession>>(
             Sessions.Where(s => s.UserId == userId && s.RevokedAt is null && s.ExpiresAt > now).ToList());
+}
+
+public sealed class FakeEmailChangeTokenRepository : IEmailChangeTokenRepository
+{
+    public List<EmailChangeToken> Tokens { get; } = [];
+
+    public Task AddAsync(EmailChangeToken token, CancellationToken ct)
+    {
+        Tokens.Add(token);
+        return Task.CompletedTask;
+    }
+
+    public Task<EmailChangeToken?> GetByTokenHashForUpdateAsync(string tokenHash, CancellationToken ct)
+        => Task.FromResult(Tokens.FirstOrDefault(t => t.TokenHash == tokenHash));
+
+    public Task<IReadOnlyList<EmailChangeToken>> GetUnusedByUserIdAsync(int userId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<EmailChangeToken>>(Tokens.Where(t => t.UserId == userId && t.UsedAt is null).ToList());
 }
