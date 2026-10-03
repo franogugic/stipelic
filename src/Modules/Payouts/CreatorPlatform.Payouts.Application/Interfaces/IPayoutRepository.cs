@@ -1,5 +1,6 @@
 using CreatorPlatform.Payouts.Application.Dtos;
 using CreatorPlatform.Payouts.Domain.Payouts;
+using CreatorPlatform.Shared.Domain.Enums;
 
 namespace CreatorPlatform.Payouts.Application.Interfaces;
 
@@ -22,6 +23,12 @@ public interface IPayoutRepository
     /// advisory lock. The partial unique index on (CreatorId) WHERE Status = 'Pending' is the DB-level
     /// backstop for the same rule.</summary>
     Task<bool> HasPendingPayoutAsync(int creatorId, CancellationToken ct);
+
+    /// <summary>Sum of the creator's Paid payouts in <paramref name="currency"/> — one SQL SUM.</summary>
+    Task<int> GetPaidOutCentsByCreatorIdAsync(int creatorId, Currency currency, CancellationToken ct);
+
+    /// <summary>The creator's Pending payout request, or null (the partial unique index allows at most one).</summary>
+    Task<PendingPayoutRequestDto?> GetPendingRequestByCreatorIdAsync(int creatorId, CancellationToken ct);
 
     /// <summary>Most recent payouts for a creator, newest first, capped at <paramref name="limit"/>.</summary>
     Task<List<PayoutDto>> ListRecentByCreatorIdAsync(int creatorId, int limit, CancellationToken ct);

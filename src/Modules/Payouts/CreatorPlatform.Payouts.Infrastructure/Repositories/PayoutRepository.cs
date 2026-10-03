@@ -2,6 +2,7 @@ using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Payouts.Application.Dtos;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using CreatorPlatform.Payouts.Domain.Payouts;
+using CreatorPlatform.Shared.Domain.Enums;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,6 +34,23 @@ public sealed class PayoutRepository : IPayoutRepository
             .AsNoTracking()
             .Where(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Pending)
             .SumAsync(p => p.AmountCents, ct);
+    }
+
+    public async Task<int> GetPaidOutCentsByCreatorIdAsync(int creatorId, Currency currency, CancellationToken ct)
+    {
+        return await _context.Set<Payout>()
+            .AsNoTracking()
+            .Where(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Paid && p.Currency == currency)
+            .SumAsync(p => p.AmountCents, ct);
+    }
+
+    public async Task<PendingPayoutRequestDto?> GetPendingRequestByCreatorIdAsync(int creatorId, CancellationToken ct)
+    {
+        return await _context.Set<Payout>()
+            .AsNoTracking()
+            .Where(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Pending)
+            .Select(p => new PendingPayoutRequestDto(p.PublicId, p.AmountCents, p.CreatedAt))
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<bool> HasPendingPayoutAsync(int creatorId, CancellationToken ct)

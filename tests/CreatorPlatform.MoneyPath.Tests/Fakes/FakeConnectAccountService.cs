@@ -1,3 +1,4 @@
+using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
 
 namespace CreatorPlatform.MoneyPath.Tests.Fakes;
@@ -30,4 +31,9 @@ public sealed class FakeConnectAccountService : IConnectAccountService
         _callLog.Add("CreateOnboardingLink");
         return Task.FromResult(UrlToReturn);
     }
+
+    public PayoutScheduleDto? ScheduleToReturn { get; set; }
+
+    public Task<PayoutScheduleDto?> GetPayoutScheduleAsync(string accountId, CancellationToken ct)
+        => Task.FromResult(ScheduleToReturn);
 }

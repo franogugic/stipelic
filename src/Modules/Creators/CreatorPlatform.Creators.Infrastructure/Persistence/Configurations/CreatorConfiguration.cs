@@ -94,6 +94,10 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
 
         builder.Property(creator => creator.StripeConnectStatusEventAt);
 
+        builder.Property(creator => creator.StripeConnectDetailsSubmittedAt);
+
+        builder.Property(creator => creator.StripeConnectPayoutsEnabledAt);
+
         builder.Property(creator => creator.CreatedAt)
             .IsRequired();
 

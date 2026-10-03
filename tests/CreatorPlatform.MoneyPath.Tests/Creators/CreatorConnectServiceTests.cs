@@ -18,7 +18,7 @@ public class CreatorConnectServiceTests
         FakeConnectAccountService connectAccountService)
     {
         var options = Options.Create(new StripeOptions { FrontendBaseUrl = "https://app.test" });
-        return new CreatorConnectService(creatorRepository, unitOfWork, connectAccountService, options);
+        return new CreatorConnectService(creatorRepository, unitOfWork, connectAccountService, new FakePayoutScheduleCache(), options);
     }
 
     [Fact]

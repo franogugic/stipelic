@@ -7,4 +7,7 @@ namespace CreatorPlatform.Creators.Application.Interfaces;
 public interface ICreatorConnectService
 {
     Task<ConnectOnboardingLinkResponseDto> StartConnectOnboardingAsync(int ownerUserId, string ownerEmail, CancellationToken ct);
+
+    /// <summary>404 when the slug isn't the user's workspace. The schedule is read live from Stripe.</summary>
+    Task<ConnectPayoutDetailsResponseDto> GetPayoutDetailsAsync(string slug, int ownerUserId, CancellationToken ct);
 }

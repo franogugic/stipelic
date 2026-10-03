@@ -1,6 +1,7 @@
 using CreatorPlatform.Payouts.Application.Dtos;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using CreatorPlatform.Payouts.Domain.Payouts;
+using CreatorPlatform.Shared.Domain.Enums;
 
 namespace CreatorPlatform.MoneyPath.Tests.Fakes;
 
@@ -35,6 +36,17 @@ public sealed class FakePayoutRepository : IPayoutRepository
 
     public Task<List<PayoutDto>> ListRecentByCreatorIdAsync(int creatorId, int limit, CancellationToken ct)
         => Task.FromResult(RecentPayouts);
+
+    public Task<int> GetPaidOutCentsByCreatorIdAsync(int creatorId, Currency currency, CancellationToken ct)
+        => Task.FromResult(Added
+            .Where(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Paid && p.Currency == currency)
+            .Sum(p => p.AmountCents));
+
+    public Task<PendingPayoutRequestDto?> GetPendingRequestByCreatorIdAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult(Added
+            .Where(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Pending)
+            .Select(p => new PendingPayoutRequestDto(p.PublicId, p.AmountCents, p.CreatedAt))
+            .FirstOrDefault());
 
     public Task<bool> HasPendingPayoutAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(HasPendingPayoutOverride ?? Added.Any(p => p.CreatorId == creatorId && p.Status == PayoutStatus.Pending));
