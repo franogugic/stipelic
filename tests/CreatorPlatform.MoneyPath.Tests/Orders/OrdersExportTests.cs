@@ -82,7 +82,7 @@ public class OrdersExportTests
         repository.AllRows = Enumerable.Range(0, 1101)
             .Select(i => Order(id: Guid.NewGuid(), createdAt: start.AddMinutes(i / 2)))
             .ToList();
-        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache());
+        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache(), new FakeDashboardTrendsCache());
 
         var export = await service.StartExportAsync(Slug, OwnerUserId, null, null, "paid", "  ana ", CancellationToken.None);
         var exported = new List<OrderDto>();
@@ -101,7 +101,7 @@ public class OrdersExportTests
     public async Task StartExportAsync_UnknownWorkspace_ThrowsNotFoundBeforeStreaming()
     {
         var repository = new FakeOrderListingRepository { CreatorExists = false };
-        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache());
+        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache(), new FakeDashboardTrendsCache());
 
         await Assert.ThrowsAsync<NotFoundException>(
             () => service.StartExportAsync(Slug, OwnerUserId, null, null, null, null, CancellationToken.None));
@@ -113,7 +113,7 @@ public class OrdersExportTests
     public async Task StartExportAsync_InvalidStatus_ThrowsBadRequestBeforeStreaming()
     {
         var repository = new FakeOrderListingRepository();
-        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache());
+        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache(), new FakeDashboardTrendsCache());
 
         await Assert.ThrowsAsync<BadRequestException>(
             () => service.StartExportAsync(Slug, OwnerUserId, null, null, "shipped", null, CancellationToken.None));

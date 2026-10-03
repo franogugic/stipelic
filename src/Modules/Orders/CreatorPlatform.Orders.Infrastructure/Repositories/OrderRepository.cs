@@ -129,6 +129,85 @@ public sealed class OrderRepository : IOrderRepository
             .ToListAsync(ct);
     }
 
+    public async Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        return await _context.Set<Creator>()
+            .AsNoTracking()
+            .Where(c => c.Slug == creatorSlug
+                && c.OwnerUserId == ownerUserId
+                && c.Status != CreatorStatus.Disabled)
+            .Select(c => (int?)c.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    // Both trend queries bucket on UTC `timestamp` values (AT TIME ZONE 'UTC'), never on timestamptz, so the result
+    // doesn't depend on the session TimeZone (same approach as the contacts growth query). `unit` comes from a fixed
+    // server-side map ("day" / "month") and is still passed as a parameter. generate_series supplies every bucket;
+    // the LEFT JOIN leaves empty ones at 0.
+    public async Task<List<TrendBucketRow>> GetRevenueTrendAsync(
+        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+    {
+        var step = "1 " + unit;
+        var windowEnd = unit == "month" ? lastBucket.AddMonths(1) : lastBucket.AddDays(1);
+
+        // Revenue is booked when it was paid; orders from before PaidAt was recorded fall back to CreatedAt.
+        return await _context.Database.SqlQuery<TrendBucketRow>($"""
+            SELECT
+                to_char(b."BucketStart", 'YYYY-MM-DD') AS "BucketStart",
+                COALESCE(r."Total", 0)::bigint AS "Value"
+            FROM generate_series(
+                {firstBucket}::timestamptz AT TIME ZONE 'UTC',
+                {lastBucket}::timestamptz AT TIME ZONE 'UTC',
+                {step}::interval) AS b("BucketStart")
+            LEFT JOIN (
+                SELECT
+                    date_trunc({unit}, COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE 'UTC') AS "Bucket",
+                    SUM(o."AmountCents") AS "Total"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId}
+                  AND o."Status" = 'Paid'
+                  AND COALESCE(o."PaidAt", o."CreatedAt") >= {firstBucket}
+                  AND COALESCE(o."PaidAt", o."CreatedAt") < {windowEnd}
+                GROUP BY 1
+            ) r ON r."Bucket" = b."BucketStart"
+            ORDER BY b."BucketStart"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<TrendBucketRow>> GetViewsTrendAsync(
+        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+    {
+        var step = "1 " + unit;
+        var windowEnd = unit == "month" ? lastBucket.AddMonths(1) : lastBucket.AddDays(1);
+
+        // (LandingPageId, ViewedAt) index per page of the creator; archived pages count too (their views happened).
+        return await _context.Database.SqlQuery<TrendBucketRow>($"""
+            SELECT
+                to_char(b."BucketStart", 'YYYY-MM-DD') AS "BucketStart",
+                COALESCE(v."Total", 0)::bigint AS "Value"
+            FROM generate_series(
+                {firstBucket}::timestamptz AT TIME ZONE 'UTC',
+                {lastBucket}::timestamptz AT TIME ZONE 'UTC',
+                {step}::interval) AS b("BucketStart")
+            LEFT JOIN (
+                SELECT
+                    date_trunc({unit}, pv."ViewedAt" AT TIME ZONE 'UTC') AS "Bucket",
+                    COUNT(*) AS "Total"
+                FROM analytics.page_views pv
+                JOIN landing_pages.landing_pages lp ON lp."Id" = pv."LandingPageId"
+                WHERE lp."CreatorId" = {creatorId}
+                  AND pv."ViewedAt" >= {firstBucket}
+                  AND pv."ViewedAt" < {windowEnd}
+                GROUP BY 1
+            ) v ON v."Bucket" = b."BucketStart"
+            ORDER BY b."BucketStart"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
     public async Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
         return await _context.Set<Creator>()

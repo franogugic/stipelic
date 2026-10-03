@@ -27,7 +27,7 @@ public class OrderServiceTests
     private static (OrderService Service, FakeOrderListingRepository Repository) BuildService()
     {
         var repository = new FakeOrderListingRepository();
-        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache());
+        var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache(), new FakeDashboardTrendsCache());
         return (service, repository);
     }
 

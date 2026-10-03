@@ -90,6 +90,24 @@ public sealed class OrdersController : ControllerBase
             summary));
     }
 
+    /// <summary>Dashboard revenue and views per day (30d) or month (6m / 12m).</summary>
+    [HttpGet("dashboard-trends")]
+    public async Task<ActionResult<ApiResponse<DashboardTrendsDto>>> DashboardTrends(
+        string slug,
+        [FromQuery] string? range,
+        CancellationToken ct)
+    {
+        var user = _currentUserContext.User
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        var trends = await _orderService.GetDashboardTrendsAsync(slug, user.Id, range, ct);
+
+        return Ok(ApiResponse<DashboardTrendsDto>.Success(
+            StatusCodes.Status200OK,
+            "Dashboard trends loaded.",
+            trends));
+    }
+
     [HttpGet("home-summary")]
     public async Task<ActionResult<ApiResponse<HomeSummaryDto>>> HomeSummary(
         string slug,

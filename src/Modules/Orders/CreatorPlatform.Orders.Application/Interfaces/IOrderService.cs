@@ -31,6 +31,11 @@ public interface IOrderService
         string? search,
         CancellationToken ct);
 
+    /// <summary>Revenue + views series for the dashboard. <paramref name="range"/>: "30d" (30 daily buckets incl.
+    /// today), "6m" / "12m" (monthly buckets incl. the current month); null means 30d. 400 for any other value,
+    /// 404 when the slug isn't the user's workspace.</summary>
+    Task<DashboardTrendsDto> GetDashboardTrendsAsync(string creatorSlug, int ownerUserId, string? range, CancellationToken ct);
+
     Task<OrderSummaryDto> GetSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 
     Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct);

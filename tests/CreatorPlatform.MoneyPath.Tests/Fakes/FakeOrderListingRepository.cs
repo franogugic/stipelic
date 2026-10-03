@@ -67,6 +67,15 @@ public sealed class FakeOrderListingRepository : IOrderRepository
 
     public bool CreatorExists { get; set; } = true;
 
+    public Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult<int?>(null);
+
+    public Task<List<TrendBucketRow>> GetRevenueTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+        => Task.FromResult(new List<TrendBucketRow>());
+
+    public Task<List<TrendBucketRow>> GetViewsTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+        => Task.FromResult(new List<TrendBucketRow>());
+
     public Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(CreatorExists);
 
@@ -99,6 +108,19 @@ public sealed class FakeOrderListingHomeSummaryCache : IHomeSummaryCache
     }
 
     public void Remove(string creatorSlug)
+    {
+    }
+}
+
+public sealed class FakeDashboardTrendsCache : IDashboardTrendsCache
+{
+    public bool TryGet(int creatorId, string range, out DashboardTrendsDto? value)
+    {
+        value = null;
+        return false;
+    }
+
+    public void Set(int creatorId, string range, DashboardTrendsDto value)
     {
     }
 }
