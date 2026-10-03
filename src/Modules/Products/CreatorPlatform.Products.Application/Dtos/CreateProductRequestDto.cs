@@ -8,4 +8,6 @@ public sealed class CreateProductRequestDto
     public string Type { get; init; } = string.Empty;
     public string? AccessUrl { get; init; }
     public string? ThumbnailUrl { get; init; }
+    /// <summary>Active or Draft; missing or empty creates a Draft. Archived is rejected.</summary>
+    public string? Status { get; init; }
 }

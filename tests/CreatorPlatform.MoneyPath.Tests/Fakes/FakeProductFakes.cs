@@ -63,3 +63,12 @@ public sealed class FakeOrderContextProvider : IOrderContextProvider
     public Task<Dictionary<int, ProductRevenueDto>> GetProductRevenueByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(RevenueByProductId);
 }
+
+/// <summary>Products' local landing-page read-through — a single switch for "a published page sells this product".</summary>
+public sealed class FakeLandingPageContextProvider : ILandingPageContextProvider
+{
+    public bool UsedByPublishedPage { get; set; }
+
+    public Task<bool> IsUsedByPublishedPageAsync(int productId, CancellationToken ct)
+        => Task.FromResult(UsedByPublishedPage);
+}

@@ -15,6 +15,7 @@ public static class ProductsInfrastructureServiceCollectionExtensions
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<IOrderContextProvider, OrderContextProvider>();
+        services.AddScoped<ILandingPageContextProvider, LandingPageContextProvider>();
         services.AddScoped<IProductsUnitOfWork, ProductsUnitOfWork>();
 
         return services;

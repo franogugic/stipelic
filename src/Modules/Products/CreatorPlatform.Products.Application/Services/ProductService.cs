@@ -16,17 +16,20 @@ public sealed class ProductService : IProductService
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IProductsUnitOfWork _unitOfWork;
     private readonly IOrderContextProvider _orderContextProvider;
+    private readonly ILandingPageContextProvider _landingPageContextProvider;
 
     public ProductService(
         IProductRepository productRepository,
         ICreatorContextProvider creatorContextProvider,
         IProductsUnitOfWork unitOfWork,
-        IOrderContextProvider orderContextProvider)
+        IOrderContextProvider orderContextProvider,
+        ILandingPageContextProvider landingPageContextProvider)
     {
         _productRepository = productRepository;
         _creatorContextProvider = creatorContextProvider;
         _unitOfWork = unitOfWork;
         _orderContextProvider = orderContextProvider;
+        _landingPageContextProvider = landingPageContextProvider;
     }
 
     public async Task<ProductResponseDto> CreateAsync(
@@ -43,6 +46,7 @@ public sealed class ProductService : IProductService
         var type = ParseProductType(request.Type);
         var accessUrl = NormalizeOptionalUrl(request.AccessUrl, ProductAccessUrlMaxLength);
         var thumbnailUrl = NormalizeOptionalUrl(request.ThumbnailUrl, ProductThumbnailUrlMaxLength);
+        var requestedStatus = ParseRequestedStatus(request.Status);
 
         if (maxProducts >= 0 && activeProductCount >= maxProducts)
             throw new BadRequestException(
@@ -50,6 +54,8 @@ public sealed class ProductService : IProductService
 
         var now = DateTimeOffset.UtcNow;
         var product = Product.Create(creatorId, name, description, priceCents, type, accessUrl, thumbnailUrl, now);
+        if (requestedStatus == ProductStatus.Active)
+            product.Publish(now);
 
         await _productRepository.AddAsync(product, ct);
         await _unitOfWork.SaveChangesAsync(ct);
@@ -93,11 +99,16 @@ public sealed class ProductService : IProductService
         var type = ParseProductType(request.Type);
         var accessUrl = NormalizeOptionalUrl(request.AccessUrl, ProductAccessUrlMaxLength);
         var thumbnailUrl = NormalizeOptionalUrl(request.ThumbnailUrl, ProductThumbnailUrlMaxLength);
+        // A missing status leaves the product as it is, so callers that only edit fields keep working.
+        var newStatus = ParseRequestedStatus(request.Status) ?? product.Status;
         var now = DateTimeOffset.UtcNow;
+
+        if (newStatus == ProductStatus.Draft && product.Status == ProductStatus.Active &&
+            await _landingPageContextProvider.IsUsedByPublishedPageAsync(product.Id, ct))
+            throw new ConflictException("This product is used by a published page.");
 
         product.Update(name, description, priceCents, type, accessUrl, thumbnailUrl, now);
 
-        var newStatus = ParseProductStatus(request.Status);
         if (newStatus == ProductStatus.Active && product.Status == ProductStatus.Draft)
             product.Publish(now);
         else if (newStatus == ProductStatus.Draft && product.Status == ProductStatus.Active)
@@ -205,10 +216,15 @@ public sealed class ProductService : IProductService
         return type;
     }
 
-    private static ProductStatus ParseProductStatus(string? value)
+    /// <summary>Null for a missing or empty status; Active or Draft otherwise. Archived is not a writable status.</summary>
+    private static ProductStatus? ParseRequestedStatus(string? value)
     {
-        if (!Enum.TryParse<ProductStatus>(value, ignoreCase: true, out var status))
-            throw new BadRequestException($"Invalid product status. Valid values: {string.Join(", ", Enum.GetNames<ProductStatus>())}.");
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!Enum.TryParse<ProductStatus>(value.Trim(), ignoreCase: true, out var status) || !Enum.IsDefined(status))
+            throw new BadRequestException(
+                $"Invalid product status. Valid values: {nameof(ProductStatus.Active)}, {nameof(ProductStatus.Draft)}.");
+        if (status == ProductStatus.Archived)
+            throw new BadRequestException("Products cannot be archived by changing their status. Use the archive endpoint instead.");
         return status;
     }
 
