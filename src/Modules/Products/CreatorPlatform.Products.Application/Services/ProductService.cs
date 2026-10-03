@@ -17,19 +17,31 @@ public sealed class ProductService : IProductService
     private readonly IProductsUnitOfWork _unitOfWork;
     private readonly IOrderContextProvider _orderContextProvider;
     private readonly ILandingPageContextProvider _landingPageContextProvider;
+    private readonly IAnalyticsContextProvider _analyticsContextProvider;
+
+    // Range key → bucket unit and bucket count (the current day / month is the last bucket).
+    private static readonly Dictionary<string, (string Unit, int Buckets)> AnalyticsRanges = new()
+    {
+        ["30d"] = ("day", 30),
+        ["3m"] = ("month", 3),
+        ["6m"] = ("month", 6),
+        ["1y"] = ("month", 12),
+    };
 
     public ProductService(
         IProductRepository productRepository,
         ICreatorContextProvider creatorContextProvider,
         IProductsUnitOfWork unitOfWork,
         IOrderContextProvider orderContextProvider,
-        ILandingPageContextProvider landingPageContextProvider)
+        ILandingPageContextProvider landingPageContextProvider,
+        IAnalyticsContextProvider analyticsContextProvider)
     {
         _productRepository = productRepository;
         _creatorContextProvider = creatorContextProvider;
         _unitOfWork = unitOfWork;
         _orderContextProvider = orderContextProvider;
         _landingPageContextProvider = landingPageContextProvider;
+        _analyticsContextProvider = analyticsContextProvider;
     }
 
     public async Task<ProductResponseDto> CreateAsync(
@@ -161,6 +173,48 @@ public sealed class ProductService : IProductService
         await _unitOfWork.SaveChangesAsync(ct);
 
         return MapToDto(product);
+    }
+
+    public async Task<ProductAnalyticsDto> GetAnalyticsAsync(
+        string slug,
+        Guid productPublicId,
+        int ownerUserId,
+        string? range,
+        CancellationToken ct)
+    {
+        var rangeKey = string.IsNullOrWhiteSpace(range) ? "1y" : range.Trim().ToLowerInvariant();
+        if (!AnalyticsRanges.TryGetValue(rangeKey, out var analyticsRange))
+            throw new BadRequestException("Invalid range. Valid values: 30d, 3m, 6m, 1y.");
+
+        // Ownership first: the product is looked up inside the caller's own workspace, so another creator's product
+        // is a plain 404. Archived products keep their history.
+        var (creatorId, _, _) = await GetCreatorContextAsync(slug, ownerUserId, ct);
+        var product = await _productRepository.GetByPublicIdAndCreatorIdForUpdateAsync(productPublicId, creatorId, ct);
+        if (product is null)
+            throw new NotFoundException("Product not found.");
+
+        var now = DateTimeOffset.UtcNow;
+        var today = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
+        var monthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        var lastBucket = analyticsRange.Unit == "day" ? today : monthStart;
+        var firstBucket = analyticsRange.Unit == "day"
+            ? lastBucket.AddDays(-(analyticsRange.Buckets - 1))
+            : lastBucket.AddMonths(-(analyticsRange.Buckets - 1));
+
+        // One query per source, run one after the other: they share the request's DbContext.
+        var orders = await _orderContextProvider.GetProductOrderStatsAsync(
+            creatorId, product.Id, analyticsRange.Unit, firstBucket, lastBucket, monthStart, ct);
+        var contactCount = await _analyticsContextProvider.CountContactsAsync(product.Id, ct);
+        var sellingPages = await _landingPageContextProvider.GetSellingPagesAsync(product.Id, ct);
+
+        return new ProductAnalyticsDto(
+            orders.RevenueCents,
+            orders.SalesCount,
+            orders.ThisMonthRevenueCents,
+            contactCount,
+            analyticsRange.Unit,
+            orders.Points,
+            sellingPages);
     }
 
     private async Task<CreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)

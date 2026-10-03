@@ -25,7 +25,7 @@ public class ProductStatusUpdateTests
         };
         var landingPages = new FakeLandingPageContextProvider();
         var service = new ProductService(
-            productRepository, contextProvider, new FakeProductsUnitOfWork(), new FakeOrderContextProvider(), landingPages);
+            productRepository, contextProvider, new FakeProductsUnitOfWork(), new FakeOrderContextProvider(), landingPages, new FakeAnalyticsContextProvider());
         return (service, productRepository, landingPages);
     }
 

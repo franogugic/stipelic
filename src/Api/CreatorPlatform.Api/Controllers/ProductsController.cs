@@ -118,6 +118,24 @@ public sealed class ProductsController : ControllerBase
             product));
     }
 
+    /// <summary>Revenue, sales, contacts, the revenue series and the selling pages of one product.</summary>
+    [HttpGet("{productId:guid}/analytics")]
+    public async Task<ActionResult<ApiResponse<ProductAnalyticsDto>>> Analytics(
+        string slug,
+        Guid productId,
+        [FromQuery] string? range,
+        CancellationToken ct)
+    {
+        var user = GetAuthenticatedUser();
+
+        var analytics = await _productService.GetAnalyticsAsync(slug, productId, user.Id, range, ct);
+
+        return Ok(ApiResponse<ProductAnalyticsDto>.Success(
+            StatusCodes.Status200OK,
+            "Product analytics loaded.",
+            analytics));
+    }
+
     private Auth.Application.Dtos.CurrentUserDto GetAuthenticatedUser()
     {
         var user = _currentUserContext.User;
