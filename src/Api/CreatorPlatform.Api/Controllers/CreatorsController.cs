@@ -18,18 +18,18 @@ public sealed class CreatorsController : ControllerBase
     private readonly ICreatorService _creatorService;
     private readonly ICreatorConnectService _creatorConnectService;
     private readonly ICurrentUserContext _currentUserContext;
-    private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly IOrderService _orderService;
 
     public CreatorsController(
         ICreatorService creatorService,
         ICreatorConnectService creatorConnectService,
         ICurrentUserContext currentUserContext,
-        IHomeSummaryCache homeSummaryCache)
+        IOrderService orderService)
     {
         _creatorService = creatorService;
         _creatorConnectService = creatorConnectService;
         _currentUserContext = currentUserContext;
-        _homeSummaryCache = homeSummaryCache;
+        _orderService = orderService;
     }
 
     [HttpGet("current")]
@@ -158,7 +158,7 @@ public sealed class CreatorsController : ControllerBase
         var response = await _creatorService.ContinueOnFreePlanAsync(currentUser.Id, ct);
 
         // The home summary carries plan-dependent numbers (the monthly email limit).
-        _homeSummaryCache.Remove(response.Slug);
+        await _orderService.InvalidateHomeSummaryAsync(response.Slug, currentUser.Id);
 
         return Ok(ApiResponse<CreatorResponseDto>.Success(
             StatusCodes.Status200OK,

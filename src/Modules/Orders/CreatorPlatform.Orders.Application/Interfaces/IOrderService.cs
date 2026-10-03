@@ -45,5 +45,10 @@ public interface IOrderService
 
     Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
 
+    /// <summary>404 when the slug isn't the user's workspace — checked before the cache is read.</summary>
     Task<HomeSummaryDto> GetHomeSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
+
+    /// <summary>Drops the cached home summary of the caller's own workspace after a change that affects it. A slug
+    /// that isn't the caller's is ignored. Not cancellable: the change has already been saved.</summary>
+    Task InvalidateHomeSummaryAsync(string creatorSlug, int ownerUserId);
 }

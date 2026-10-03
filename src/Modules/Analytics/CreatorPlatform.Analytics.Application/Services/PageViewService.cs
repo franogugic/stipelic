@@ -1,6 +1,7 @@
 using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.PageViews;
+using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Analytics.Application.Services;
 
@@ -8,11 +9,16 @@ public sealed class PageViewService : IPageViewService
 {
     private readonly IPageViewRepository _repository;
     private readonly IViewsSummaryCache _viewsSummaryCache;
+    private readonly ICreatorContextProvider _creatorContextProvider;
 
-    public PageViewService(IPageViewRepository repository, IViewsSummaryCache viewsSummaryCache)
+    public PageViewService(
+        IPageViewRepository repository,
+        IViewsSummaryCache viewsSummaryCache,
+        ICreatorContextProvider creatorContextProvider)
     {
         _repository = repository;
         _viewsSummaryCache = viewsSummaryCache;
+        _creatorContextProvider = creatorContextProvider;
     }
 
     public async Task RecordAsync(int landingPageId, Guid visitorId, CancellationToken ct)
@@ -72,13 +78,25 @@ public sealed class PageViewService : IPageViewService
 
     public async Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
-        if (_viewsSummaryCache.TryGet(creatorSlug, out var cached) && cached is not null)
+        // Ownership first: the cache is keyed by the internal id, so it is only touched for the caller's own workspace.
+        var creatorId = await _creatorContextProvider.GetCreatorIdBySlugForOwnerAsync(creatorSlug, ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
+
+        if (_viewsSummaryCache.TryGet(creatorId, out var cached) && cached is not null)
             return cached;
 
-        var result = await _repository.GetViewsSummaryByCreatorAsync(creatorSlug, ownerUserId, ct);
+        var result = await _repository.GetViewsSummaryByCreatorIdAsync(creatorId, ct);
 
-        _viewsSummaryCache.Set(creatorSlug, result);
+        _viewsSummaryCache.Set(creatorId, result);
 
         return result;
+    }
+
+    public async Task InvalidateViewsSummaryAsync(string creatorSlug, int ownerUserId)
+    {
+        // CancellationToken.None: the caller's change is already committed, so an aborted request must not leave
+        // a stale summary behind.
+        if (await _creatorContextProvider.GetCreatorIdBySlugForOwnerAsync(creatorSlug, ownerUserId, CancellationToken.None) is int creatorId)
+            _viewsSummaryCache.Remove(creatorId);
     }
 }

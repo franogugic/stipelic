@@ -51,6 +51,9 @@ public sealed class FakeAnalyticsCreatorContextProvider : ICreatorContextProvide
 {
     public int? PlanLimit { get; set; }
 
+    public Task<int?> GetCreatorIdBySlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult<int?>(null);
+
     public Task<int?> GetActivePlanLimitAsync(int creatorId, string limitKey, CancellationToken ct)
         => Task.FromResult(PlanLimit);
 }

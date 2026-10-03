@@ -205,14 +205,26 @@ public sealed class OrderService : IOrderService
         return _orderRepository.GetBucketedPurchasesAsync(landingPageId, cutoff, bucketUnit, ct);
     }
 
+    public async Task InvalidateHomeSummaryAsync(string creatorSlug, int ownerUserId)
+    {
+        // CancellationToken.None: the caller's change is already committed, so an aborted request must not leave
+        // a stale summary behind.
+        if (await _orderRepository.GetCreatorIdForOwnerAsync(creatorSlug, ownerUserId, CancellationToken.None) is int creatorId)
+            _homeSummaryCache.Remove(creatorId);
+    }
+
     public async Task<HomeSummaryDto> GetHomeSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
-        if (_homeSummaryCache.TryGet(creatorSlug, out var cached) && cached is not null)
+        // Ownership first: the cache is keyed by the internal id, so it is only touched for the caller's own workspace.
+        var creatorId = await _orderRepository.GetCreatorIdForOwnerAsync(creatorSlug, ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
+
+        if (_homeSummaryCache.TryGet(creatorId, out var cached) && cached is not null)
             return cached;
 
-        var result = await _orderRepository.GetHomeSummaryByCreatorSlugAsync(creatorSlug, ownerUserId, ct);
+        var result = await _orderRepository.GetHomeSummaryByCreatorIdAsync(creatorId, ct);
 
-        _homeSummaryCache.Set(creatorSlug, result);
+        _homeSummaryCache.Set(creatorId, result);
 
         return result;
     }

@@ -52,7 +52,7 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
     public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<PurchasesBucketRow>());
 
-    public Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    public Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0));
 }
 
@@ -126,17 +126,17 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
 
 public sealed class FakeHomeSummaryCache : IHomeSummaryCache
 {
-    public bool TryGet(string creatorSlug, out HomeSummaryDto? value)
+    public bool TryGet(int creatorId, out HomeSummaryDto? value)
     {
         value = null;
         return false;
     }
 
-    public void Set(string creatorSlug, HomeSummaryDto value)
+    public void Set(int creatorId, HomeSummaryDto value)
     {
     }
 
-    public void Remove(string creatorSlug)
+    public void Remove(int creatorId)
     {
     }
 }

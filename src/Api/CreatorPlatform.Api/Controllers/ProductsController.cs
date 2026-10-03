@@ -15,16 +15,16 @@ namespace CreatorPlatform.Api.Controllers;
 public sealed class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
-    private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly IOrderService _orderService;
     private readonly ICurrentUserContext _currentUserContext;
 
     public ProductsController(
         IProductService productService,
-        IHomeSummaryCache homeSummaryCache,
+        IOrderService orderService,
         ICurrentUserContext currentUserContext)
     {
         _productService = productService;
-        _homeSummaryCache = homeSummaryCache;
+        _orderService = orderService;
         _currentUserContext = currentUserContext;
     }
 
@@ -56,7 +56,7 @@ public sealed class ProductsController : ControllerBase
         var product = await _productService.CreateAsync(slug, user.Id, request, ct);
 
         // Product count on the home summary changed — invalidate so the dashboard reflects it immediately.
-        _homeSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
 
         return StatusCode(StatusCodes.Status201Created, ApiResponse<ProductResponseDto>.Success(
             StatusCodes.Status201Created,
@@ -92,7 +92,7 @@ public sealed class ProductsController : ControllerBase
 
         await _productService.ArchiveAsync(slug, productId, user.Id, ct);
 
-        _homeSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
 
         return Ok(ApiResponse<object>.Success(
             StatusCodes.Status200OK,
@@ -110,7 +110,7 @@ public sealed class ProductsController : ControllerBase
 
         var product = await _productService.RestoreAsync(slug, productId, user.Id, ct);
 
-        _homeSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
 
         return Ok(ApiResponse<ProductResponseDto>.Success(
             StatusCodes.Status200OK,

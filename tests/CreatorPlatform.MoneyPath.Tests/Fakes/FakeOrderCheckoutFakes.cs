@@ -14,9 +14,6 @@ public sealed class FakeOrdersCreatorContextProvider : ICreatorContextProvider
 
     public Task<string?> GetProductNameAsync(int productId, CancellationToken ct)
         => Task.FromResult<string?>("Product");
-
-    public Task<string?> GetCreatorSlugByIdAsync(int creatorId, CancellationToken ct)
-        => Task.FromResult<string?>("creator-slug");
 }
 
 public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionService
@@ -97,7 +94,7 @@ public sealed class FakeOrderRepository : IOrderRepository
     public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<PurchasesBucketRow>());
 
-    public Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    public Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0));
 }
 

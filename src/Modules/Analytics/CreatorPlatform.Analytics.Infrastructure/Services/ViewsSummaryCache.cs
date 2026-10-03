@@ -19,20 +19,22 @@ public sealed class ViewsSummaryCache : IViewsSummaryCache
         _cache = cache;
     }
 
-    public bool TryGet(string creatorSlug, out List<LandingPageViewsSummaryDto>? value)
+    public bool TryGet(int creatorId, out List<LandingPageViewsSummaryDto>? value)
     {
-        return _cache.TryGetValue(Key(creatorSlug), out value);
+        return _cache.TryGetValue(Key(creatorId), out value);
     }
 
-    public void Set(string creatorSlug, List<LandingPageViewsSummaryDto> value)
+    public void Set(int creatorId, List<LandingPageViewsSummaryDto> value)
     {
-        _cache.Set(Key(creatorSlug), value, Ttl);
+        _cache.Set(Key(creatorId), value, Ttl);
     }
 
-    public void Remove(string creatorSlug)
+    public void Remove(int creatorId)
     {
-        _cache.Remove(Key(creatorSlug));
+        _cache.Remove(Key(creatorId));
     }
 
-    private static string Key(string slug) => $"views-summary:{slug}";
+    // Keyed by the internal creator id, resolved by the ownership check, so a request for someone else's slug
+    // can neither read nor overwrite the owner's entry.
+    private static string Key(int creatorId) => $"views-summary:{creatorId}";
 }

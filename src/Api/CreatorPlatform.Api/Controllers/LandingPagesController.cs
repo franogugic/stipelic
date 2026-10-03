@@ -22,8 +22,6 @@ public sealed class LandingPagesController : ControllerBase
     private readonly IOrderService _orderService;
     private readonly ILandingPageInsightsService _landingPageInsightsService;
     private readonly ILandingPageTimeSeriesCache _timeSeriesCache;
-    private readonly IHomeSummaryCache _homeSummaryCache;
-    private readonly IViewsSummaryCache _viewsSummaryCache;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
@@ -33,8 +31,6 @@ public sealed class LandingPagesController : ControllerBase
         IOrderService orderService,
         ILandingPageInsightsService landingPageInsightsService,
         ILandingPageTimeSeriesCache timeSeriesCache,
-        IHomeSummaryCache homeSummaryCache,
-        IViewsSummaryCache viewsSummaryCache,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
@@ -43,8 +39,6 @@ public sealed class LandingPagesController : ControllerBase
         _orderService = orderService;
         _landingPageInsightsService = landingPageInsightsService;
         _timeSeriesCache = timeSeriesCache;
-        _homeSummaryCache = homeSummaryCache;
-        _viewsSummaryCache = viewsSummaryCache;
         _currentUserContext = currentUserContext;
     }
 
@@ -104,9 +98,9 @@ public sealed class LandingPagesController : ControllerBase
         var user = GetVerifiedUser();
         var page = await _landingPageService.CreateAsync(slug, user.Id, request, ct);
         // Landing page count on the home summary changed — invalidate so the dashboard reflects it immediately.
-        _homeSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
         // New page isn't in the previously cached views summary yet — invalidate so it shows up right away.
-        _viewsSummaryCache.Remove(slug);
+        await _pageViewService.InvalidateViewsSummaryAsync(slug, user.Id);
         return StatusCode(StatusCodes.Status201Created, ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status201Created, "Landing page created.", page));
     }
 
@@ -131,8 +125,8 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         await _landingPageService.ArchiveAsync(slug, pageId, user.Id, ct);
-        _homeSummaryCache.Remove(slug);
-        _viewsSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
+        await _pageViewService.InvalidateViewsSummaryAsync(slug, user.Id);
         return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Landing page archived.", null));
     }
 
@@ -141,8 +135,8 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         var page = await _landingPageService.RestoreAsync(slug, pageId, user.Id, ct);
-        _homeSummaryCache.Remove(slug);
-        _viewsSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
+        await _pageViewService.InvalidateViewsSummaryAsync(slug, user.Id);
         return Ok(ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status200OK, "Landing page restored.", page));
     }
 

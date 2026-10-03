@@ -19,18 +19,18 @@ public sealed class ContactsController : ControllerBase
 {
     private readonly IContactsService _contactsService;
     private readonly ICurrentUserContext _currentUserContext;
-    private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly IOrderService _orderService;
     private readonly ILandingPageTimeSeriesCache _timeSeriesCache;
 
     public ContactsController(
         IContactsService contactsService,
         ICurrentUserContext currentUserContext,
-        IHomeSummaryCache homeSummaryCache,
+        IOrderService orderService,
         ILandingPageTimeSeriesCache timeSeriesCache)
     {
         _contactsService = contactsService;
         _currentUserContext = currentUserContext;
-        _homeSummaryCache = homeSummaryCache;
+        _orderService = orderService;
         _timeSeriesCache = timeSeriesCache;
     }
 
@@ -105,7 +105,7 @@ public sealed class ContactsController : ControllerBase
         // Every cache that counts captures or contacts: the home summary's SubscriberCount, and each affected
         // landing page's analytics time series (CaptureCount per bucket). The views summary holds only views and
         // unique visitors, so it is unaffected.
-        _homeSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, currentUser.Id);
         foreach (var landingPageId in result.AffectedLandingPageIds)
             _timeSeriesCache.Remove(landingPageId);
 

@@ -339,11 +339,11 @@ public sealed class OrderRepository : IOrderRepository
             .ToListAsync(ct);
     }
 
-    public async Task<HomeSummaryDto> GetHomeSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    public async Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
     {
         var creator = await _context.Set<Creator>()
             .AsNoTracking()
-            .Where(c => c.Slug == creatorSlug && c.OwnerUserId == ownerUserId)
+            .Where(c => c.Id == creatorId)
             .Select(c => new { c.Id, c.DefaultCurrency })
             .FirstOrDefaultAsync(ct);
 

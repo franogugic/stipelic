@@ -28,5 +28,4 @@ public interface ICreatorContextProvider
 
     Task<string?> GetProductNameAsync(int productId, CancellationToken ct);
 
-    Task<string?> GetCreatorSlugByIdAsync(int creatorId, CancellationToken ct);
 }
