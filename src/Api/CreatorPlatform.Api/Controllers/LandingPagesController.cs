@@ -5,7 +5,9 @@ using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -165,23 +167,33 @@ public sealed class LandingPagesController : ControllerBase
         var user = GetAuthenticatedUser();
         var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
 
-        var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
-        var captureCount = await _emailCaptureService.GetCaptureCountAsync(page.Id, ct);
-        var orderSummary = await _orderService.GetSummaryByLandingPageIdAsync(page.Id, ct);
+        // One instant for every source, so views, sales and emails of a period are cut at the same moment.
+        var periods = StatsPeriods.At(DateTimeOffset.UtcNow);
+        var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, periods, ct);
+        var captures = await _emailCaptureService.GetCaptureCountsByPeriodAsync(page.Id, periods, ct);
+        var sales = await _orderService.GetSalesByPeriodForLandingPageAsync(page.Id, periods, ct);
+
+        static PeriodStatsDto Merge(PeriodStatsDto views, PeriodSalesDto periodSales, long captureCount) => views with
+        {
+            PurchaseCount = periodSales.PurchaseCount,
+            RevenueCents = periodSales.RevenueCents,
+            CaptureCount = captureCount
+        };
 
         var analytics = new LandingPageAnalyticsResponseDto
         {
             Title = page.Title,
             Slug = page.Slug,
             Status = page.Status,
-            AllTime = stats.AllTime,
-            Today = stats.Today,
-            Last7Days = stats.Last7Days,
-            Last30Days = stats.Last30Days,
-            TotalEmailCaptures = captureCount,
-            PurchaseCount = orderSummary.PaidOrderCount,
-            TotalRevenueCents = orderSummary.TotalPaidAmountCents,
-            Currency = orderSummary.Currency
+            AllTime = Merge(stats.AllTime, sales.AllTime, captures.AllTime),
+            Today = Merge(stats.Today, sales.Today, captures.Today),
+            Last7Days = Merge(stats.Last7Days, sales.Last7Days, captures.Last7Days),
+            Last30Days = Merge(stats.Last30Days, sales.Last30Days, captures.Last30Days),
+            TotalEmailCaptures = captures.AllTime,
+            PurchaseCount = sales.AllTime.PurchaseCount,
+            // Same int range as before (the old SQL cast to int as well).
+            TotalRevenueCents = checked((int)sales.AllTime.RevenueCents),
+            Currency = sales.Currency
         };
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
     }

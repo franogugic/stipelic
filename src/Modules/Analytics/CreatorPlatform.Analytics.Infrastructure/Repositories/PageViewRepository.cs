@@ -1,6 +1,7 @@
 using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.PageViews;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -40,12 +41,11 @@ public sealed class PageViewRepository : IPageViewRepository
             ct);
     }
 
-    public async Task<PageViewStatsRow> GetStatsAsync(int landingPageId, CancellationToken ct)
+    public async Task<PageViewStatsRow> GetStatsAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
-        var now = DateTimeOffset.UtcNow;
-        var startOfToday = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
-        var sevenDaysAgo = now.AddDays(-7);
-        var thirtyDaysAgo = now.AddDays(-30);
+        var startOfToday = periods.StartOfToday;
+        var sevenDaysAgo = periods.Last7DaysFrom;
+        var thirtyDaysAgo = periods.Last30DaysFrom;
 
         var result = await _context.Database
             .SqlQuery<PageViewStatsRow>($"""

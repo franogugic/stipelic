@@ -1,6 +1,7 @@
 using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.PageViews;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Analytics.Application.Services;
@@ -38,9 +39,10 @@ public sealed class PageViewService : IPageViewService
         await _repository.AddAsync(pageView, ct);
     }
 
-    public async Task<LandingPageAnalyticsResponseDto> GetLandingPageStatsAsync(int landingPageId, CancellationToken ct)
+    public async Task<LandingPageAnalyticsResponseDto> GetLandingPageStatsAsync(
+        int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
-        var stats = await _repository.GetStatsAsync(landingPageId, ct);
+        var stats = await _repository.GetStatsAsync(landingPageId, periods, ct);
 
         return new LandingPageAnalyticsResponseDto
         {

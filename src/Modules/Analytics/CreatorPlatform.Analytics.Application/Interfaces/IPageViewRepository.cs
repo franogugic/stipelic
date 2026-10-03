@@ -1,12 +1,13 @@
 using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Domain.PageViews;
+using CreatorPlatform.Shared.Application.Analytics;
 
 namespace CreatorPlatform.Analytics.Application.Interfaces;
 
 public interface IPageViewRepository
 {
     Task AddAsync(PageView pageView, CancellationToken ct);
-    Task<PageViewStatsRow> GetStatsAsync(int landingPageId, CancellationToken ct);
+    Task<PageViewStatsRow> GetStatsAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);
     Task<List<ViewsBucketRow>> GetBucketedViewsAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
     Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorIdAsync(int creatorId, CancellationToken ct);
 }

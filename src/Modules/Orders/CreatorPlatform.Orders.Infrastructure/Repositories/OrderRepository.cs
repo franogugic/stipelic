@@ -7,6 +7,7 @@ using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
 using CreatorPlatform.Products.Domain.Products;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -269,6 +270,46 @@ public sealed class OrderRepository : IOrderRepository
 
         return ToSummaryDto(rows.Single());
     }
+
+    public async Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(
+        int landingPageId, StatsPeriods periods, CancellationToken ct)
+    {
+        var row = (await _context.Database.SqlQuery<SalesByPeriodRow>($"""
+            SELECT
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.StartOfToday}))::int AS "TodayCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.StartOfToday}), 0)::bigint AS "TodayRevenueCents",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last7DaysFrom}))::int AS "Last7DaysCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last7DaysFrom}), 0)::bigint AS "Last7DaysRevenueCents",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last30DaysFrom}))::int AS "Last30DaysCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last30DaysFrom}), 0)::bigint AS "Last30DaysRevenueCents",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "AllTimeCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::bigint AS "AllTimeRevenueCents",
+                MAX(c."DefaultCurrency") AS "Currency"
+            FROM orders.orders o
+            JOIN creators.creators c ON c."Id" = o."CreatorId"
+            WHERE o."LandingPageId" = {landingPageId}
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct)).Single();
+
+        return new LandingPageSalesByPeriodDto(
+            new PeriodSalesDto(row.TodayCount, row.TodayRevenueCents),
+            new PeriodSalesDto(row.Last7DaysCount, row.Last7DaysRevenueCents),
+            new PeriodSalesDto(row.Last30DaysCount, row.Last30DaysRevenueCents),
+            new PeriodSalesDto(row.AllTimeCount, row.AllTimeRevenueCents),
+            row.Currency);
+    }
+
+    private sealed record SalesByPeriodRow(
+        int TodayCount,
+        long TodayRevenueCents,
+        int Last7DaysCount,
+        long Last7DaysRevenueCents,
+        int Last30DaysCount,
+        long Last30DaysRevenueCents,
+        int AllTimeCount,
+        long AllTimeRevenueCents,
+        string? Currency);
 
     private sealed record OrderSummaryRow(
         int PaidOrderCount,

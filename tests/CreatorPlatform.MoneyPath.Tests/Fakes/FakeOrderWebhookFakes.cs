@@ -2,6 +2,7 @@ using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
+using CreatorPlatform.Shared.Application.Analytics;
 
 namespace CreatorPlatform.MoneyPath.Tests.Fakes;
 
@@ -45,6 +46,12 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
 
     public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0));
+
+    public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
+    {
+        var none = new PeriodSalesDto(0, 0);
+        return Task.FromResult(new LandingPageSalesByPeriodDto(none, none, none, none, null));
+    }
 
     public Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(new List<LandingPageOrdersSummaryDto>());

@@ -1,6 +1,7 @@
 namespace CreatorPlatform.Analytics.Application.Interfaces;
 
 using CreatorPlatform.Analytics.Application.Dtos;
+using CreatorPlatform.Shared.Application.Analytics;
 
 public interface IEmailCaptureService
 {
@@ -10,7 +11,8 @@ public interface IEmailCaptureService
     /// max_contacts counter grows only when the sign-up creates a new contact for the creator; a known contact
     /// signing up on another page (or again on the same page) uses no slot and is never blocked.</summary>
     Task CaptureAsync(int landingPageId, int? productId, int creatorId, string email, CancellationToken ct);
-    Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct);
+    /// <summary>Captures of a landing page per analytics period. The caller has already checked ownership.</summary>
+    Task<CapturesByPeriodRow> GetCaptureCountsByPeriodAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);
 
     /// <summary>Capture counts for many landing pages in one grouped query, keyed by internal landing page id.
     /// Pages without captures are absent. The caller has already checked ownership of the pages.</summary>

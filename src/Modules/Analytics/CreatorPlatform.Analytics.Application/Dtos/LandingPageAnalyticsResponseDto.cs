@@ -17,8 +17,18 @@ public sealed class LandingPageAnalyticsResponseDto
     public string? Currency { get; init; }
 }
 
-public sealed class PeriodStatsDto
+// A record so the controller can merge sales and captures into the view stats with `with`.
+public sealed record PeriodStatsDto
 {
     public required long TotalViews { get; init; }
     public required long UniqueVisitors { get; init; }
+
+    /// <summary>Paid orders, by PaidAt (all time: every order currently Paid).</summary>
+    public int PurchaseCount { get; init; }
+
+    /// <summary>Email captures, by CapturedAt.</summary>
+    public long CaptureCount { get; init; }
+
+    /// <summary>Sum of AmountCents over those Paid orders.</summary>
+    public long RevenueCents { get; init; }
 }

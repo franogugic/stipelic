@@ -2,6 +2,7 @@ using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
 using CreatorPlatform.Creators.Application.Interfaces;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Analytics.Application.Services;
@@ -66,8 +67,8 @@ public sealed class EmailCaptureService : IEmailCaptureService
         }, ct);
     }
 
-    public Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct) =>
-        _repository.GetCaptureCountAsync(landingPageId, ct);
+    public Task<CapturesByPeriodRow> GetCaptureCountsByPeriodAsync(int landingPageId, StatsPeriods periods, CancellationToken ct) =>
+        _repository.GetCaptureCountsByPeriodAsync(landingPageId, periods, ct);
 
     public Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct) =>
         _repository.GetCaptureCountsAsync(landingPageIds, ct);

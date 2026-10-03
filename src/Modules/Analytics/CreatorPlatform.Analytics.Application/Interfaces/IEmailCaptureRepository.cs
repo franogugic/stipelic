@@ -1,4 +1,5 @@
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
+using CreatorPlatform.Shared.Application.Analytics;
 
 namespace CreatorPlatform.Analytics.Application.Interfaces;
 
@@ -8,7 +9,8 @@ public interface IEmailCaptureRepository
     /// a row was actually inserted — false on a duplicate — so the caller can gate contact-count usage
     /// tracking on real inserts only.</summary>
     Task<bool> AddAsync(EmailCapture capture, CancellationToken ct);
-    Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct);
+    /// <summary>One aggregate over the page's captures with a FILTER per period, by <c>CapturedAt</c>.</summary>
+    Task<CapturesByPeriodRow> GetCaptureCountsByPeriodAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);
 
     /// <summary>Capture counts for many landing pages in one grouped query. Pages without captures are absent.</summary>
     Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct);
@@ -23,6 +25,8 @@ public interface IEmailCaptureRepository
     /// contact was updated.</summary>
     Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct);
 }
+
+public sealed record CapturesByPeriodRow(long Today, long Last7Days, long Last30Days, long AllTime);
 
 public sealed record CapturesBucketRow(
     DateTimeOffset BucketStart,

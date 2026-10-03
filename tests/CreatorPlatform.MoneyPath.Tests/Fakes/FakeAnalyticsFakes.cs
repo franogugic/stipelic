@@ -1,5 +1,6 @@
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
+using CreatorPlatform.Shared.Application.Analytics;
 
 namespace CreatorPlatform.MoneyPath.Tests.Fakes;
 
@@ -29,8 +30,15 @@ public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
         return Task.FromResult(true);
     }
 
-    public Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct)
-        => Task.FromResult((long)Added.Count(c => c.LandingPageId == landingPageId));
+    public Task<CapturesByPeriodRow> GetCaptureCountsByPeriodAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
+    {
+        var captures = Added.Where(c => c.LandingPageId == landingPageId).ToList();
+        return Task.FromResult(new CapturesByPeriodRow(
+            captures.Count(c => c.CapturedAt >= periods.StartOfToday),
+            captures.Count(c => c.CapturedAt >= periods.Last7DaysFrom),
+            captures.Count(c => c.CapturedAt >= periods.Last30DaysFrom),
+            captures.Count));
+    }
 
     public Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)
         => Task.FromResult(Added

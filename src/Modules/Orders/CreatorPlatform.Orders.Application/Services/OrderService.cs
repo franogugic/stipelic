@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
 
 namespace CreatorPlatform.Orders.Application.Services;
@@ -192,6 +193,12 @@ public sealed class OrderService : IOrderService
     public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
     {
         return _orderRepository.GetSummaryByLandingPageIdAsync(landingPageId, ct);
+    }
+
+    public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(
+        int landingPageId, StatsPeriods periods, CancellationToken ct)
+    {
+        return _orderRepository.GetSalesByPeriodForLandingPageAsync(landingPageId, periods, ct);
     }
 
     public Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(

@@ -1,5 +1,6 @@
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,11 +28,20 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
         return rowsAffected > 0;
     }
 
-    public async Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct)
+    public async Task<CapturesByPeriodRow> GetCaptureCountsByPeriodAsync(
+        int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
-        return await _context.Set<EmailCapture>()
+        return await _context.Database.SqlQuery<CapturesByPeriodRow>($"""
+            SELECT
+                COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.StartOfToday})   AS "Today",
+                COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.Last7DaysFrom})  AS "Last7Days",
+                COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.Last30DaysFrom}) AS "Last30Days",
+                COUNT(*)                                                          AS "AllTime"
+            FROM analytics.email_captures
+            WHERE "LandingPageId" = {landingPageId}
+            """)
             .AsNoTracking()
-            .LongCountAsync(ec => ec.LandingPageId == landingPageId, ct);
+            .FirstAsync(ct);
     }
 
     public async Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)
