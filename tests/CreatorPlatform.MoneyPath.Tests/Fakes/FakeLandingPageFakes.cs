@@ -15,7 +15,10 @@ public sealed class FakeLandingPagesCreatorContextProvider : ICreatorContextProv
         => Task.FromResult<int?>(1);
 
     public Task<ProductInfo?> GetProductInfoAsync(int productId, CancellationToken ct)
-        => Task.FromResult<ProductInfo?>(new ProductInfo("Product", 1000));
+        => Task.FromResult<ProductInfo?>(new ProductInfo(Guid.Empty, "Product", 1000, null));
+
+    public Task<Dictionary<int, ProductInfo>> GetProductInfosAsync(IReadOnlyCollection<int> productIds, CancellationToken ct)
+        => Task.FromResult(productIds.ToDictionary(id => id, _ => new ProductInfo(Guid.Empty, "Product", 1000, null)));
 }
 
 public sealed class FakeLandingPageRepository : ILandingPageRepository

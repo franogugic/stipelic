@@ -10,7 +10,7 @@ public sealed record CreatorContext(int CreatorId, int MaxLandingPages, int Acti
     public bool HasPayoutProfile { get; init; }
 }
 
-public sealed record ProductInfo(string Name, int PriceCents);
+public sealed record ProductInfo(Guid PublicId, string Name, int PriceCents, string? ThumbnailUrl);
 
 public interface ICreatorContextProvider
 {
@@ -19,4 +19,8 @@ public interface ICreatorContextProvider
     Task<int?> GetProductIdForCreatorAsync(int creatorId, Guid productPublicId, CancellationToken ct);
 
     Task<ProductInfo?> GetProductInfoAsync(int productId, CancellationToken ct);
+
+    /// <summary>Product details for many products in one query, keyed by internal product id — the landing pages
+    /// list resolves every page's product without N+1. Unknown ids are absent.</summary>
+    Task<Dictionary<int, ProductInfo>> GetProductInfosAsync(IReadOnlyCollection<int> productIds, CancellationToken ct);
 }

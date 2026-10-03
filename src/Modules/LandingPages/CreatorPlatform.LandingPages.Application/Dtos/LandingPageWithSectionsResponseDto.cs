@@ -10,10 +10,13 @@ public sealed class LandingPageWithSectionsResponseDto
     [JsonIgnore]
     public int CreatorId { get; init; }
 
+    // Internal id, not exposed over the wire — the public capture endpoint passes it to the capture service.
     [JsonIgnore]
     public int? ProductId { get; init; }
 
+    public Guid? ProductPublicId { get; init; }
     public string? ProductName { get; init; }
+    public string? ProductThumbnailUrl { get; init; }
     public int? ProductPriceCents { get; init; }
 
     public Guid PublicId { get; init; }

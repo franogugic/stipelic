@@ -76,7 +76,18 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return await _context.Set<Product>()
             .AsNoTracking()
             .Where(p => p.Id == productId)
-            .Select(p => new ProductInfo(p.Name, p.PriceCents))
+            .Select(p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl))
             .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<Dictionary<int, ProductInfo>> GetProductInfosAsync(IReadOnlyCollection<int> productIds, CancellationToken ct)
+    {
+        if (productIds.Count == 0)
+            return [];
+
+        return await _context.Set<Product>()
+            .AsNoTracking()
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl), ct);
     }
 }
