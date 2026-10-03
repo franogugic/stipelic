@@ -46,8 +46,12 @@ public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
             .GroupBy(c => c.LandingPageId)
             .ToDictionary(g => g.Key, g => g.Count()));
 
-    public Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct)
-        => Task.FromResult(Added.Where(c => c.LandingPageId == landingPageId).ToList());
+    public Task<List<EmailCapture>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct)
+        => Task.FromResult(Added
+            .Where(c => c.LandingPageId == landingPageId)
+            .OrderByDescending(c => c.CapturedAt)
+            .Take(limit)
+            .ToList());
 
     public Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
         => Task.FromResult(new List<CapturesBucketRow>());

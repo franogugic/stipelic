@@ -57,12 +57,14 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             .ToDictionaryAsync(row => row.LandingPageId, row => row.Count, ct);
     }
 
-    public async Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct)
+    public async Task<List<EmailCapture>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct)
     {
         return await _context.Set<EmailCapture>()
             .AsNoTracking()
             .Where(ec => ec.LandingPageId == landingPageId)
             .OrderByDescending(ec => ec.CapturedAt)
+            .ThenByDescending(ec => ec.Id)
+            .Take(limit)
             .ToListAsync(ct);
     }
 

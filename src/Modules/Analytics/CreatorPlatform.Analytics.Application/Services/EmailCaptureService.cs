@@ -9,6 +9,9 @@ namespace CreatorPlatform.Analytics.Application.Services;
 
 public sealed class EmailCaptureService : IEmailCaptureService
 {
+    private const int DefaultCapturesLimit = 20;
+    private const int MaxCapturesLimit = 100;
+
     private const string MaxContactsLimitKey = "max_contacts";
     private const string SignUpsClosedMessage = "Sign-ups are temporarily closed.";
 
@@ -73,9 +76,10 @@ public sealed class EmailCaptureService : IEmailCaptureService
     public Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct) =>
         _repository.GetCaptureCountsAsync(landingPageIds, ct);
 
-    public async Task<List<EmailCaptureResponseDto>> ListCapturesAsync(int landingPageId, CancellationToken ct)
+    public async Task<List<EmailCaptureResponseDto>> ListCapturesAsync(int landingPageId, int limit, CancellationToken ct)
     {
-        var captures = await _repository.ListByLandingPageIdAsync(landingPageId, ct);
+        var clampedLimit = limit <= 0 ? DefaultCapturesLimit : Math.Min(limit, MaxCapturesLimit);
+        var captures = await _repository.ListNewestByLandingPageIdAsync(landingPageId, clampedLimit, ct);
 
         return captures
             .Select(c => new EmailCaptureResponseDto

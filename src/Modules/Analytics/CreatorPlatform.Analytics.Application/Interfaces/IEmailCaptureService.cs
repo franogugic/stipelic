@@ -17,5 +17,7 @@ public interface IEmailCaptureService
     /// <summary>Capture counts for many landing pages in one grouped query, keyed by internal landing page id.
     /// Pages without captures are absent. The caller has already checked ownership of the pages.</summary>
     Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct);
-    Task<List<EmailCaptureResponseDto>> ListCapturesAsync(int landingPageId, CancellationToken ct);
+    /// <summary>The newest captures of a landing page, newest first. <paramref name="limit"/> 0 or less means the
+    /// default (20); more than 100 is capped at 100. The total is the analytics' capture count.</summary>
+    Task<List<EmailCaptureResponseDto>> ListCapturesAsync(int landingPageId, int limit, CancellationToken ct);
 }

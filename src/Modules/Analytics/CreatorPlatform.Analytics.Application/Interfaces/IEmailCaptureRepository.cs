@@ -14,7 +14,9 @@ public interface IEmailCaptureRepository
 
     /// <summary>Capture counts for many landing pages in one grouped query. Pages without captures are absent.</summary>
     Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct);
-    Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct);
+    /// <summary>The newest <paramref name="limit"/> captures of the page (CapturedAt DESC, served by the
+    /// (LandingPageId, CapturedAt) index).</summary>
+    Task<List<EmailCapture>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct);
     Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
 
     /// <summary>Upserts the (creatorId, email) row in <c>marketing.contact_summaries</c> — call only when

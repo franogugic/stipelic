@@ -221,11 +221,12 @@ public sealed class LandingPagesController : ControllerBase
     public async Task<ActionResult<ApiResponse<List<EmailCaptureResponseDto>>>> ListCaptures(
         string slug,
         Guid pageId,
+        [FromQuery] int limit,
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
         var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
-        var captures = await _emailCaptureService.ListCapturesAsync(page.Id, ct);
+        var captures = await _emailCaptureService.ListCapturesAsync(page.Id, limit, ct);
         return Ok(ApiResponse<List<EmailCaptureResponseDto>>.Success(StatusCodes.Status200OK, "Captures loaded.", captures));
     }
 
