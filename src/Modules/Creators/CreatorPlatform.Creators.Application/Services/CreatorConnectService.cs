@@ -55,4 +55,20 @@ public sealed class CreatorConnectService : ICreatorConnectService
 
         return new ConnectOnboardingLinkResponseDto(url);
     }
+
+    public async Task<ConnectPayoutDetailsResponseDto> GetPayoutDetailsAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        var creator = await _creatorRepository.GetBySlugForOwnerAsync(slug.Trim(), ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
+
+        var schedule = creator.StripeConnectAccountId is { } accountId
+            ? await _connectAccountService.GetPayoutScheduleAsync(accountId, ct)
+            : null;
+
+        return new ConnectPayoutDetailsResponseDto(
+            creator.StripeConnectAccountId,
+            creator.StripeConnectDetailsSubmittedAt,
+            creator.StripeConnectPayoutsEnabledAt,
+            schedule);
+    }
 }
