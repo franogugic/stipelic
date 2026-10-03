@@ -34,6 +34,19 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             .LongCountAsync(ec => ec.LandingPageId == landingPageId, ct);
     }
 
+    public async Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)
+    {
+        if (landingPageIds.Count == 0)
+            return [];
+
+        return await _context.Set<EmailCapture>()
+            .AsNoTracking()
+            .Where(ec => landingPageIds.Contains(ec.LandingPageId))
+            .GroupBy(ec => ec.LandingPageId)
+            .Select(g => new { LandingPageId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(row => row.LandingPageId, row => row.Count, ct);
+    }
+
     public async Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct)
     {
         return await _context.Set<EmailCapture>()

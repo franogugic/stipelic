@@ -69,6 +69,9 @@ public sealed class EmailCaptureService : IEmailCaptureService
     public Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct) =>
         _repository.GetCaptureCountAsync(landingPageId, ct);
 
+    public Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct) =>
+        _repository.GetCaptureCountsAsync(landingPageIds, ct);
+
     public async Task<List<EmailCaptureResponseDto>> ListCapturesAsync(int landingPageId, CancellationToken ct)
     {
         var captures = await _repository.ListByLandingPageIdAsync(landingPageId, ct);

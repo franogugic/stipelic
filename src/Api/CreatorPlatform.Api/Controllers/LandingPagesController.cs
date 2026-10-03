@@ -61,15 +61,19 @@ public sealed class LandingPagesController : ControllerBase
         var ordersByPage = (await _orderService.GetOrdersSummaryByCreatorGroupedByLandingPageAsync(slug, user.Id, ct))
             .ToDictionary(o => o.LandingPagePublicId);
 
+        // And email captures — one grouped count over the pages already resolved for this owner.
+        var capturesByPage = await _emailCaptureService.GetCaptureCountsAsync(pages.Select(p => p.Id).ToList(), ct);
+
         var merged = pages
             .Select(p =>
             {
                 var withViews = viewsByPage.TryGetValue(p.PublicId, out var views)
                     ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
                     : p;
-                return ordersByPage.TryGetValue(p.PublicId, out var orders)
+                var withOrders = ordersByPage.TryGetValue(p.PublicId, out var orders)
                     ? withViews with { PurchaseCount = orders.PurchaseCount, TotalRevenueCents = orders.TotalRevenueCents }
                     : withViews;
+                return withOrders with { CaptureCount = capturesByPage.GetValueOrDefault(p.Id) };
             })
             .ToList();
 

@@ -11,5 +11,9 @@ public interface IEmailCaptureService
     /// signing up on another page (or again on the same page) uses no slot and is never blocked.</summary>
     Task CaptureAsync(int landingPageId, int? productId, int creatorId, string email, CancellationToken ct);
     Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct);
+
+    /// <summary>Capture counts for many landing pages in one grouped query, keyed by internal landing page id.
+    /// Pages without captures are absent. The caller has already checked ownership of the pages.</summary>
+    Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct);
     Task<List<EmailCaptureResponseDto>> ListCapturesAsync(int landingPageId, CancellationToken ct);
 }

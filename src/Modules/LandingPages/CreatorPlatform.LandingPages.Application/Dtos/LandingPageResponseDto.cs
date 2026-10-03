@@ -24,4 +24,5 @@ public sealed record LandingPageResponseDto
     public long UniqueVisitors { get; init; }
     public int PurchaseCount { get; init; }
     public int TotalRevenueCents { get; init; }
+    public int CaptureCount { get; init; }
 }

@@ -32,6 +32,12 @@ public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
     public Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct)
         => Task.FromResult((long)Added.Count(c => c.LandingPageId == landingPageId));
 
+    public Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)
+        => Task.FromResult(Added
+            .Where(c => landingPageIds.Contains(c.LandingPageId))
+            .GroupBy(c => c.LandingPageId)
+            .ToDictionary(g => g.Key, g => g.Count()));
+
     public Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct)
         => Task.FromResult(Added.Where(c => c.LandingPageId == landingPageId).ToList());
 

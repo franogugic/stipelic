@@ -9,6 +9,9 @@ public interface IEmailCaptureRepository
     /// tracking on real inserts only.</summary>
     Task<bool> AddAsync(EmailCapture capture, CancellationToken ct);
     Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct);
+
+    /// <summary>Capture counts for many landing pages in one grouped query. Pages without captures are absent.</summary>
+    Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct);
     Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct);
     Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
 
