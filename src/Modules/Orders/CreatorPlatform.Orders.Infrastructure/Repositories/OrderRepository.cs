@@ -356,6 +356,8 @@ public sealed class OrderRepository : IOrderRepository
     {
         // bucketUnit comes from a fixed server-side map (never from raw query string), so it is safe to
         // interpolate into date_trunc / generate_series. Zero-filled buckets via LEFT JOIN on generate_series.
+        // Orders are booked when they were paid (older rows without PaidAt fall back to CreatedAt), the same rule
+        // as the period cards, so the chart and the cards agree.
         return await _context.Database.SqlQuery<PurchasesBucketRow>($"""
             WITH buckets AS (
                 SELECT generate_series(
@@ -372,7 +374,7 @@ public sealed class OrderRepository : IOrderRepository
             LEFT JOIN orders.orders o
                 ON o."LandingPageId" = {landingPageId}
                 AND o."Status" = 'Paid'
-                AND date_trunc({bucketUnit}, o."CreatedAt") = b.bucket_start
+                AND date_trunc({bucketUnit}, COALESCE(o."PaidAt", o."CreatedAt")) = b.bucket_start
             GROUP BY b.bucket_start
             ORDER BY b.bucket_start
             """)

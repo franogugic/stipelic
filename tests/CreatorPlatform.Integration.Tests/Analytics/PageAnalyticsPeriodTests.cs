@@ -103,6 +103,27 @@ public sealed class PageAnalyticsPeriodTests
         Assert.Equal(0, captures.AllTime);
     }
 
+    [Fact]
+    public async Task TimeSeriesPurchases_AreBucketedByPaidAt_NotCreatedAt()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        var page = await _data.CreateLandingPageAsync(creator.CreatorId);
+        var productId = await CreateProductAsync(creator.CreatorId);
+        // Created on one day, paid exactly a day later: the sale belongs to the later bucket, as on the period cards.
+        var createdAt = DateTimeOffset.UtcNow.AddDays(-3);
+        var paidAt = createdAt.AddDays(1);
+        await InsertOrderAsync(creator.CreatorId, productId, page, 2900, "Paid", paidAt, createdAt);
+
+        await using var db = _fixture.CreateDbContext();
+        var rows = await new OrderRepository(db).GetBucketedPurchasesAsync(
+            page, DateTimeOffset.UtcNow.AddDays(-7), "day", CancellationToken.None);
+
+        var hit = Assert.Single(rows, r => r.PurchaseCount > 0);
+        Assert.Equal((1, 2900), (hit.PurchaseCount, hit.RevenueCents));
+        Assert.True(hit.BucketStart > createdAt, "the sale must not be counted in the bucket of its creation day");
+        Assert.True(hit.BucketStart <= paidAt);
+    }
+
     private async Task<int> CreateProductAsync(int creatorId)
     {
         await using var db = _fixture.CreateDbContext();
@@ -115,10 +136,11 @@ public sealed class PageAnalyticsPeriodTests
     }
 
     private async Task InsertOrderAsync(
-        int creatorId, int productId, int landingPageId, int amountCents, string status, DateTimeOffset? paidAt)
+        int creatorId, int productId, int landingPageId, int amountCents, string status, DateTimeOffset? paidAt,
+        DateTimeOffset? createdAtOverride = null)
     {
         await using var db = _fixture.CreateDbContext();
-        var createdAt = paidAt ?? Periods.StartOfToday;
+        var createdAt = createdAtOverride ?? paidAt ?? Periods.StartOfToday;
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "LandingPageId", "Email", "AmountCents", "Currency",
                                        "Status", "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode",
