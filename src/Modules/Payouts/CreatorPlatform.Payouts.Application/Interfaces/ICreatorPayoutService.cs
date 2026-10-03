@@ -2,7 +2,18 @@ using CreatorPlatform.Payouts.Application.Dtos;
 
 namespace CreatorPlatform.Payouts.Application.Interfaces;
 
-public sealed record CreatorPayoutSummaryDto(string Currency, int BalanceCents, int PendingPayoutCents, int MinPayoutCents);
+/// <param name="TotalPaidOutCents">Sum of Paid payouts in <paramref name="Currency"/> (the balance's currency).</param>
+/// <param name="PendingRequest">The open payout request (at most one), or null.</param>
+public sealed record CreatorPayoutSummaryDto(
+    string Currency,
+    int BalanceCents,
+    int PendingPayoutCents,
+    int MinPayoutCents,
+    int TotalPaidOutCents,
+    PendingPayoutRequestDto? PendingRequest);
+
+/// <summary>The creator's open payout request; <paramref name="PublicId"/> is what the cancel endpoint takes.</summary>
+public sealed record PendingPayoutRequestDto(Guid PublicId, int AmountCents, DateTimeOffset RequestedAt);
 
 public interface ICreatorPayoutService
 {

@@ -1,6 +1,7 @@
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Payments.Application.Options;
 using CreatorPlatform.Shared.Application.Exceptions;
@@ -13,17 +14,20 @@ public sealed class CreatorConnectService : ICreatorConnectService
     private readonly ICreatorRepository _creatorRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly IConnectAccountService _connectAccountService;
+    private readonly IPayoutScheduleCache _payoutScheduleCache;
     private readonly StripeOptions _options;
 
     public CreatorConnectService(
         ICreatorRepository creatorRepository,
         ICreatorsUnitOfWork unitOfWork,
         IConnectAccountService connectAccountService,
+        IPayoutScheduleCache payoutScheduleCache,
         IOptions<StripeOptions> options)
     {
         _creatorRepository = creatorRepository;
         _unitOfWork = unitOfWork;
         _connectAccountService = connectAccountService;
+        _payoutScheduleCache = payoutScheduleCache;
         _options = options.Value;
     }
 
@@ -62,7 +66,7 @@ public sealed class CreatorConnectService : ICreatorConnectService
             ?? throw new NotFoundException("Creator workspace not found.");
 
         var schedule = creator.StripeConnectAccountId is { } accountId
-            ? await _connectAccountService.GetPayoutScheduleAsync(accountId, ct)
+            ? await GetPayoutScheduleAsync(creator.Id, accountId, ct)
             : null;
 
         return new ConnectPayoutDetailsResponseDto(
@@ -70,5 +74,18 @@ public sealed class CreatorConnectService : ICreatorConnectService
             creator.StripeConnectDetailsSubmittedAt,
             creator.StripeConnectPayoutsEnabledAt,
             schedule);
+    }
+
+    /// <summary>Only called after the ownership check above, so the cache is keyed by the creator's internal id.</summary>
+    private async Task<PayoutScheduleDto?> GetPayoutScheduleAsync(int creatorId, string accountId, CancellationToken ct)
+    {
+        if (_payoutScheduleCache.TryGet(creatorId, out var cached) && cached is not null)
+            return cached;
+
+        var schedule = await _connectAccountService.GetPayoutScheduleAsync(accountId, ct);
+        if (schedule is not null)
+            _payoutScheduleCache.Set(creatorId, schedule);
+
+        return schedule;
     }
 }
