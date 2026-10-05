@@ -14,12 +14,14 @@ public static class OrdersInfrastructureServiceCollectionExtensions
         services.AddSingleton<IHomeSummaryCache, HomeSummaryCache>();
         services.AddSingleton<IDashboardTrendsCache, DashboardTrendsCache>();
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<IOrderReceiptReader, OrderReceiptReader>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<IOrdersUnitOfWork, OrdersUnitOfWork>();
         services.AddScoped<IPaymentCheckoutSessionService, StripePaymentCheckoutSessionService>();
         services.AddScoped<IOrderCheckoutService, OrderCheckoutService>();
         services.AddScoped<IOrderWebhookService, OrderWebhookService>();
         services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IOrderReceiptService, OrderReceiptService>();
 
         return services;
     }

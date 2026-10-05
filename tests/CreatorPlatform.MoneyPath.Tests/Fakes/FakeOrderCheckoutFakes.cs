@@ -23,6 +23,7 @@ public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionS
     public string? LastDestinationAccountId { get; private set; }
     public IReadOnlyDictionary<string, string>? LastMetadata { get; private set; }
     public string? LastThumbnailUrl { get; private set; }
+    public string? LastSuccessUrl { get; private set; }
     public int CallCount { get; private set; }
 
     public Task<PaymentCheckoutSessionDto> CreateAsync(
@@ -44,6 +45,7 @@ public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionS
         LastDestinationAccountId = destinationAccountId;
         LastMetadata = metadata;
         LastThumbnailUrl = thumbnailUrl;
+        LastSuccessUrl = successUrl;
         return Task.FromResult(new PaymentCheckoutSessionDto("sess_123", "https://checkout.stripe.com/sess_123"));
     }
 }

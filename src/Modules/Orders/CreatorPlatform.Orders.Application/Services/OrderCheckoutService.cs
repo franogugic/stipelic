@@ -69,7 +69,9 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
         var platformFeeBasisPoints = productInfo.PlatformFeeBasisPoints.Value;
         var platformFeeCents = PlatformFee.Calculate(productInfo.PriceCents, platformFeeBasisPoints);
 
-        var successUrl = $"{_options.FrontendBaseUrl}/p/{creatorSlug}/{landingPageSlug}/success";
+        // {CHECKOUT_SESSION_ID} is Stripe's literal placeholder (filled in on redirect) — it must stay unencoded. The
+        // success page reads the receipt by it.
+        var successUrl = $"{_options.FrontendBaseUrl}/p/{creatorSlug}/{landingPageSlug}/success?session_id={{CHECKOUT_SESSION_ID}}";
         var cancelUrl = $"{_options.FrontendBaseUrl}/p/{creatorSlug}/{landingPageSlug}";
 
         var metadata = new Dictionary<string, string>

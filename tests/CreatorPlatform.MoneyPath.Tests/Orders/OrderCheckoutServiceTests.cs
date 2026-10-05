@@ -77,6 +77,19 @@ public class OrderCheckoutServiceTests
     }
 
     [Fact]
+    public async Task CreateCheckoutAsync_SuccessUrlCarriesStripesLiteralSessionPlaceholder()
+    {
+        var (service, _, checkoutSessionService, _) = BuildService(BuildProductInfo());
+
+        await service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None);
+
+        // Stripe replaces {CHECKOUT_SESSION_ID} on redirect only when the braces arrive unencoded.
+        Assert.Equal(
+            $"https://app.example.com/p/{CreatorSlug}/{LandingPageSlug}/success?session_id={{CHECKOUT_SESSION_ID}}",
+            checkoutSessionService.LastSuccessUrl);
+    }
+
+    [Fact]
     public async Task CreateCheckoutAsync_StripeConnect_CallsSessionWithFeeAndDestination()
     {
         var productInfo = BuildProductInfo(payoutMode: PayoutMode.StripeConnect, stripeConnectAccountId: "acct_999");
