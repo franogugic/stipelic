@@ -733,6 +733,7 @@ public sealed partial class CreatorService : ICreatorService
             DefaultCurrency = creator.DefaultCurrency.ToString(),
             PlanCode = subscription?.Plan.Code ?? string.Empty,
             PlanName = subscription?.Plan.Name ?? string.Empty,
+            SubscriptionStatus = subscription?.Status.ToString(),
             CancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false,
             CurrentPeriodEnd = subscription?.CurrentPeriodEnd,
             CountryCode = creator.CountryCode,
