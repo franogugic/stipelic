@@ -14,6 +14,9 @@ namespace CreatorPlatform.Creators.Application.Services;
 public sealed partial class CreatorService : ICreatorService
 {
     private const string FreePlanCode = "free";
+    public const string UpgradeInProgressCode = "upgrade_in_progress";
+    private const string UpgradeInProgressMessage =
+        "An upgrade is already starting. Use the checkout page that opened, or try again in a minute.";
     private const string SlugTakenMessage = "This creator URL is already taken.";
     private const string AlreadyExistsMessage = "You already have a creator workspace.";
     private const string DefaultPrimaryColor = "#111827";
@@ -540,11 +543,18 @@ public sealed partial class CreatorService : ICreatorService
             // Serializes concurrent upgrade requests on the Free subscription row.
             await _creatorSubscriptionRepository.LockForUpdateAsync(current.Id, ct);
 
-            // Replace every earlier attempt: at most one pending upgrade at a time.
+            // Re-read under the lock. Only the attempt whose Checkout was expired above may be replaced; any other
+            // pending upgrade was created by a concurrent request (e.g. a double click) whose Checkout may already be
+            // open — cancelling it here would leave that Checkout payable for a plan that can no longer activate.
             foreach (var other in await _creatorSubscriptionRepository.GetOtherCurrentByCreatorIdForUpdateAsync(creator.Id, current.Id, ct))
             {
-                if (other.Status == CreatorSubscriptionStatus.PendingPayment)
-                    other.Cancel(now);
+                if (other.Status != CreatorSubscriptionStatus.PendingPayment)
+                    continue;
+
+                if (other.Id != earlier?.Id)
+                    throw new ConflictException(UpgradeInProgressMessage, UpgradeInProgressCode);
+
+                other.Cancel(now);
             }
 
             var trackedCreator = await _creatorRepository.GetByIdForUpdateAsync(creator.Id, ct);

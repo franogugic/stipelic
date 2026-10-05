@@ -5,6 +5,7 @@ using CreatorPlatform.Creators.Infrastructure.Repositories;
 using CreatorPlatform.Creators.Infrastructure.Services;
 using CreatorPlatform.Integration.Tests.Infrastructure;
 using CreatorPlatform.Payments.Application.Dtos;
+using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Payments.Infrastructure.Repositories;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.EntityFrameworkCore;
@@ -137,6 +138,63 @@ public sealed class UpgradeFromFreeTests
         Assert.Equal([("free", "Cancelled"), ("basic", "Active")], subscriptions.Select(s => (s.PlanCode, s.Status)));
     }
 
+    [Fact]
+    public async Task TwoInterleavedStarts_TheSecondGets409_AndTheFirstSessionStaysTheOnlyPayableOne()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        // Both requests pass this point (after reading "no earlier attempt", before the lock) before either goes on.
+        var barrier = new BarrierCustomerService(parties: 2);
+
+        var attempts = await Task.WhenAll(
+            CaptureAsync(() => WithServiceAsync(s => s.StartSubscriptionCheckoutAsync(creator.OwnerUserId, OwnerEmail, "basic", CancellationToken.None), barrier)),
+            CaptureAsync(() => WithServiceAsync(s => s.StartSubscriptionCheckoutAsync(creator.OwnerUserId, OwnerEmail, "pro", CancellationToken.None), barrier)));
+
+        var conflict = Assert.IsType<ConflictException>(Assert.Single(attempts, a => a.Error is not null).Error);
+        Assert.Equal("upgrade_in_progress", conflict.Code);
+        Assert.Equal(
+            "An upgrade is already starting. Use the checkout page that opened, or try again in a minute.",
+            conflict.Message);
+
+        // The winner's Checkout is the only one, and its pending row is still payable (nothing cancelled, nothing expired).
+        var session = Assert.Single(_checkout.CreateCalls);
+        Assert.Empty(_checkout.ExpireCalls);
+        var subscriptions = await _data.GetSubscriptionsAsync(creator.CreatorId);
+        Assert.Equal(["Active", "PendingPayment"], subscriptions.Select(s => s.Status));
+        Assert.Equal(session.SessionId, subscriptions[1].CheckoutSessionId);
+        Assert.Equal(session.Metadata["subscriptionId"], subscriptions[1].Id.ToString());
+    }
+
+    private static async Task<(StartCreatorSubscriptionCheckoutResponseDto? Response, Exception? Error)> CaptureAsync(
+        Func<Task<StartCreatorSubscriptionCheckoutResponseDto>> start)
+    {
+        try
+        {
+            return (await start(), null);
+        }
+        catch (Exception exception)
+        {
+            return (null, exception);
+        }
+    }
+
+    /// <summary>Creates the customer only after <c>parties</c> callers have arrived — pins two requests at the same
+    /// point of the flow.</summary>
+    private sealed class BarrierCustomerService(int parties) : IBillingCustomerService
+    {
+        private readonly TaskCompletionSource _allArrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _arrived;
+
+        public async Task<string> CreateAsync(
+            string email, string name, IReadOnlyDictionary<string, string> metadata, string idempotencyKey, CancellationToken ct)
+        {
+            if (Interlocked.Increment(ref _arrived) == parties)
+                _allArrived.SetResult();
+            await _allArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+            // Stripe's idempotency key returns the same customer to both.
+            return $"cus_test_{idempotencyKey}";
+        }
+    }
+
     // ---- Rejections ----------------------------------------------------------------------------------------
 
     [Theory]
@@ -197,7 +255,7 @@ public sealed class UpgradeFromFreeTests
     private Task<CreatorResponseDto> GetCurrentAsync(TestData.SeededCreator creator) =>
         WithServiceAsync(async s => (await s.GetCurrentForOwnerAsync(creator.OwnerUserId, CancellationToken.None))!);
 
-    private async Task<T> WithServiceAsync<T>(Func<CreatorService, Task<T>> act)
+    private async Task<T> WithServiceAsync<T>(Func<CreatorService, Task<T>> act, IBillingCustomerService? customers = null)
     {
         await using var db = _fixture.CreateDbContext();
         return await act(new CreatorService(
@@ -212,7 +270,7 @@ public sealed class UpgradeFromFreeTests
             new UnexpectedSubscriptionCancellationService(),
             new UnexpectedBillingPortalService(),
             new CreatorOpenBalanceCheck(db),
-            _customers,
+            customers ?? _customers,
             NullLogger<CreatorService>.Instance));
     }
 
