@@ -24,11 +24,14 @@ public sealed class ContactsRepository : IContactsRepository
     public async Task<List<ContactRow>> SearchAsync(
         int creatorId, string? search, int? landingPageId, string? afterEmail, int limit, CancellationToken ct)
     {
-        var searchPrefix = string.IsNullOrWhiteSpace(search) ? null : search.Trim().ToLowerInvariant();
+        // Emails are stored lower-case, so a lower-cased term makes the match case-insensitive.
+        var searchPattern = string.IsNullOrWhiteSpace(search) ? null : LikePatterns.Contains(search.Trim().ToLowerInvariant());
         var after = afterEmail?.Trim().ToLowerInvariant() ?? string.Empty;
         var fetchLimit = limit + 1;
 
-        // Plain keyset scan on the (CreatorId, Email) unique index — no aggregation over capture history.
+        // Plain keyset scan on the (CreatorId, Email) unique index — no aggregation over capture history. The search
+        // is a substring match ("Email" LIKE '%term%'), served by the trigram GIN index on "Email" (migration
+        // AddContactEmailSearchIndex); the term's own %, _ and \ are escaped so they match literally.
         // The source filter is written as containment (@>), not `= ANY(...)`: only @> can use the GIN index on
         // SourceLandingPageIds, which is what keeps a rare source fast (the btree walk would otherwise scan the
         // creator's whole directory to fill one page). A null filter folds away at plan time.
@@ -40,7 +43,7 @@ public sealed class ContactsRepository : IContactsRepository
             FROM marketing.contact_summaries
             WHERE "CreatorId" = {creatorId}
               AND "Email" > {after}
-              AND ({searchPrefix}::text IS NULL OR "Email" LIKE {searchPrefix}::text || '%')
+              AND ({searchPattern}::text IS NULL OR "Email" LIKE {searchPattern}::text ESCAPE '\')
               AND ({landingPageId}::int IS NULL OR "SourceLandingPageIds" @> ARRAY[{landingPageId}::int])
             ORDER BY "Email"
             LIMIT {fetchLimit}
