@@ -115,19 +115,4 @@ public sealed class CreatorRepository : ICreatorRepository
     {
         await _context.Set<Creator>().AddAsync(creator, ct);
     }
-
-    public async Task<bool> DisableByOwnerUserIdAsync(int ownerUserId, DateTimeOffset disabledAt, CancellationToken ct)
-    {
-        var updatedCount = await _context
-            .Set<Creator>()
-            .Where(creator =>
-                creator.OwnerUserId == ownerUserId
-                && creator.Status != CreatorStatus.Disabled)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(creator => creator.Status, CreatorStatus.Disabled)
-                .SetProperty(creator => creator.UpdatedAt, disabledAt),
-                ct);
-
-        return updatedCount > 0;
-    }
 }

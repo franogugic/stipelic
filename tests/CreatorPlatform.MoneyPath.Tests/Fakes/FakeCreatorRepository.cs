@@ -83,9 +83,4 @@ public sealed class FakeCreatorRepository : ICreatorRepository
         Added.Add(creator);
         return Task.CompletedTask;
     }
-
-    public Task<bool> DisableByOwnerUserIdAsync(int ownerUserId, DateTimeOffset disabledAt, CancellationToken ct)
-    {
-        return Task.FromResult(false);
-    }
 }

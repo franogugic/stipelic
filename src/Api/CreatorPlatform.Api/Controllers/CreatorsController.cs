@@ -1,3 +1,4 @@
+using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
@@ -19,17 +20,23 @@ public sealed class CreatorsController : ControllerBase
     private readonly ICreatorConnectService _creatorConnectService;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IOrderService _orderService;
+    private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly IViewsSummaryCache _viewsSummaryCache;
 
     public CreatorsController(
         ICreatorService creatorService,
         ICreatorConnectService creatorConnectService,
         ICurrentUserContext currentUserContext,
-        IOrderService orderService)
+        IOrderService orderService,
+        IHomeSummaryCache homeSummaryCache,
+        IViewsSummaryCache viewsSummaryCache)
     {
         _creatorService = creatorService;
         _creatorConnectService = creatorConnectService;
         _currentUserContext = currentUserContext;
         _orderService = orderService;
+        _homeSummaryCache = homeSummaryCache;
+        _viewsSummaryCache = viewsSummaryCache;
     }
 
     [HttpGet("current")]
@@ -110,11 +117,17 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpDelete("current")]
+    [EnableRateLimiting("DeleteWorkspace")]
     public async Task<ActionResult<ApiResponse<object>>> DeleteCurrent(CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
-        await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
+        var creatorId = await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
+
+        // A disabled workspace already fails every ownership check, so nothing can read these entries any more;
+        // drop the longer-lived ones anyway rather than leave the data in memory for minutes.
+        _homeSummaryCache.Remove(creatorId);
+        _viewsSummaryCache.Remove(creatorId);
 
         return Ok(ApiResponse<object>.Success(
             StatusCodes.Status200OK,

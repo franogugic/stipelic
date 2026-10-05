@@ -124,6 +124,19 @@ public sealed class FakeSubscriptionCancellationService : ISubscriptionCancellat
     {
         throw new InvalidOperationException("Not expected to be called in this scenario.");
     }
+
+    public Task CancelImmediatelyAsync(string stripeSubscriptionId, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
+}
+
+public sealed class FakeCreatorOpenBalanceCheck : ICreatorOpenBalanceCheck
+{
+    public Task<bool> HasOpenBalanceAsync(int creatorId, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
 }
 
 public sealed class FakeBillingPortalService : IBillingPortalService

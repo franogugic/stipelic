@@ -35,6 +35,7 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ISubscriptionCheckoutSessionService _subscriptionCheckoutSessionService;
     private readonly ISubscriptionCancellationService _subscriptionCancellationService;
     private readonly IBillingPortalService _billingPortalService;
+    private readonly ICreatorOpenBalanceCheck _creatorOpenBalanceCheck;
     private readonly ILogger<CreatorService> _logger;
 
     public CreatorService(
@@ -48,6 +49,7 @@ public sealed partial class CreatorService : ICreatorService
         ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService,
         ISubscriptionCancellationService subscriptionCancellationService,
         IBillingPortalService billingPortalService,
+        ICreatorOpenBalanceCheck creatorOpenBalanceCheck,
         ILogger<CreatorService> logger)
     {
         _creatorRepository = creatorRepository;
@@ -60,6 +62,7 @@ public sealed partial class CreatorService : ICreatorService
         _subscriptionCheckoutSessionService = subscriptionCheckoutSessionService;
         _subscriptionCancellationService = subscriptionCancellationService;
         _billingPortalService = billingPortalService;
+        _creatorOpenBalanceCheck = creatorOpenBalanceCheck;
         _logger = logger;
     }
 
@@ -256,12 +259,90 @@ public sealed partial class CreatorService : ICreatorService
             ct);
     }
 
-    public async Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
+    public async Task<int> DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
     {
-        var disabledAt = DateTimeOffset.UtcNow;
-        var wasDisabled = await _creatorRepository.DisableByOwnerUserIdAsync(ownerUserId, disabledAt, ct);
-        if (!wasDisabled)
-            throw new NotFoundException("Creator workspace does not exist.");
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace does not exist.");
+
+        // 1. Money still owed to a bank-transfer creator blocks the deletion — checked before touching Stripe.
+        if (creator.PayoutMode == PayoutMode.BankTransfer
+            && await _creatorOpenBalanceCheck.HasOpenBalanceAsync(creator.Id, ct))
+        {
+            throw new ConflictException(
+                "Request a payout of your remaining balance before deleting this workspace.",
+                CreatorErrorCodes.WorkspaceHasBalance);
+        }
+
+        // 2–3. Stop the billing in Stripe first, outside the transaction: if Stripe fails, the call throws and the
+        // workspace and its subscription stay exactly as they were.
+        var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
+        if (subscription is not null)
+            await StopBillingAsync(creator, subscription, ct);
+
+        // 4. Cancel the subscription locally and disable the workspace together.
+        var now = DateTimeOffset.UtcNow;
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            if (subscription is not null)
+            {
+                await _creatorSubscriptionRepository.LockForUpdateAsync(subscription.Id, ct);
+                var trackedSubscription = await _creatorSubscriptionRepository.GetByIdForUpdateAsync(subscription.Id, ct);
+                if (trackedSubscription is not null && trackedSubscription.Status != CreatorSubscriptionStatus.Cancelled)
+                    trackedSubscription.Cancel(now);
+            }
+
+            var trackedCreator = await _creatorRepository.GetByIdForUpdateAsync(creator.Id, ct);
+            // A concurrent deletion got here first.
+            if (trackedCreator is null || trackedCreator.Status == CreatorStatus.Disabled)
+                throw new NotFoundException("Creator workspace does not exist.");
+
+            trackedCreator.Disable(now);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, ct);
+
+        _logger.LogInformation(
+            "Creator workspace deleted (disabled). CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}",
+            creator.Id, subscription?.Id);
+
+        return creator.Id;
+    }
+
+    private async Task StopBillingAsync(Creator creator, CreatorSubscription subscription, CancellationToken ct)
+    {
+        // Only a Stripe-billed subscription is charged recurringly (a pending one is still Internal until paid).
+        if (subscription.Provider == SubscriptionProvider.Stripe
+            && subscription.Status is CreatorSubscriptionStatus.Active or CreatorSubscriptionStatus.PastDue)
+        {
+            if (string.IsNullOrWhiteSpace(subscription.ProviderSubscriptionId))
+            {
+                _logger.LogWarning(
+                    "Deleting a workspace whose paid subscription has no Stripe subscription id; nothing to cancel in Stripe. CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}",
+                    creator.Id, subscription.Id);
+                return;
+            }
+
+            // Immediately, not at period end: a deleted workspace must not be charged again.
+            await _subscriptionCancellationService.CancelImmediatelyAsync(subscription.ProviderSubscriptionId, ct);
+            return;
+        }
+
+        if (subscription.Status == CreatorSubscriptionStatus.PendingPayment)
+        {
+            if (subscription.CheckoutSessionId is not { } checkoutSessionId)
+            {
+                _logger.LogWarning(
+                    "Deleting a pending workspace without expiring a Checkout session: none is stored for its pending subscription. CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}",
+                    creator.Id, subscription.Id);
+                return;
+            }
+
+            var outcome = await _subscriptionCheckoutSessionService.ExpireAsync(checkoutSessionId, ct);
+            if (outcome == CheckoutSessionExpireOutcome.AlreadyCompleted)
+            {
+                // The customer just paid; the checkout.session.completed webhook activates the plan.
+                throw new ConflictException("Payment already completed.");
+            }
+        }
     }
 
     public async Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct)

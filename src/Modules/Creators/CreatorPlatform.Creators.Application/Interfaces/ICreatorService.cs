@@ -29,7 +29,11 @@ public interface ICreatorService
 
     Task<string> GetBillingPortalUrlAsync(int ownerUserId, CancellationToken ct);
 
-    Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
+    /// <summary>Disables the owner's workspace after settling its money: 409 WORKSPACE_HAS_BALANCE while a
+    /// bank-transfer balance or pending payout remains; a paid Stripe subscription is cancelled immediately and a
+    /// pending Checkout session expired (409 when it was already paid). Any Stripe failure throws before anything
+    /// changes. Returns the internal id of the disabled workspace (for cache invalidation).</summary>
+    Task<int> DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 
     /// <summary>Null when the creator has not saved payout bank details yet.</summary>
     Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct);

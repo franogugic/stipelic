@@ -62,6 +62,31 @@ public sealed class UnexpectedSubscriptionCancellationService : ISubscriptionCan
 {
     public Task CancelAtPeriodEndAsync(string stripeSubscriptionId, CancellationToken ct)
         => throw new InvalidOperationException("Not expected to be called in this scenario.");
+
+    public Task CancelImmediatelyAsync(string stripeSubscriptionId, CancellationToken ct)
+        => throw new InvalidOperationException("Not expected to be called in this scenario.");
+}
+
+/// <summary>Stands in for cancelling a Stripe subscription immediately: records calls, or fails.</summary>
+public sealed class FakeSubscriptionCancellationService : ISubscriptionCancellationService
+{
+    /// <summary>When set, CancelImmediatelyAsync throws it — models Stripe being unreachable.</summary>
+    public Exception? CancelFailure { get; set; }
+
+    public List<string> CancelImmediatelyCalls { get; } = [];
+
+    public Task CancelAtPeriodEndAsync(string stripeSubscriptionId, CancellationToken ct)
+        => throw new InvalidOperationException("Not expected to be called in this scenario.");
+
+    public Task CancelImmediatelyAsync(string stripeSubscriptionId, CancellationToken ct)
+    {
+        CancelImmediatelyCalls.Add(stripeSubscriptionId);
+
+        if (CancelFailure is not null)
+            throw CancelFailure;
+
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class UnexpectedBillingPortalService : IBillingPortalService

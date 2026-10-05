@@ -1,6 +1,7 @@
 using CreatorPlatform.Creators.Application.Services;
 using CreatorPlatform.Creators.Infrastructure.Persistence;
 using CreatorPlatform.Creators.Infrastructure.Repositories;
+using CreatorPlatform.Creators.Infrastructure.Services;
 using CreatorPlatform.Integration.Tests.Infrastructure;
 using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Infrastructure.Repositories;
@@ -39,6 +40,7 @@ public sealed class ContinueOnFreePlanTests
         checkout,
         new UnexpectedSubscriptionCancellationService(),
         new UnexpectedBillingPortalService(),
+        new CreatorOpenBalanceCheck(db),
         logger);
 
     /// <summary>The production service over the real repositories, on its own context (a request scope).</summary>

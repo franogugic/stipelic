@@ -14,6 +14,7 @@ public static class CreatorsInfrastructureServiceCollectionExtensions
         services.AddScoped<ICreatorService, CreatorService>();
         services.AddScoped<ICreatorConnectService, CreatorConnectService>();
         services.AddSingleton<IPayoutScheduleCache, PayoutScheduleCache>();
+        services.AddScoped<ICreatorOpenBalanceCheck, CreatorOpenBalanceCheck>();
         services.AddScoped<ICreatorPlanService, CreatorPlanService>();
         services.AddScoped<ICreatorWebhookService, CreatorWebhookService>();
         services.AddScoped<ICreatorRepository, CreatorRepository>();

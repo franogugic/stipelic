@@ -29,6 +29,7 @@ public class CreatorServicePayoutProfileTests
             new FakeSubscriptionCheckoutSessionService(),
             new FakeSubscriptionCancellationService(),
             new FakeBillingPortalService(),
+            new FakeCreatorOpenBalanceCheck(),
             NullLogger<CreatorService>.Instance);
 
         return (service, profileRepository);
