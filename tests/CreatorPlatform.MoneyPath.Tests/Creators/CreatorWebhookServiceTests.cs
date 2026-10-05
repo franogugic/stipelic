@@ -35,6 +35,7 @@ public class CreatorWebhookServiceTests
             webhookFailureRepository,
             unitOfWork,
             new FakeSubscriptionBillingPeriodService(),
+            new FakeCreatorCacheInvalidator(),
             NullLogger<CreatorWebhookService>.Instance);
     }
 

@@ -66,12 +66,6 @@ public sealed class Creator
         UpdatedAt = updatedAt;
     }
 
-    public void Suspend(DateTimeOffset updatedAt)
-    {
-        Status = CreatorStatus.Suspended;
-        UpdatedAt = updatedAt;
-    }
-
     public void Disable(DateTimeOffset updatedAt)
     {
         Status = CreatorStatus.Disabled;

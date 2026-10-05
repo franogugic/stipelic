@@ -452,6 +452,7 @@ builder.Services.AddPayoutsInfrastructure();
 builder.Services.AddMarketingInfrastructure();
 builder.Services.AddMediaInfrastructure();
 builder.Services.AddAnalyticsInfrastructure();
+builder.Services.AddSingleton<CreatorPlatform.Creators.Application.Interfaces.ICreatorCacheInvalidator, CreatorPlatform.Api.Caching.CreatorCacheInvalidator>();
 builder.Services.AddOrdersInfrastructure();
 builder.Services.AddAccessInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();

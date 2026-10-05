@@ -161,6 +161,7 @@ public sealed class ContinueOnFreePlanTests
                 new WebhookFailureRepository(db),
                 new CreatorsUnitOfWork(db),
                 new FakeBillingPeriodService(),
+                new RecordingCreatorCacheInvalidator(),
                 NullLogger<CreatorWebhookService>.Instance);
 
             await webhooks.HandleCheckoutSessionCompletedAsync(new CheckoutSessionCompletedData

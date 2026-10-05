@@ -40,6 +40,16 @@ public sealed class CreatorSubscriptionRepository : ICreatorSubscriptionReposito
             .FirstOrDefaultAsync(subscription => subscription.Id == id, ct);
     }
 
+    public async Task<CreatorSubscriptionStatus?> GetStatusAsync(int id, CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorSubscription>()
+            .AsNoTracking()
+            .Where(subscription => subscription.Id == id)
+            .Select(subscription => (CreatorSubscriptionStatus?)subscription.Status)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task LockForUpdateAsync(int id, CancellationToken ct)
     {
         await _context.Database.ExecuteSqlAsync(

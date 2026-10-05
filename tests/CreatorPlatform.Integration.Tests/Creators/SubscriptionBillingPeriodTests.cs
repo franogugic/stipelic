@@ -39,6 +39,7 @@ public sealed class SubscriptionBillingPeriodTests
             new WebhookFailureRepository(db),
             new CreatorsUnitOfWork(db),
             _periods,
+            new RecordingCreatorCacheInvalidator(),
             _logger);
         await act(service);
     }

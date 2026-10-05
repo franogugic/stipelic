@@ -259,6 +259,7 @@ public sealed class DeleteWorkspaceTests
             new WebhookFailureRepository(db),
             new CreatorsUnitOfWork(db),
             new FakeBillingPeriodService(),
+            new RecordingCreatorCacheInvalidator(),
             NullLogger<CreatorWebhookService>.Instance));
     }
 

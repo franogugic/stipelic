@@ -94,3 +94,11 @@ public sealed class UnexpectedBillingPortalService : IBillingPortalService
     public Task<string> CreateSessionAsync(string stripeCustomerId, string returnUrl, CancellationToken ct)
         => throw new InvalidOperationException("Not expected to be called in this scenario.");
 }
+
+/// <summary>Records which workspaces' caches a service asked to drop.</summary>
+public sealed class RecordingCreatorCacheInvalidator : CreatorPlatform.Creators.Application.Interfaces.ICreatorCacheInvalidator
+{
+    public List<int> Invalidated { get; } = [];
+
+    public void Invalidate(int creatorId) => Invalidated.Add(creatorId);
+}

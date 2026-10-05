@@ -83,6 +83,9 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
 
     public Task LockForUpdateAsync(int id, CancellationToken ct) => Task.CompletedTask;
 
+    public Task<CreatorSubscriptionStatus?> GetStatusAsync(int id, CancellationToken ct)
+        => Task.FromResult(SubscriptionByProviderSubscriptionId?.Id == id ? SubscriptionByProviderSubscriptionId.Status : (CreatorSubscriptionStatus?)null);
+
     public Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(string providerSubscriptionId, CancellationToken ct)
     {
         return Task.FromResult(
@@ -145,4 +148,11 @@ public sealed class FakeBillingPortalService : IBillingPortalService
     {
         throw new InvalidOperationException("Not expected to be called in this scenario.");
     }
+}
+
+public sealed class FakeCreatorCacheInvalidator : ICreatorCacheInvalidator
+{
+    public List<int> Invalidated { get; } = [];
+
+    public void Invalidate(int creatorId) => Invalidated.Add(creatorId);
 }

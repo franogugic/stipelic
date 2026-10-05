@@ -15,6 +15,10 @@ public interface ICreatorSubscriptionRepository
     /// row is loaded for update (so the load sees the committed state after any concurrent change).</summary>
     Task LockForUpdateAsync(int id, CancellationToken ct);
 
+    /// <summary>The subscription's committed status, read from the database (not the change tracker) — for re-checking
+    /// a row after <see cref="LockForUpdateAsync"/>.</summary>
+    Task<CreatorSubscriptionStatus?> GetStatusAsync(int id, CancellationToken ct);
+
     Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(
         string providerSubscriptionId,
         CancellationToken ct);
