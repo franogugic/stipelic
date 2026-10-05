@@ -132,6 +132,61 @@ public sealed class AuthController : ControllerBase
         return StatusCode(StatusCodes.Status202Accepted, response);
     }
 
+    /// <summary>Settings → Profile: the pending email change, or null (200 with a null body).</summary>
+    [HttpGet("me/email-change")]
+    public async Task<ActionResult<PendingEmailChangeDto?>> GetPendingEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+            return UnauthorizedResponse();
+
+        var pending = await emailChangeService.GetPendingAsync(currentUser, ct);
+        // A JsonResult writes a literal null; Ok(null) would turn into a 204 without a body.
+        return new JsonResult(pending);
+    }
+
+    /// <summary>Sends the pending change's confirmation link again (the password was checked when it was requested).
+    /// 202 whether a link was sent or the address has been taken since; 404 without a pending change.</summary>
+    [HttpPost("me/email-change/resend")]
+    [EnableRateLimiting("ResendEmailChange")]
+    public async Task<ActionResult<RequestEmailChangeResponseDto>> ResendEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+            return UnauthorizedResponse();
+
+        var response = await emailChangeService.ResendAsync(currentUser, ct);
+        return StatusCode(StatusCodes.Status202Accepted, response);
+    }
+
+    /// <summary>Cancels the pending change: every unused link stops working. 204, also when nothing was pending.</summary>
+    [HttpDelete("me/email-change")]
+    public async Task<IActionResult> CancelEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+            return UnauthorizedResponse();
+
+        await emailChangeService.CancelAsync(currentUser, ct);
+        return NoContent();
+    }
+
+    private UnauthorizedObjectResult UnauthorizedResponse() => Unauthorized(new ApiErrorResponse
+    {
+        StatusCode = StatusCodes.Status401Unauthorized,
+        Message = "Authentication is required.",
+        Code = "UNAUTHORIZED"
+    });
+
     /// <summary>The link from the confirmation email. Works signed in or not; when signed in as the same user,
     /// that session stays signed in and every other one is revoked.</summary>
     [HttpPost("email-change/confirm")]

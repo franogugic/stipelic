@@ -36,4 +36,13 @@ public sealed class EmailChangeTokenRepository : IEmailChangeTokenRepository
             .Where(token => token.UserId == userId && token.UsedAt == null)
             .ToListAsync(ct);
     }
+
+    public async Task<EmailChangeToken?> GetPendingByUserIdAsync(int userId, DateTimeOffset now, CancellationToken ct)
+    {
+        return await _context.Set<EmailChangeToken>()
+            .AsNoTracking()
+            .Where(token => token.UserId == userId && token.UsedAt == null && token.ExpiresAt > now)
+            .OrderByDescending(token => token.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
 }

@@ -151,4 +151,10 @@ public sealed class FakeEmailChangeTokenRepository : IEmailChangeTokenRepository
 
     public Task<IReadOnlyList<EmailChangeToken>> GetUnusedByUserIdAsync(int userId, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<EmailChangeToken>>(Tokens.Where(t => t.UserId == userId && t.UsedAt is null).ToList());
+
+    public Task<EmailChangeToken?> GetPendingByUserIdAsync(int userId, DateTimeOffset now, CancellationToken ct)
+        => Task.FromResult(Tokens
+            .Where(t => t.UserId == userId && t.UsedAt is null && t.ExpiresAt > now)
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefault());
 }

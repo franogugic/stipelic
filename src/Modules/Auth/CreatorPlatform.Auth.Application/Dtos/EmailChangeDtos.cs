@@ -31,3 +31,11 @@ public sealed record ConfirmEmailChangeResponseDto
     /// <summary>The account's new sign-in email.</summary>
     public string Email { get; init; } = string.Empty;
 }
+
+/// <summary>The user's pending email change: the address the newest unused, unexpired link would switch to.</summary>
+public sealed record PendingEmailChangeDto
+{
+    public string NewEmail { get; init; } = string.Empty;
+
+    public DateTimeOffset ExpiresAt { get; init; }
+}

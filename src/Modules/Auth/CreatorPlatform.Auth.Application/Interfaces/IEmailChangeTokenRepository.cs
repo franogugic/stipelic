@@ -12,4 +12,8 @@ public interface IEmailChangeTokenRepository
 
     /// <summary>The user's tokens that were neither used nor invalidated — tracked, to retire them.</summary>
     Task<IReadOnlyList<EmailChangeToken>> GetUnusedByUserIdAsync(int userId, CancellationToken ct);
+
+    /// <summary>The user's newest token that is neither used, invalidated nor expired at <paramref name="now"/> —
+    /// read-only.</summary>
+    Task<EmailChangeToken?> GetPendingByUserIdAsync(int userId, DateTimeOffset now, CancellationToken ct);
 }

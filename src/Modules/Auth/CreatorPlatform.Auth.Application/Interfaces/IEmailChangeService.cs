@@ -16,4 +16,15 @@ public interface IEmailChangeService
     /// expired link. Works with or without a session.</summary>
     Task<ConfirmEmailChangeResponseDto> ConfirmAsync(
         ConfirmEmailChangeRequestDto request, CurrentUserDto? currentUser, CancellationToken ct);
+
+    /// <summary>The newest unused, unexpired change of the user, or null.</summary>
+    Task<PendingEmailChangeDto?> GetPendingAsync(CurrentUserDto currentUser, CancellationToken ct);
+
+    /// <summary>Sends the pending change's link again: retires the user's unused links and mails a fresh 24-hour link
+    /// for the same address. If the address has been taken since, every link is retired and no mail goes out — with
+    /// the same answer, so it can't probe for accounts. 404 when there is no pending change.</summary>
+    Task<RequestEmailChangeResponseDto> ResendAsync(CurrentUserDto currentUser, CancellationToken ct);
+
+    /// <summary>Retires every unused link of the user. Idempotent.</summary>
+    Task CancelAsync(CurrentUserDto currentUser, CancellationToken ct);
 }

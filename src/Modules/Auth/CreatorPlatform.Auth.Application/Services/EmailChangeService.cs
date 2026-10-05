@@ -22,6 +22,7 @@ public sealed class EmailChangeService : IEmailChangeService
     private const string InvalidTokenMessage = "Invalid or expired email change link.";
     private const string EmailInUseMessage = "This email address is already in use.";
     private const string EmailChangedMessage = "Your email address has been changed.";
+    private const string NoPendingChangeMessage = "There is no pending email change.";
     private static readonly TimeSpan TokenLifetime = TimeSpan.FromHours(24);
 
     private readonly IUserRepository _userRepository;
@@ -170,6 +171,67 @@ public sealed class EmailChangeService : IEmailChangeService
         }
 
         return new ConfirmEmailChangeResponseDto { Message = EmailChangedMessage, Email = newEmail! };
+    }
+
+    public async Task<PendingEmailChangeDto?> GetPendingAsync(CurrentUserDto currentUser, CancellationToken ct)
+    {
+        var pending = await _emailChangeTokenRepository.GetPendingByUserIdAsync(currentUser.Id, DateTimeOffset.UtcNow, ct);
+
+        return pending is null ? null : new PendingEmailChangeDto { NewEmail = pending.NewEmail, ExpiresAt = pending.ExpiresAt };
+    }
+
+    public async Task<RequestEmailChangeResponseDto> ResendAsync(CurrentUserDto currentUser, CancellationToken ct)
+    {
+        // The row lock serializes resends (and a request) of the same user, so only one fresh link survives.
+        var user = await _userRepository.GetByIdForUpdateAsync(currentUser.Id, ct)
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        var now = DateTimeOffset.UtcNow;
+        var unused = await _emailChangeTokenRepository.GetUnusedByUserIdAsync(user.Id, ct);
+        var pending = unused
+            .Where(token => !token.IsExpired(now))
+            .OrderByDescending(token => token.CreatedAt)
+            .FirstOrDefault()
+            ?? throw new NotFoundException(NoPendingChangeMessage);
+
+        // The old link stops working either way.
+        foreach (var token in unused)
+            token.Invalidate(now);
+
+        // The address may have been taken since the request: retire the change silently, same answer as a send.
+        if (await _userRepository.ExistsByEmailAsync(pending.NewEmail, ct))
+        {
+            await _unitOfWork.SaveChangesAsync(ct);
+            _logger.LogInformation(
+                "Email change resend for an address that is now in use; the change was retired and no link sent. UserPublicId: {UserPublicId}.",
+                user.PublicId);
+            return Accepted();
+        }
+
+        var rawToken = _tokenGenerator.GenerateToken();
+        var fresh = EmailChangeToken.Create(user, pending.NewEmail, _tokenHasher.Hash(rawToken), now.Add(TokenLifetime), now);
+
+        await _emailChangeTokenRepository.AddAsync(fresh, ct);
+        await _emailOutboxService.QueueEmailChangeVerificationAsync(pending.NewEmail, user.PublicId.ToString(), rawToken, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Email change link sent again. UserPublicId: {UserPublicId}.", user.PublicId);
+
+        return Accepted();
+    }
+
+    public async Task CancelAsync(CurrentUserDto currentUser, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var unused = await _emailChangeTokenRepository.GetUnusedByUserIdAsync(currentUser.Id, ct);
+        if (unused.Count == 0)
+            return;
+
+        foreach (var token in unused)
+            token.Invalidate(now);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Pending email change cancelled. UserId: {UserId}.", currentUser.Id);
     }
 
     private static RequestEmailChangeResponseDto Accepted() => new() { Message = RequestAcceptedMessage };
