@@ -38,4 +38,10 @@
     <ProjectReference Include="..\..\src\Modules\Products\CreatorPlatform.Products.Infrastructure\CreatorPlatform.Products.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- The Api itself, for the few tests that call a controller directly (behaviour that lives only there, e.g. a
+       redirect or a header-only endpoint). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Api\CreatorPlatform.Api\CreatorPlatform.Api.csproj" />
+  </ItemGroup>
+
 </Project>

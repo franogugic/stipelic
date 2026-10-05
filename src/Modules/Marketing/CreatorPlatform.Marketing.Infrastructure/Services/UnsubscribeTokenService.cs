@@ -13,6 +13,7 @@ public sealed class UnsubscribeTokenService : IUnsubscribeTokenService
 {
     private readonly byte[] _secretBytes;
     private readonly string _apiBaseUrl;
+    private readonly string _frontendBaseUrl;
 
     public UnsubscribeTokenService(IOptions<MarketingOptions> options)
     {
@@ -23,12 +24,25 @@ public sealed class UnsubscribeTokenService : IUnsubscribeTokenService
 
         _secretBytes = Encoding.UTF8.GetBytes(options.Value.UnsubscribeTokenSecret);
         _apiBaseUrl = options.Value.ApiBaseUrl.TrimEnd('/');
+        _frontendBaseUrl = options.Value.FrontendBaseUrl.TrimEnd('/');
     }
 
     public string BuildUnsubscribeUrl(int creatorId, string email)
     {
         var token = Create(creatorId, email);
         return $"{_apiBaseUrl}/api/public/unsubscribe/{token}";
+    }
+
+    public string BuildUnsubscribePageUrl(int creatorId, string email) => BuildUnsubscribePageUrl(Create(creatorId, email));
+
+    public string BuildUnsubscribePageUrl(string token)
+    {
+        if (string.IsNullOrWhiteSpace(_frontendBaseUrl))
+            throw new InvalidOperationException(
+                "Marketing:FrontendBaseUrl (or Email:FrontendBaseUrl) is required to build the unsubscribe page link.");
+
+        // Tokens are base64url with one '.', so they are URL-safe as they are.
+        return $"{_frontendBaseUrl}/unsubscribe/{token}";
     }
 
     public string Create(int creatorId, string email)

@@ -69,7 +69,7 @@ public sealed class GlobalExceptionMiddleware
         {
             var statusCode = StatusCodes.Status404NotFound;
             _logger.LogWarning(e, "Not found: {Message}", e.Message);
-            await HandleExceptionAsync(context, statusCode, e.Message, "NOT_FOUND");
+            await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
         }
         catch (InternalServerException e)
         {

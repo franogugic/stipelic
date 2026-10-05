@@ -49,6 +49,12 @@ builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(Strip
 builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
 builder.Services.Configure<PayoutsOptions>(builder.Configuration.GetSection(PayoutsOptions.SectionName));
 builder.Services.Configure<MarketingOptions>(builder.Configuration.GetSection(MarketingOptions.SectionName));
+// The unsubscribe page lives in the same web app the other emails link to.
+builder.Services.PostConfigure<MarketingOptions>(options =>
+{
+    if (string.IsNullOrWhiteSpace(options.FrontendBaseUrl))
+        options.FrontendBaseUrl = builder.Configuration["Email:FrontendBaseUrl"] ?? string.Empty;
+});
 builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {

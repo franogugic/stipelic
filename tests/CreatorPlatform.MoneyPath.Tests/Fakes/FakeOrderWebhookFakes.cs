@@ -67,7 +67,7 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
 {
     public int OrderAccessQueuedCount { get; private set; }
     public int PayoutRequestedQueuedCount { get; private set; }
-    public List<(string ToEmail, string Subject, string CorrelationKey, string? ReplyTo, string ListUnsubscribeUrl)> QueuedCampaignMessages { get; } = new();
+    public List<(string ToEmail, string Subject, string CorrelationKey, string? ReplyTo, string ListUnsubscribeUrl, string HtmlBody, string PlainTextBody)> QueuedCampaignMessages { get; } = new();
     public List<(string ToEmail, string UserPublicId, string Token)> QueuedPasswordResetMessages { get; } = new();
 
     public Task QueueEmailVerificationAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
@@ -126,7 +126,7 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
         string correlationKey,
         CancellationToken ct)
     {
-        QueuedCampaignMessages.Add((toEmail, subject, correlationKey, replyTo, listUnsubscribeUrl));
+        QueuedCampaignMessages.Add((toEmail, subject, correlationKey, replyTo, listUnsubscribeUrl, htmlBody, plainTextBody));
         return Task.CompletedTask;
     }
 }

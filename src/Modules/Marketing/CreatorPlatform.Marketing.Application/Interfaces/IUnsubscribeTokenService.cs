@@ -14,7 +14,14 @@ public interface IUnsubscribeTokenService
     /// called on public, unauthenticated input.</summary>
     UnsubscribeTokenPayload? TryParse(string token);
 
-    /// <summary>Full one-click unsubscribe URL (API base + <see cref="Create"/> token) for a recipient —
-    /// the exact link embedded in campaign emails, so callers never need to know the API's base URL.</summary>
+    /// <summary>The RFC 8058 one-click URL (API base + token) for the <c>List-Unsubscribe</c> header: mail clients POST
+    /// to it without any UI.</summary>
     string BuildUnsubscribeUrl(int creatorId, string email);
+
+    /// <summary>The creator-branded unsubscribe page in the web app (<c>{FrontendBaseUrl}/unsubscribe/{token}</c>) — the
+    /// link people click inside the email. Opening it changes nothing; the page asks for a confirmation.</summary>
+    string BuildUnsubscribePageUrl(int creatorId, string email);
+
+    /// <summary>The same page for an existing token — where the old GET link redirects.</summary>
+    string BuildUnsubscribePageUrl(string token);
 }
