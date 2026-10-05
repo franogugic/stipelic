@@ -6,7 +6,17 @@ public interface ICreatorSubscriptionRepository
 {
     Task AddAsync(CreatorSubscription subscription, CancellationToken ct);
 
+    /// <summary>The subscription in force: the newest Active / PastDue one, else the newest PendingPayment one (a new
+    /// paid workspace that hasn't paid yet). Never a Cancelled one.</summary>
     Task<CreatorSubscription?> GetCurrentByCreatorIdAsync(int creatorId, CancellationToken ct);
+
+    /// <summary>The newest PendingPayment subscription — e.g. an upgrade from Free waiting for payment.</summary>
+    Task<CreatorSubscription?> GetPendingByCreatorIdAsync(int creatorId, CancellationToken ct);
+
+    /// <summary>The creator's non-cancelled subscriptions other than <paramref name="excludedSubscriptionId"/>,
+    /// tracked — to retire them when that one takes over.</summary>
+    Task<IReadOnlyList<CreatorSubscription>> GetOtherCurrentByCreatorIdForUpdateAsync(
+        int creatorId, int excludedSubscriptionId, CancellationToken ct);
 
     Task<CreatorSubscription?> GetByIdForUpdateAsync(int id, CancellationToken ct);
 

@@ -8,6 +8,7 @@ using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
@@ -196,11 +197,13 @@ public sealed class CreatorsController : ControllerBase
     [HttpPost("current/subscription/checkout")]
     [EnableRateLimiting("StartCreatorCheckout")]
     public async Task<ActionResult<ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>>> StartSubscriptionCheckout(
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] StartCreatorSubscriptionCheckoutRequestDto? request,
         CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
-        var response = await _creatorService.StartSubscriptionCheckoutAsync(currentUser.Id, ct);
+        var response = await _creatorService.StartSubscriptionCheckoutAsync(
+            currentUser.Id, currentUser.Email, request?.PlanCode, ct);
 
         return Ok(ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>.Success(
             StatusCodes.Status200OK,

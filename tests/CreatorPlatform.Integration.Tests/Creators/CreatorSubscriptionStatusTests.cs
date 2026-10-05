@@ -38,6 +38,7 @@ public sealed class CreatorSubscriptionStatusTests
             new UnexpectedSubscriptionCancellationService(),
             new UnexpectedBillingPortalService(),
             new CreatorOpenBalanceCheck(db),
+            new UnexpectedBillingCustomerService(),
             NullLogger<CreatorService>.Instance);
         return await service.GetCurrentForOwnerAsync(ownerUserId, CancellationToken.None);
     }

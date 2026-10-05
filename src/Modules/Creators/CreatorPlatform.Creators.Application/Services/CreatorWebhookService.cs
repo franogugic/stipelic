@@ -75,6 +75,7 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         var period = await TryReadBillingPeriodAsync(data.StripeSubscriptionId, data.SessionId, ct);
 
         var now = DateTimeOffset.UtcNow;
+        var activated = false;
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
@@ -159,12 +160,35 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
 
             creator.Activate(now);
 
+            // An upgrade from Free: the paid subscription takes over, so the Free one (and any other leftover) is
+            // retired in the same transaction — one current subscription per creator.
+            foreach (var other in await _creatorSubscriptionRepository.GetOtherCurrentByCreatorIdForUpdateAsync(creatorId, subscription.Id, ct))
+            {
+                if (other.Provider == SubscriptionProvider.Stripe && other.Status is CreatorSubscriptionStatus.Active or CreatorSubscriptionStatus.PastDue)
+                {
+                    // Never expected (only Free workspaces upgrade here); cancelling it only locally would keep billing.
+                    _logger.LogWarning(
+                        "A second Stripe-billed subscription is still active after checkout; left as is. CreatorId: {CreatorId}, SubscriptionId: {OtherId}",
+                        creatorId, other.Id);
+                    continue;
+                }
+
+                other.Cancel(now);
+                _logger.LogInformation(
+                    "Subscription retired by the new paid plan. CreatorId: {CreatorId}, RetiredSubscriptionId: {OtherId}, Plan: {PlanCode}",
+                    creatorId, other.Id, other.Plan.Code);
+            }
+
             await _unitOfWork.SaveChangesAsync(ct);
+            activated = true;
 
             _logger.LogInformation(
                 "Creator activated via Stripe checkout. CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}, StripeSubscriptionId: {StripeSubscriptionId}",
                 creatorId, subscriptionId, data.StripeSubscriptionId);
         }, ct);
+
+        if (activated)
+            _cacheInvalidator.Invalidate(creatorId);
     }
 
     public async Task HandleSubscriptionCreatedAsync(

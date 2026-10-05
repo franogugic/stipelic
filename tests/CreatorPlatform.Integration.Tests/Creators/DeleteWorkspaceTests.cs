@@ -49,6 +49,7 @@ public sealed class DeleteWorkspaceTests
             _cancellation,
             new UnexpectedBillingPortalService(),
             new CreatorOpenBalanceCheck(db),
+            new UnexpectedBillingCustomerService(),
             NullLogger<CreatorService>.Instance);
 
         return await service.DeleteCurrentAsync(creator.OwnerUserId, CancellationToken.None);

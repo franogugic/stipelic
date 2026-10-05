@@ -16,8 +16,15 @@ public interface ICreatorService
 
     Task<CreateCreatorResponseDto> CreateAsync(int ownerUserId, CreateCreatorRequestDto request, CancellationToken ct);
 
+    /// <summary>Two uses. A workspace waiting for its first payment (PendingPayment) gets the Checkout of its chosen
+    /// plan; <paramref name="planCode"/> is ignored. An Active workspace on the Free plan upgrades to
+    /// <paramref name="planCode"/> (a paid, active plan; 400 otherwise): a pending subscription is created next to the
+    /// still-active Free one, an earlier unpaid upgrade attempt is expired and replaced, and the Checkout bills the
+    /// workspace's Stripe customer (created on first use). Any other workspace → 409.</summary>
     Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
         int ownerUserId,
+        string ownerEmail,
+        string? planCode,
         CancellationToken ct);
 
     Task CancelSubscriptionAsync(int ownerUserId, CancellationToken ct);

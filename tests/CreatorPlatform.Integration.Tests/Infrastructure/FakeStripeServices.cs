@@ -11,18 +11,26 @@ public sealed class FakeCheckoutSessionService : ISubscriptionCheckoutSessionSer
     /// <summary>When set, ExpireAsync throws it — models Stripe being unreachable.</summary>
     public Exception? ExpireFailure { get; set; }
 
-    /// <summary>The session id CreateAsync hands out next.</summary>
-    public string NextSessionId { get; set; } = "cs_test_default";
+    /// <summary>The session id CreateAsync hands out next; when null, every session gets a fresh id.</summary>
+    public string? NextSessionId { get; set; }
 
     public List<string> ExpireCalls { get; } = [];
 
+    public sealed record CreateCall(
+        string StripePriceId, string? CustomerId, IReadOnlyDictionary<string, string> Metadata, string SessionId);
+
+    public List<CreateCall> CreateCalls { get; } = [];
+
     public Task<SubscriptionCheckoutSessionDto> CreateAsync(
-        string stripePriceId, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct)
+        string stripePriceId, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct,
+        string? customerId = null)
     {
+        var sessionId = NextSessionId ?? $"cs_test_{Guid.NewGuid():N}";
+        CreateCalls.Add(new CreateCall(stripePriceId, customerId, metadata, sessionId));
         return Task.FromResult(new SubscriptionCheckoutSessionDto
         {
-            ProviderCheckoutSessionId = NextSessionId,
-            CheckoutUrl = $"https://checkout.stripe.test/{NextSessionId}"
+            ProviderCheckoutSessionId = sessionId,
+            CheckoutUrl = $"https://checkout.stripe.test/{sessionId}"
         });
     }
 
@@ -101,4 +109,24 @@ public sealed class RecordingCreatorCacheInvalidator : CreatorPlatform.Creators.
     public List<int> Invalidated { get; } = [];
 
     public void Invalidate(int creatorId) => Invalidated.Add(creatorId);
+}
+
+/// <summary>Stands in for creating a Stripe customer: records calls and hands out an id.</summary>
+public sealed class FakeBillingCustomerService : IBillingCustomerService
+{
+    public List<string> CreatedFor { get; } = [];
+
+    public Task<string> CreateAsync(
+        string email, string name, IReadOnlyDictionary<string, string> metadata, string idempotencyKey, CancellationToken ct)
+    {
+        CreatedFor.Add(email);
+        return Task.FromResult($"cus_test_{Guid.NewGuid():N}");
+    }
+}
+
+public sealed class UnexpectedBillingCustomerService : IBillingCustomerService
+{
+    public Task<string> CreateAsync(
+        string email, string name, IReadOnlyDictionary<string, string> metadata, string idempotencyKey, CancellationToken ct)
+        => throw new InvalidOperationException("Not expected to be called in this scenario.");
 }

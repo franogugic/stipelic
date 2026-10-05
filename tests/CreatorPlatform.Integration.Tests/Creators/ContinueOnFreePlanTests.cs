@@ -41,6 +41,7 @@ public sealed class ContinueOnFreePlanTests
         new UnexpectedSubscriptionCancellationService(),
         new UnexpectedBillingPortalService(),
         new CreatorOpenBalanceCheck(db),
+        new UnexpectedBillingCustomerService(),
         logger);
 
     /// <summary>The production service over the real repositories, on its own context (a request scope).</summary>
@@ -197,7 +198,7 @@ public sealed class ContinueOnFreePlanTests
             _checkout.NextSessionId = sessionId;
             await using var db = _fixture.CreateDbContext();
             await BuildCreatorService(db, _checkout, NullLogger<CreatorService>.Instance)
-                .StartSubscriptionCheckoutAsync(creator.OwnerUserId, CancellationToken.None);
+                .StartSubscriptionCheckoutAsync(creator.OwnerUserId, "owner@example.test", null, CancellationToken.None);
         }
 
         var subscription = Assert.Single(await _data.GetSubscriptionsAsync(creator.CreatorId));

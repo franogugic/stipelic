@@ -22,7 +22,8 @@ public sealed class StripeSubscriptionCheckoutSessionService : ISubscriptionChec
         string stripePriceId,
         string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? customerId = null)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey))
             throw new BadRequestException("Stripe secret key is not configured.");
@@ -36,6 +37,7 @@ public sealed class StripeSubscriptionCheckoutSessionService : ISubscriptionChec
         var options = new SessionCreateOptions
         {
             Mode = "subscription",
+            Customer = customerId,
             SuccessUrl = _options.SuccessUrl,
             CancelUrl = _options.CancelUrl,
             Metadata = new Dictionary<string, string>(metadata),

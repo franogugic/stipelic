@@ -32,6 +32,7 @@ public class CreatorServiceCreateAsyncTests
             new FakeSubscriptionCancellationService(),
             new FakeBillingPortalService(),
             new FakeCreatorOpenBalanceCheck(),
+            new FakeBillingCustomerService(),
             NullLogger<CreatorService>.Instance);
     }
 

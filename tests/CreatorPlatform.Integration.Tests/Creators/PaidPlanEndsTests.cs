@@ -187,6 +187,7 @@ public sealed class PaidPlanEndsTests
             new UnexpectedSubscriptionCancellationService(),
             new UnexpectedBillingPortalService(),
             new CreatorOpenBalanceCheck(db),
+            new UnexpectedBillingCustomerService(),
             NullLogger<CreatorService>.Instance);
         return (await service.GetCurrentForOwnerAsync(creator.OwnerUserId, CancellationToken.None))!;
     }

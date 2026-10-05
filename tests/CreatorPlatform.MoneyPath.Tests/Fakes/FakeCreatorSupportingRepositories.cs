@@ -81,6 +81,13 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
         return Task.FromResult<CreatorSubscription?>(null);
     }
 
+    public Task<CreatorSubscription?> GetPendingByCreatorIdAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult<CreatorSubscription?>(null);
+
+    public Task<IReadOnlyList<CreatorSubscription>> GetOtherCurrentByCreatorIdForUpdateAsync(
+        int creatorId, int excludedSubscriptionId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<CreatorSubscription>>([]);
+
     public Task LockForUpdateAsync(int id, CancellationToken ct) => Task.CompletedTask;
 
     public Task<CreatorSubscriptionStatus?> GetStatusAsync(int id, CancellationToken ct)
@@ -102,7 +109,8 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
 public sealed class FakeSubscriptionCheckoutSessionService : ISubscriptionCheckoutSessionService
 {
     public Task<SubscriptionCheckoutSessionDto> CreateAsync(
-        string stripePriceId, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct)
+        string stripePriceId, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct,
+        string? customerId = null)
     {
         throw new InvalidOperationException("Not expected to be called in this scenario.");
     }
@@ -155,4 +163,13 @@ public sealed class FakeCreatorCacheInvalidator : ICreatorCacheInvalidator
     public List<int> Invalidated { get; } = [];
 
     public void Invalidate(int creatorId) => Invalidated.Add(creatorId);
+}
+
+public sealed class FakeBillingCustomerService : IBillingCustomerService
+{
+    public Task<string> CreateAsync(
+        string email, string name, IReadOnlyDictionary<string, string> metadata, string idempotencyKey, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
 }
