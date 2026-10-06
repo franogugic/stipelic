@@ -8,4 +8,7 @@ public interface IPublicLandingPageService
         string creatorSlug,
         string landingPageSlug,
         CancellationToken ct);
+
+    /// <summary>Null for an unknown or Disabled workspace.</summary>
+    Task<PublicCreatorPagesResponseDto?> GetCreatorPagesAsync(string creatorSlug, CancellationToken ct);
 }

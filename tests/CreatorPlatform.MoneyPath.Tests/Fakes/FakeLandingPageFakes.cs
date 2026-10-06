@@ -15,10 +15,16 @@ public sealed class FakeLandingPagesCreatorContextProvider : ICreatorContextProv
         => Task.FromResult<int?>(1);
 
     public Task<ProductInfo?> GetProductInfoAsync(int productId, CancellationToken ct)
-        => Task.FromResult<ProductInfo?>(new ProductInfo(Guid.Empty, "Product", 1000, null));
+        => Task.FromResult<ProductInfo?>(new ProductInfo(Guid.Empty, "Product", 1000, null, "Digital"));
 
     public Task<Dictionary<int, ProductInfo>> GetProductInfosAsync(IReadOnlyCollection<int> productIds, CancellationToken ct)
-        => Task.FromResult(productIds.ToDictionary(id => id, _ => new ProductInfo(Guid.Empty, "Product", 1000, null)));
+        => Task.FromResult(productIds.ToDictionary(id => id, _ => new ProductInfo(Guid.Empty, "Product", 1000, null, "Digital")));
+
+    public Task<PublicCreatorBrand?> GetPublicBrandAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult<PublicCreatorBrand?>(new PublicCreatorBrand(creatorId, "Brand", null, null, "Eur"));
+
+    public Task<PublicCreatorBrand?> GetPublicBrandBySlugAsync(string creatorSlug, CancellationToken ct)
+        => Task.FromResult<PublicCreatorBrand?>(null);
 }
 
 public sealed class FakeLandingPageRepository : ILandingPageRepository
@@ -45,6 +51,12 @@ public sealed class FakeLandingPageRepository : ILandingPageRepository
 
     public Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct)
         => Task.FromResult(PageForUpdate);
+
+    public Task<List<LandingPage>> ListPublishedByCreatorIdAsync(int creatorId, int limit, CancellationToken ct)
+        => Task.FromResult(Pages
+            .Where(p => p.CreatorId == creatorId && p.Status == LandingPageStatus.Published)
+            .Take(limit)
+            .ToList());
 
     public Task AddAsync(LandingPage landingPage, CancellationToken ct) => Task.CompletedTask;
 }

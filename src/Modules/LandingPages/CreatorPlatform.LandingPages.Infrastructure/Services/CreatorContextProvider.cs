@@ -78,7 +78,7 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return await _context.Set<Product>()
             .AsNoTracking()
             .Where(p => p.Id == productId)
-            .Select(p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl))
+            .Select(p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl, p.Type.ToString()))
             .FirstOrDefaultAsync(ct);
     }
 
@@ -90,6 +90,38 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return await _context.Set<Product>()
             .AsNoTracking()
             .Where(p => productIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl), ct);
+            .ToDictionaryAsync(p => p.Id, p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl, p.Type.ToString()), ct);
+    }
+
+    public Task<PublicCreatorBrand?> GetPublicBrandAsync(int creatorId, CancellationToken ct) =>
+        GetPublicBrandAsync(c => c.Id == creatorId, ct);
+
+    public Task<PublicCreatorBrand?> GetPublicBrandBySlugAsync(string creatorSlug, CancellationToken ct) =>
+        GetPublicBrandAsync(c => c.Slug == creatorSlug && c.Status != CreatorStatus.Disabled, ct);
+
+    private async Task<PublicCreatorBrand?> GetPublicBrandAsync(
+        System.Linq.Expressions.Expression<Func<Creator, bool>> creatorFilter, CancellationToken ct)
+    {
+        var row = await (
+            from c in _context.Set<Creator>().AsNoTracking().Where(creatorFilter)
+            from s in _context.Set<CreatorSettings>().AsNoTracking().Where(s => s.CreatorId == c.Id).DefaultIfEmpty()
+            select new
+            {
+                c.Id,
+                c.Name,
+                c.DefaultCurrency,
+                BrandName = s != null ? s.BrandName : null,
+                PrimaryColor = s != null ? s.PrimaryColor : null,
+                LogoUrl = s != null ? s.LogoUrl : null,
+            }).FirstOrDefaultAsync(ct);
+
+        return row is null
+            ? null
+            : new PublicCreatorBrand(
+                row.Id,
+                string.IsNullOrWhiteSpace(row.BrandName) ? row.Name : row.BrandName,
+                row.PrimaryColor,
+                row.LogoUrl,
+                row.DefaultCurrency.ToString());
     }
 }

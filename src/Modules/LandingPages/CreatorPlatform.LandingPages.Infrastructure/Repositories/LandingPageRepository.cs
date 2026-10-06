@@ -59,6 +59,17 @@ public sealed class LandingPageRepository : ILandingPageRepository
                 : null;
     }
 
+    public async Task<List<LandingPage>> ListPublishedByCreatorIdAsync(int creatorId, int limit, CancellationToken ct)
+    {
+        return await _context.Set<LandingPage>()
+            .AsNoTracking()
+            .Where(lp => lp.CreatorId == creatorId && lp.Status == LandingPageStatus.Published)
+            .OrderByDescending(lp => lp.UpdatedAt)
+            .ThenByDescending(lp => lp.Id)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
     private sealed class LandingPageIdRow
     {
         public int Id { get; init; }
