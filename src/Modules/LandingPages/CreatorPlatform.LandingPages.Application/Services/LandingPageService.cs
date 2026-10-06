@@ -15,6 +15,14 @@ public sealed partial class LandingPageService : ILandingPageService
     // storing megabytes in a jsonb column that every public page view reads.
     private const int ContentJsonMaxBytes = 64 * 1024;
 
+    // Publish-block codes: the editor picks its explanation by code, never by message.
+    public const string SubscriptionInactiveCode = "SUBSCRIPTION_INACTIVE";
+    public const string PayoutsNotReadyCode = "PAYOUTS_NOT_READY";
+    public const string PlanLimitReachedCode = "PLAN_LIMIT_REACHED";
+
+    /// <summary>The <c>details</c> of a PLAN_LIMIT_REACHED conflict: "{used} of {limit} pages".</summary>
+    public sealed record PlanLimitDetails(int Used, int Limit);
+
     private readonly ILandingPageRepository _landingPageRepository;
     private readonly ILandingPageSectionRepository _sectionRepository;
     private readonly ICreatorContextProvider _creatorContextProvider;
@@ -139,7 +147,15 @@ public sealed partial class LandingPageService : ILandingPageService
             return;
 
         if (context.Status != CreatorStatus.Active)
-            throw new ConflictException("Complete your subscription payment before publishing.");
+            throw new ConflictException("Complete your subscription payment before publishing.", SubscriptionInactiveCode);
+
+        // Creating and restoring already stop at the limit, and drafts count, so a workspace is only OVER it after
+        // a downgrade. At the limit, publishing an existing draft is fine.
+        if (context.MaxLandingPages >= 0 && context.ActiveLandingPageCount > context.MaxLandingPages)
+            throw new ConflictException(
+                $"Your plan includes {context.MaxLandingPages} landing page(s) and you have {context.ActiveLandingPageCount}. Archive a page or upgrade your plan to publish.",
+                PlanLimitReachedCode,
+                new PlanLimitDetails(context.ActiveLandingPageCount, context.MaxLandingPages));
 
         if (landingPage.Type == LandingPageType.Sales)
         {
@@ -152,7 +168,7 @@ public sealed partial class LandingPageService : ILandingPageService
                 var missing = context.PayoutMode == PayoutMode.StripeConnect
                     ? "Stripe Connect onboarding"
                     : "bank account details";
-                throw new ConflictException($"Complete your payout setup ({missing}) before publishing a Sales page.");
+                throw new ConflictException($"Complete your payout setup ({missing}) before publishing a Sales page.", PayoutsNotReadyCode);
             }
         }
 
