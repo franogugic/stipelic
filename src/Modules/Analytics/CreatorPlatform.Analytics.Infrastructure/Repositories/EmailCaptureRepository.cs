@@ -1,5 +1,6 @@
 using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Analytics.Domain.EmailCaptures;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,25 +28,53 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
         return rowsAffected > 0;
     }
 
-    public async Task<long> GetCaptureCountAsync(int landingPageId, CancellationToken ct)
+    public async Task<CapturesByPeriodRow> GetCaptureCountsByPeriodAsync(
+        int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
-        return await _context.Set<EmailCapture>()
+        return await _context.Database.SqlQuery<CapturesByPeriodRow>($"""
+            SELECT
+                COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.StartOfToday})   AS "Today",
+                COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.Last7DaysFrom})  AS "Last7Days",
+                COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.Last30DaysFrom}) AS "Last30Days",
+                COUNT(*)                                                          AS "AllTime"
+            FROM analytics.email_captures
+            WHERE "LandingPageId" = {landingPageId}
+            """)
             .AsNoTracking()
-            .LongCountAsync(ec => ec.LandingPageId == landingPageId, ct);
+            .FirstAsync(ct);
     }
 
-    public async Task<List<EmailCapture>> ListByLandingPageIdAsync(int landingPageId, CancellationToken ct)
+    public async Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)
+    {
+        if (landingPageIds.Count == 0)
+            return [];
+
+        return await _context.Set<EmailCapture>()
+            .AsNoTracking()
+            .Where(ec => landingPageIds.Contains(ec.LandingPageId))
+            .GroupBy(ec => ec.LandingPageId)
+            .Select(g => new { LandingPageId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(row => row.LandingPageId, row => row.Count, ct);
+    }
+
+    public async Task<List<EmailCapture>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct)
     {
         return await _context.Set<EmailCapture>()
             .AsNoTracking()
             .Where(ec => ec.LandingPageId == landingPageId)
             .OrderByDescending(ec => ec.CapturedAt)
+            .ThenByDescending(ec => ec.Id)
+            .Take(limit)
             .ToListAsync(ct);
     }
 
-    public async Task UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
+    public async Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)
     {
-        await _context.Database.ExecuteSqlAsync(
+        // xmax = 0 only on the row version this statement freshly inserted; the DO UPDATE branch stamps it with
+        // the current transaction id. So RETURNING (xmax = 0) tells insert (new contact) from update (known one)
+        // in the same atomic statement — a concurrent first capture of the same email on another page waits on
+        // the unique index and then takes the update branch, so exactly one of them reports "new".
+        var inserted = await _context.Database.SqlQuery<bool>(
             $"""
              INSERT INTO marketing.contact_summaries
                  ("CreatorId", "Email", "FirstCapturedAt", "LastCapturedAt", "SourceLandingPageIds")
@@ -57,8 +86,11 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
                          THEN contact_summaries."SourceLandingPageIds"
                      ELSE array_append(contact_summaries."SourceLandingPageIds", {landingPageId})
                  END
-             """,
-            ct);
+             RETURNING (xmax = 0) AS "Value"
+             """)
+            .ToListAsync(ct);
+
+        return inserted.Single();
     }
 
     public async Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(

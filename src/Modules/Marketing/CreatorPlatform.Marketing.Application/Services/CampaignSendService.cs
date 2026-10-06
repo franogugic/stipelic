@@ -315,11 +315,15 @@ public sealed class CampaignSendService : ICampaignSendService
             campaign.CtaUrl,
             context.BrandName,
             context.LogoUrl,
-            context.PrimaryColor);
+            context.PrimaryColor,
+            context.SupportEmail);
 
         foreach (var recipient in recipients)
         {
-            var unsubscribeUrl = _unsubscribeTokenService.BuildUnsubscribeUrl(context.CreatorId, recipient.Email);
+            // The link in the body opens the branded page (a GET never unsubscribes, so link scanners can't); the
+            // List-Unsubscribe header keeps the RFC 8058 one-click API URL.
+            var unsubscribeUrl = _unsubscribeTokenService.BuildUnsubscribePageUrl(context.CreatorId, recipient.Email);
+            var oneClickUnsubscribeUrl = _unsubscribeTokenService.BuildUnsubscribeUrl(context.CreatorId, recipient.Email);
             var openPixelUrl = _openTrackingTokenService.BuildPixelUrl(recipient.Id);
             var correlationKey = $"{campaign.PublicId}:{recipient.Id}";
 
@@ -331,7 +335,7 @@ public sealed class CampaignSendService : ICampaignSendService
                     .Replace("{{OPEN_PIXEL_URL}}", openPixelUrl),
                 rendered.PlainTextBody.Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl),
                 replyTo,
-                unsubscribeUrl,
+                oneClickUnsubscribeUrl,
                 correlationKey,
                 ct);
         }

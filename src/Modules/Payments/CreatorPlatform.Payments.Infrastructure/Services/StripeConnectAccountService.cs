@@ -1,6 +1,8 @@
+using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Payments.Application.Options;
 using CreatorPlatform.Shared.Application.Exceptions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Stripe;
 
@@ -24,11 +26,16 @@ public sealed class StripeConnectAccountService : IConnectAccountService
 {
     private readonly StripeClient _stripeClient;
     private readonly StripeOptions _options;
+    private readonly ILogger<StripeConnectAccountService> _logger;
 
-    public StripeConnectAccountService(StripeClient stripeClient, IOptions<StripeOptions> options)
+    public StripeConnectAccountService(
+        StripeClient stripeClient,
+        IOptions<StripeOptions> options,
+        ILogger<StripeConnectAccountService> logger)
     {
         _stripeClient = stripeClient;
         _options = options.Value;
+        _logger = logger;
     }
 
     public async Task<string> CreateAccountAsync(string countryCode, string email, CancellationToken ct)
@@ -77,5 +84,44 @@ public sealed class StripeConnectAccountService : IConnectAccountService
         var link = await service.CreateAsync(linkOptions, requestOptions: null, ct);
 
         return link.Url;
+    }
+
+    public async Task<string> CreateDashboardLoginLinkAsync(string accountId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+            throw new BadRequestException("Stripe secret key is not configured.");
+
+        var link = await new AccountLoginLinkService(_stripeClient).CreateAsync(accountId, options: null, requestOptions: null, ct);
+        return link.Url;
+    }
+
+    public async Task<PayoutScheduleDto?> GetPayoutScheduleAsync(string accountId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+        {
+            _logger.LogWarning("Stripe secret key is not configured; payout schedule unavailable.");
+            return null;
+        }
+
+        try
+        {
+            var account = await new AccountService(_stripeClient).GetAsync(accountId, options: null, requestOptions: null, ct);
+            var schedule = account.Settings?.Payouts?.Schedule;
+            if (schedule is null || string.IsNullOrEmpty(schedule.Interval))
+                return null;
+
+            return new PayoutScheduleDto(
+                schedule.Interval,
+                (int)schedule.DelayDays,
+                schedule.Interval == "weekly" ? schedule.WeeklyAnchor : null,
+                schedule.Interval == "monthly" ? (int)schedule.MonthlyAnchor : null);
+        }
+        catch (Exception exception) when (exception is StripeException or HttpRequestException
+                                              || (exception is OperationCanceledException && !ct.IsCancellationRequested))
+        {
+            // Stripe errors, network failures and client timeouts — but not the caller cancelling the request.
+            _logger.LogWarning(exception, "Could not read the payout schedule from Stripe. AccountId: {AccountId}", accountId);
+            return null;
+        }
     }
 }

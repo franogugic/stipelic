@@ -33,11 +33,10 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(o => o.LandingPageId);
 
         builder.Property(o => o.Email)
-            .HasMaxLength(254)
-            .IsRequired();
+            .HasMaxLength(254);
 
         builder.Property(o => o.Name)
-            .HasMaxLength(50);
+            .HasMaxLength(Order.NameMaxLength);
 
         builder.Property(o => o.AmountCents)
             .IsRequired();

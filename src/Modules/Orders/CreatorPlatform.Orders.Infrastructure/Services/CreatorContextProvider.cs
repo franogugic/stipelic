@@ -76,21 +76,40 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             result.PlatformFeeBasisPoints);
     }
 
-    public async Task<string?> GetProductNameAsync(int productId, CancellationToken ct)
+    public async Task<OrderEmailContext?> GetOrderEmailContextAsync(int productId, CancellationToken ct)
     {
-        return await _context.Set<Product>()
-            .AsNoTracking()
-            .Where(p => p.Id == productId)
-            .Select(p => p.Name)
-            .FirstOrDefaultAsync(ct);
-    }
+        var row = await (
+            from p in _context.Set<Product>().AsNoTracking()
+            join c in _context.Set<Creator>().AsNoTracking() on p.CreatorId equals c.Id
+            from s in _context.Set<CreatorSettings>().AsNoTracking().Where(s => s.CreatorId == c.Id).DefaultIfEmpty()
+            where p.Id == productId
+            select new
+            {
+                p.Name,
+                p.Type,
+                p.ThumbnailUrl,
+                CreatorName = c.Name,
+                BrandName = s != null ? s.BrandName : null,
+                PrimaryColor = s != null ? s.PrimaryColor : null,
+                LogoUrl = s != null ? s.LogoUrl : null,
+                SupportEmail = s != null ? s.SupportEmail : null,
+            }).FirstOrDefaultAsync(ct);
 
-    public async Task<string?> GetCreatorSlugByIdAsync(int creatorId, CancellationToken ct)
-    {
-        return await _context.Set<Creator>()
-            .AsNoTracking()
-            .Where(c => c.Id == creatorId)
-            .Select(c => c.Slug)
-            .FirstOrDefaultAsync(ct);
+        if (row is null)
+            return null;
+
+        return new OrderEmailContext(
+            row.Name,
+            row.Type switch
+            {
+                ProductType.Digital => "Digital download",
+                ProductType.Course => "Online course",
+                _ => "Service",
+            },
+            row.ThumbnailUrl,
+            string.IsNullOrWhiteSpace(row.BrandName) ? row.CreatorName : row.BrandName,
+            row.PrimaryColor,
+            row.LogoUrl,
+            row.SupportEmail);
     }
 }

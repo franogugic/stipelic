@@ -19,6 +19,8 @@ public static class AuthInfrastructureServiceCollectionExtensions
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IEmailVerificationTokenRepository, EmailVerificationTokenRepository>();
         services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
+        services.AddScoped<IEmailChangeTokenRepository, EmailChangeTokenRepository>();
+        services.AddScoped<IEmailChangeService, EmailChangeService>();
         services.AddScoped<IUserRoleRepository, UserRoleRepository>();
         services.AddScoped<IUserSessionRepository, UserSessionRepository>();
         services.AddScoped<ICurrentUserContext, CurrentUserContext>();

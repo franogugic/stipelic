@@ -66,12 +66,6 @@ public sealed class Creator
         UpdatedAt = updatedAt;
     }
 
-    public void Suspend(DateTimeOffset updatedAt)
-    {
-        Status = CreatorStatus.Suspended;
-        UpdatedAt = updatedAt;
-    }
-
     public void Disable(DateTimeOffset updatedAt)
     {
         Status = CreatorStatus.Disabled;
@@ -115,6 +109,13 @@ public sealed class Creator
         StripeConnectChargesEnabled = chargesEnabled;
         StripeConnectPayoutsEnabled = payoutsEnabled;
         StripeConnectStatusEventAt = eventOccurredAt;
+
+        // Milestones: stamped with the event time the first time each flag is seen true, and never cleared — a
+        // later event that turns the flag off (e.g. Stripe asking for more details) keeps the original date.
+        if (detailsSubmitted)
+            StripeConnectDetailsSubmittedAt ??= eventOccurredAt;
+        if (payoutsEnabled)
+            StripeConnectPayoutsEnabledAt ??= eventOccurredAt;
         UpdatedAt = updatedAt;
     }
 
@@ -147,6 +148,12 @@ public sealed class Creator
     public bool StripeConnectPayoutsEnabled { get; private set; }
 
     public DateTimeOffset? StripeConnectStatusEventAt { get; private set; }
+
+    /// <summary>When Stripe first reported the Connect account's details as submitted. Set once, never cleared.</summary>
+    public DateTimeOffset? StripeConnectDetailsSubmittedAt { get; private set; }
+
+    /// <summary>When Stripe first reported payouts as enabled on the Connect account. Set once, never cleared.</summary>
+    public DateTimeOffset? StripeConnectPayoutsEnabledAt { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

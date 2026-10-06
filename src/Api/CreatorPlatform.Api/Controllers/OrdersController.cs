@@ -2,8 +2,10 @@ using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
@@ -28,6 +30,7 @@ public sealed class OrdersController : ControllerBase
         [FromQuery] Guid? productId,
         [FromQuery] Guid? landingPageId,
         [FromQuery] string? status,
+        [FromQuery] string? search,
         [FromQuery] DateTimeOffset? afterCreatedAt,
         [FromQuery] Guid? afterId,
         [FromQuery] int limit,
@@ -36,12 +39,39 @@ public sealed class OrdersController : ControllerBase
         var user = _currentUserContext.User
             ?? throw new UnauthorizedException("Authentication is required.");
 
-        var orders = await _orderService.ListAsync(slug, user.Id, productId, landingPageId, status, afterCreatedAt, afterId, limit, ct);
+        var orders = await _orderService.ListAsync(
+            slug, user.Id, productId, landingPageId, status, search, afterCreatedAt, afterId, limit, ct);
 
         return Ok(ApiResponse<OrdersPageDto>.Success(
             StatusCodes.Status200OK,
             "Orders loaded.",
             orders));
+    }
+
+    /// <summary>CSV download of the orders (same filters as the list, incl. <paramref name="search"/>),
+    /// streamed batch by batch.</summary>
+    [HttpGet("export")]
+    [EnableRateLimiting("ExportOrders")]
+    public async Task Export(
+        string slug,
+        [FromQuery] Guid? productId,
+        [FromQuery] Guid? landingPageId,
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        CancellationToken ct)
+    {
+        var user = _currentUserContext.User
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        // Validation and ownership are checked here, so 400/401/404 still answer as JSON before any CSV.
+        var export = await _orderService.StartExportAsync(slug, user.Id, productId, landingPageId, status, search, ct);
+
+        await CsvResponseWriter.WriteAsync(
+            Response,
+            OrdersCsv.FileName(export.CreatorSlug, DateTimeOffset.UtcNow),
+            OrdersCsv.Header,
+            export.Orders.Select(OrdersCsv.Row),
+            ct);
     }
 
     [HttpGet("summary")]
@@ -58,6 +88,24 @@ public sealed class OrdersController : ControllerBase
             StatusCodes.Status200OK,
             "Order summary loaded.",
             summary));
+    }
+
+    /// <summary>Dashboard revenue and views per day (30d) or month (6m / 12m).</summary>
+    [HttpGet("dashboard-trends")]
+    public async Task<ActionResult<ApiResponse<DashboardTrendsDto>>> DashboardTrends(
+        string slug,
+        [FromQuery] string? range,
+        CancellationToken ct)
+    {
+        var user = _currentUserContext.User
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        var trends = await _orderService.GetDashboardTrendsAsync(slug, user.Id, range, ct);
+
+        return Ok(ApiResponse<DashboardTrendsDto>.Success(
+            StatusCodes.Status200OK,
+            "Dashboard trends loaded.",
+            trends));
     }
 
     [HttpGet("home-summary")]

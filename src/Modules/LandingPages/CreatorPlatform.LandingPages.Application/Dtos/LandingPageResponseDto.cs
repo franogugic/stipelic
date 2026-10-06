@@ -16,7 +16,9 @@ public sealed record LandingPageResponseDto
     public string Slug { get; init; } = string.Empty;
     public string Type { get; init; } = string.Empty;
     public string Status { get; init; } = string.Empty;
-    public int? ProductId { get; init; }
+    public Guid? ProductPublicId { get; init; }
+    public string? ProductName { get; init; }
+    public string? ProductThumbnailUrl { get; init; }
     public string? CustomDomain { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
@@ -24,4 +26,5 @@ public sealed record LandingPageResponseDto
     public long UniqueVisitors { get; init; }
     public int PurchaseCount { get; init; }
     public int TotalRevenueCents { get; init; }
+    public int CaptureCount { get; init; }
 }

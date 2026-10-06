@@ -13,6 +13,9 @@ namespace CreatorPlatform.Api.Controllers;
 [Route("api/public/landing-pages")]
 public sealed class PublicLandingPagesController : ControllerBase
 {
+    // An unknown page and an unpublished one answer the same, so a draft's URL is never revealed.
+    public const string PageNotFoundCode = "PAGE_NOT_FOUND";
+
     private const string VisitorCookieName = "lp_visitor_id";
     private static readonly CookieOptions VisitorCookieOptions = new()
     {
@@ -51,7 +54,7 @@ public sealed class PublicLandingPagesController : ControllerBase
             {
                 StatusCode = StatusCodes.Status404NotFound,
                 Message = "Page not found.",
-                Code = "NOT_FOUND"
+                Code = PageNotFoundCode
             });
 
         var visitorId = ResolveVisitorId();
@@ -78,7 +81,7 @@ public sealed class PublicLandingPagesController : ControllerBase
             {
                 StatusCode = StatusCodes.Status404NotFound,
                 Message = "Page not found.",
-                Code = "NOT_FOUND"
+                Code = PageNotFoundCode
             });
 
         await _emailCaptureService.CaptureAsync(page.Id, page.ProductId, page.CreatorId, request.Email, ct);

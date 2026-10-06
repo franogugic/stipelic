@@ -1,11 +1,14 @@
+using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
@@ -17,15 +20,24 @@ public sealed class CreatorsController : ControllerBase
     private readonly ICreatorService _creatorService;
     private readonly ICreatorConnectService _creatorConnectService;
     private readonly ICurrentUserContext _currentUserContext;
+    private readonly IOrderService _orderService;
+    private readonly IHomeSummaryCache _homeSummaryCache;
+    private readonly IViewsSummaryCache _viewsSummaryCache;
 
     public CreatorsController(
         ICreatorService creatorService,
         ICreatorConnectService creatorConnectService,
-        ICurrentUserContext currentUserContext)
+        ICurrentUserContext currentUserContext,
+        IOrderService orderService,
+        IHomeSummaryCache homeSummaryCache,
+        IViewsSummaryCache viewsSummaryCache)
     {
         _creatorService = creatorService;
         _creatorConnectService = creatorConnectService;
         _currentUserContext = currentUserContext;
+        _orderService = orderService;
+        _homeSummaryCache = homeSummaryCache;
+        _viewsSummaryCache = viewsSummaryCache;
     }
 
     [HttpGet("current")]
@@ -106,11 +118,17 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpDelete("current")]
+    [EnableRateLimiting("DeleteWorkspace")]
     public async Task<ActionResult<ApiResponse<object>>> DeleteCurrent(CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
-        await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
+        var creatorId = await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
+
+        // A disabled workspace already fails every ownership check, so nothing can read these entries any more;
+        // drop the longer-lived ones anyway rather than leave the data in memory for minutes.
+        _homeSummaryCache.Remove(creatorId);
+        _viewsSummaryCache.Remove(creatorId);
 
         return Ok(ApiResponse<object>.Success(
             StatusCodes.Status200OK,
@@ -144,6 +162,24 @@ public sealed class CreatorsController : ControllerBase
             null));
     }
 
+    /// <summary>Payment-cancelled screen: leave the unpaid plan and use the workspace on Free.</summary>
+    [HttpPost("current/subscription/continue-free")]
+    [EnableRateLimiting("ContinueFree")]
+    public async Task<ActionResult<ApiResponse<CreatorResponseDto>>> ContinueOnFreePlan(CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var response = await _creatorService.ContinueOnFreePlanAsync(currentUser.Id, ct);
+
+        // The home summary carries plan-dependent numbers (the monthly email limit).
+        await _orderService.InvalidateHomeSummaryAsync(response.Slug, currentUser.Id);
+
+        return Ok(ApiResponse<CreatorResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Workspace switched to the Free plan.",
+            response));
+    }
+
     [HttpPost("current/connect/onboarding-link")]
     [EnableRateLimiting("ConnectOnboarding")]
     public async Task<ActionResult<ApiResponse<ConnectOnboardingLinkResponseDto>>> ConnectOnboardingLink(CancellationToken ct)
@@ -158,14 +194,32 @@ public sealed class CreatorsController : ControllerBase
             response));
     }
 
+    /// <summary>Signs the owner into their Stripe Express dashboard (balance, payouts, bank account). The link is
+    /// single-use and expires within minutes, so the client opens it immediately.</summary>
+    [HttpPost("current/payouts/connect/login-link")]
+    [EnableRateLimiting("ConnectDashboardLink")]
+    public async Task<ActionResult<ApiResponse<ConnectDashboardLinkResponseDto>>> ConnectDashboardLoginLink(CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var response = await _creatorConnectService.CreateDashboardLoginLinkAsync(currentUser.Id, ct);
+
+        return Ok(ApiResponse<ConnectDashboardLinkResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Stripe dashboard link created.",
+            response));
+    }
+
     [HttpPost("current/subscription/checkout")]
     [EnableRateLimiting("StartCreatorCheckout")]
     public async Task<ActionResult<ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>>> StartSubscriptionCheckout(
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] StartCreatorSubscriptionCheckoutRequestDto? request,
         CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
-        var response = await _creatorService.StartSubscriptionCheckoutAsync(currentUser.Id, ct);
+        var response = await _creatorService.StartSubscriptionCheckoutAsync(
+            currentUser.Id, currentUser.Email, request?.PlanCode, ct);
 
         return Ok(ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>.Success(
             StatusCodes.Status200OK,

@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Every module's Infrastructure assembly: CreatorPlatformDbContext builds its model from whichever of them are
+       loaded, and migrating needs the full model (the same set the Api loads). PostgresFixture loads them all. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Shared\CreatorPlatform.Shared.Infrastructure\CreatorPlatform.Shared.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Access\CreatorPlatform.Access.Infrastructure\CreatorPlatform.Access.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Analytics\CreatorPlatform.Analytics.Infrastructure\CreatorPlatform.Analytics.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Auth\CreatorPlatform.Auth.Infrastructure\CreatorPlatform.Auth.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Creators\CreatorPlatform.Creators.Infrastructure\CreatorPlatform.Creators.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Customers\CreatorPlatform.Customers.Infrastructure\CreatorPlatform.Customers.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Email\CreatorPlatform.Email.Infrastructure\CreatorPlatform.Email.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\LandingPages\CreatorPlatform.LandingPages.Infrastructure\CreatorPlatform.LandingPages.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Marketing\CreatorPlatform.Marketing.Infrastructure\CreatorPlatform.Marketing.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Media\CreatorPlatform.Media.Infrastructure\CreatorPlatform.Media.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Orders\CreatorPlatform.Orders.Infrastructure\CreatorPlatform.Orders.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payments\CreatorPlatform.Payments.Infrastructure\CreatorPlatform.Payments.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payouts\CreatorPlatform.Payouts.Infrastructure\CreatorPlatform.Payouts.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Products\CreatorPlatform.Products.Infrastructure\CreatorPlatform.Products.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- The Api itself, for the few tests that call a controller directly (behaviour that lives only there, e.g. a
+       redirect or a header-only endpoint). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Api\CreatorPlatform.Api\CreatorPlatform.Api.csproj" />
+  </ItemGroup>
+
+</Project>

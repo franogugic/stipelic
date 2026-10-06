@@ -185,6 +185,43 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.ToTable("user_sessions", "auth");
                 });
 
+            modelBuilder.Entity("CreatorPlatform.Auth.Domain.Tokens.EmailChangeToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NewEmail")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("email_change_tokens", "auth");
+                });
+
             modelBuilder.Entity("CreatorPlatform.Auth.Domain.Tokens.EmailVerificationToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -293,6 +330,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<DateTimeOffset?>("TermsAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -368,10 +408,16 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<DateTimeOffset?>("StripeConnectDetailsSubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("StripeConnectPayoutsEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("StripeConnectPayoutsEnabledAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("StripeConnectStatusEventAt")
                         .HasColumnType("timestamp with time zone");
@@ -896,6 +942,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("CancelledAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CheckoutSessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -915,6 +965,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset?>("ProviderEventAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ProviderSubscriptionId")
                         .HasMaxLength(255)
@@ -1139,7 +1192,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("BackgroundColor")
-                        .IsRequired()
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
 
@@ -1166,6 +1218,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Variant")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.HasKey("Id");
 
@@ -1329,6 +1386,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer[]");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SourceLandingPageIds");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SourceLandingPageIds"), "gin");
 
                     b.HasIndex("CreatorId", "Email")
                         .IsUnique();
@@ -1504,7 +1565,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(3)");
 
                     b.Property<string>("Email")
-                        .IsRequired()
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
 
@@ -1872,6 +1932,17 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Auth.Domain.Tokens.EmailChangeToken", b =>
+                {
+                    b.HasOne("CreatorPlatform.Auth.Domain.Users.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("CreatorPlatform.Auth.Domain.Tokens.EmailVerificationToken", b =>

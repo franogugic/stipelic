@@ -1,5 +1,6 @@
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Email.Application.Interfaces;
+using CreatorPlatform.Email.Application.Templates;
 using CreatorPlatform.Payouts.Application.Dtos;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using CreatorPlatform.Payouts.Application.Options;
@@ -55,8 +56,16 @@ public sealed class CreatorPayoutService : ICreatorPayoutService
         var balances = await _ledgerEntryRepository.GetBalanceByCreatorIdAsync(context.CreatorId, ct);
         var balanceCents = balances.FirstOrDefault(b => b.Currency == context.Currency)?.BalanceCents ?? 0;
         var pendingCents = await _payoutRepository.GetPendingAmountCentsByCreatorIdAsync(context.CreatorId, ct);
+        var paidOutCents = await _payoutRepository.GetPaidOutCentsByCreatorIdAsync(context.CreatorId, context.Currency, ct);
+        var pendingRequest = await _payoutRepository.GetPendingRequestByCreatorIdAsync(context.CreatorId, ct);
 
-        return new CreatorPayoutSummaryDto(context.Currency.ToString(), balanceCents, pendingCents, _options.MinPayoutCents);
+        return new CreatorPayoutSummaryDto(
+            context.Currency.ToString(),
+            balanceCents,
+            pendingCents,
+            _options.MinPayoutCents,
+            paidOutCents,
+            pendingRequest);
     }
 
     public async Task<List<PayoutDto>> GetHistoryAsync(string slug, int ownerUserId, CancellationToken ct)
@@ -130,13 +139,25 @@ public sealed class CreatorPayoutService : ICreatorPayoutService
             return;
         }
 
+        // Runs inside the payout's transaction, after the payout debit was saved: the ledger already shows the
+        // balance that remains once this payout is sent.
+        var bank = await _creatorPayoutContextProvider.GetBankDetailsAsync(context.CreatorId, ct);
+        var balances = await _ledgerEntryRepository.GetBalanceByCreatorIdAsync(context.CreatorId, ct);
+        var balanceAfterCents = balances.FirstOrDefault(b => b.Currency == payout.Currency)?.BalanceCents ?? 0;
+
         await _emailOutboxService.QueuePayoutRequestedAsync(
             _options.AdminNotificationEmail,
             payout.PublicId.ToString(),
-            context.Name,
-            context.Slug,
-            payout.AmountCents,
-            context.Currency.ToString(),
+            new PayoutRequestedEmail(
+                bank?.AccountHolderName ?? string.Empty,
+                context.Name,
+                context.Slug,
+                payout.AmountCents,
+                payout.Currency.ToString(),
+                bank?.Iban ?? string.Empty,
+                bank?.BankCountryCode ?? string.Empty,
+                payout.CreatedAt,
+                balanceAfterCents),
             ct);
     }
 

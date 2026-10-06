@@ -81,6 +81,18 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
         return Task.FromResult<CreatorSubscription?>(null);
     }
 
+    public Task<CreatorSubscription?> GetPendingByCreatorIdAsync(int creatorId, CancellationToken ct)
+        => Task.FromResult<CreatorSubscription?>(null);
+
+    public Task<IReadOnlyList<CreatorSubscription>> GetOtherCurrentByCreatorIdForUpdateAsync(
+        int creatorId, int excludedSubscriptionId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<CreatorSubscription>>([]);
+
+    public Task LockForUpdateAsync(int id, CancellationToken ct) => Task.CompletedTask;
+
+    public Task<CreatorSubscriptionStatus?> GetStatusAsync(int id, CancellationToken ct)
+        => Task.FromResult(SubscriptionByProviderSubscriptionId?.Id == id ? SubscriptionByProviderSubscriptionId.Status : (CreatorSubscriptionStatus?)null);
+
     public Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(string providerSubscriptionId, CancellationToken ct)
     {
         return Task.FromResult(
@@ -97,7 +109,21 @@ public sealed class FakeCreatorSubscriptionRepository : ICreatorSubscriptionRepo
 public sealed class FakeSubscriptionCheckoutSessionService : ISubscriptionCheckoutSessionService
 {
     public Task<SubscriptionCheckoutSessionDto> CreateAsync(
-        string stripePriceId, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct)
+        string stripePriceId, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct,
+        string? customerId = null)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
+
+    public Task<CheckoutSessionExpireOutcome> ExpireAsync(string checkoutSessionId, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
+}
+
+public sealed class FakeSubscriptionBillingPeriodService : ISubscriptionBillingPeriodService
+{
+    public Task<SubscriptionBillingPeriodDto?> GetBillingPeriodAsync(string stripeSubscriptionId, CancellationToken ct)
     {
         throw new InvalidOperationException("Not expected to be called in this scenario.");
     }
@@ -109,11 +135,40 @@ public sealed class FakeSubscriptionCancellationService : ISubscriptionCancellat
     {
         throw new InvalidOperationException("Not expected to be called in this scenario.");
     }
+
+    public Task CancelImmediatelyAsync(string stripeSubscriptionId, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
+}
+
+public sealed class FakeCreatorOpenBalanceCheck : ICreatorOpenBalanceCheck
+{
+    public Task<bool> HasOpenBalanceAsync(int creatorId, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
 }
 
 public sealed class FakeBillingPortalService : IBillingPortalService
 {
     public Task<string> CreateSessionAsync(string stripeCustomerId, string returnUrl, CancellationToken ct)
+    {
+        throw new InvalidOperationException("Not expected to be called in this scenario.");
+    }
+}
+
+public sealed class FakeCreatorCacheInvalidator : ICreatorCacheInvalidator
+{
+    public List<int> Invalidated { get; } = [];
+
+    public void Invalidate(int creatorId) => Invalidated.Add(creatorId);
+}
+
+public sealed class FakeBillingCustomerService : IBillingCustomerService
+{
+    public Task<string> CreateAsync(
+        string email, string name, IReadOnlyDictionary<string, string> metadata, string idempotencyKey, CancellationToken ct)
     {
         throw new InvalidOperationException("Not expected to be called in this scenario.");
     }

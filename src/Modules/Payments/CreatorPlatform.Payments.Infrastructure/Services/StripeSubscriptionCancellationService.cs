@@ -27,4 +27,24 @@ public sealed class StripeSubscriptionCancellationService : ISubscriptionCancell
             new RequestOptions { ApiKey = _options.SecretKey },
             ct);
     }
+
+    public async Task CancelImmediatelyAsync(string stripeSubscriptionId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+            throw new BadRequestException("Stripe secret key is not configured.");
+
+        var service = new SubscriptionService();
+        var requestOptions = new RequestOptions { ApiKey = _options.SecretKey };
+
+        // Stripe rejects cancelling a subscription that is already cancelled; that end state is what we want.
+        var subscription = await service.GetAsync(stripeSubscriptionId, options: null, requestOptions, ct);
+        if (subscription.Status == "canceled")
+            return;
+
+        await service.CancelAsync(
+            stripeSubscriptionId,
+            new SubscriptionCancelOptions { InvoiceNow = false, Prorate = false },
+            requestOptions,
+            ct);
+    }
 }

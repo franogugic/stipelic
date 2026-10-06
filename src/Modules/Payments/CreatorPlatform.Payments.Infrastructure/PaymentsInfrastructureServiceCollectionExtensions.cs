@@ -16,6 +16,8 @@ public static class PaymentsInfrastructureServiceCollectionExtensions
 
         services.AddScoped<ISubscriptionCheckoutSessionService, StripeSubscriptionCheckoutSessionService>();
         services.AddScoped<ISubscriptionCancellationService, StripeSubscriptionCancellationService>();
+        services.AddScoped<IBillingCustomerService, StripeBillingCustomerService>();
+        services.AddScoped<ISubscriptionBillingPeriodService, StripeSubscriptionBillingPeriodService>();
         services.AddScoped<IBillingPortalService, StripeBillingPortalService>();
         services.AddScoped<IStripeWebhookService, StripeWebhookService>();
         services.AddScoped<IWebhookFailureRepository, WebhookFailureRepository>();

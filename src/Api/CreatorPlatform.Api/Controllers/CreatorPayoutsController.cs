@@ -18,15 +18,18 @@ public sealed class CreatorPayoutsController : ControllerBase
 {
     private readonly ICreatorPayoutService _creatorPayoutService;
     private readonly ICreatorService _creatorService;
+    private readonly ICreatorConnectService _creatorConnectService;
     private readonly ICurrentUserContext _currentUserContext;
 
     public CreatorPayoutsController(
         ICreatorPayoutService creatorPayoutService,
         ICreatorService creatorService,
+        ICreatorConnectService creatorConnectService,
         ICurrentUserContext currentUserContext)
     {
         _creatorPayoutService = creatorPayoutService;
         _creatorService = creatorService;
+        _creatorConnectService = creatorConnectService;
         _currentUserContext = currentUserContext;
     }
 
@@ -41,6 +44,21 @@ public sealed class CreatorPayoutsController : ControllerBase
             StatusCodes.Status200OK,
             "Payout summary loaded.",
             summary));
+    }
+
+    /// <summary>Stripe Connect details for the payouts screen: account id, milestone dates and the live payout
+    /// schedule (null when Stripe can't be reached).</summary>
+    [HttpGet("payouts/connect")]
+    public async Task<ActionResult<ApiResponse<ConnectPayoutDetailsResponseDto>>> ConnectDetails(string slug, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var details = await _creatorConnectService.GetPayoutDetailsAsync(slug, currentUser.Id, ct);
+
+        return Ok(ApiResponse<ConnectPayoutDetailsResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Connect payout details loaded.",
+            details));
     }
 
     [HttpGet("payouts")]

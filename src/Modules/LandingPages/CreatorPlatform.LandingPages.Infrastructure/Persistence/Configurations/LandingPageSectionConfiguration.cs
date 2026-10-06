@@ -34,14 +34,17 @@ public sealed class LandingPageSectionConfiguration : IEntityTypeConfiguration<L
             .HasMaxLength(30)
             .IsRequired();
 
+        builder.Property(s => s.Variant)
+            .HasMaxLength(40)
+            .IsRequired();
+
         builder.Property(s => s.SortOrder)
             .IsRequired();
 
         builder.HasIndex(s => new { s.LandingPageId, s.SortOrder });
 
         builder.Property(s => s.BackgroundColor)
-            .HasMaxLength(7)
-            .IsRequired();
+            .HasMaxLength(7);
 
         builder.Property(s => s.ContentJson)
             .HasColumnType("jsonb")

@@ -3,15 +3,22 @@ using System.Net.Mail;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Domain.Creators;
+using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
 using CreatorPlatform.Shared.Domain.Enums;
+using Microsoft.Extensions.Logging;
 
 namespace CreatorPlatform.Creators.Application.Services;
 
 public sealed partial class CreatorService : ICreatorService
 {
     private const string FreePlanCode = "free";
+    public const string UpgradeInProgressCode = "upgrade_in_progress";
+    private const string UpgradeInProgressMessage =
+        "An upgrade is already starting. Use the checkout page that opened, or try again in a minute.";
+    private const string SlugTakenMessage = "This creator URL is already taken.";
+    private const string AlreadyExistsMessage = "You already have a creator workspace.";
     private const string DefaultPrimaryColor = "#111827";
     private const string DefaultTimezone = "Europe/Sarajevo";
     private const string DefaultLanguage = "en";
@@ -31,6 +38,9 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ISubscriptionCheckoutSessionService _subscriptionCheckoutSessionService;
     private readonly ISubscriptionCancellationService _subscriptionCancellationService;
     private readonly IBillingPortalService _billingPortalService;
+    private readonly ICreatorOpenBalanceCheck _creatorOpenBalanceCheck;
+    private readonly IBillingCustomerService _billingCustomerService;
+    private readonly ILogger<CreatorService> _logger;
 
     public CreatorService(
         ICreatorRepository creatorRepository,
@@ -42,7 +52,10 @@ public sealed partial class CreatorService : ICreatorService
         ICreatorsUnitOfWork unitOfWork,
         ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService,
         ISubscriptionCancellationService subscriptionCancellationService,
-        IBillingPortalService billingPortalService)
+        IBillingPortalService billingPortalService,
+        ICreatorOpenBalanceCheck creatorOpenBalanceCheck,
+        IBillingCustomerService billingCustomerService,
+        ILogger<CreatorService> logger)
     {
         _creatorRepository = creatorRepository;
         _creatorMemberRepository = creatorMemberRepository;
@@ -54,6 +67,9 @@ public sealed partial class CreatorService : ICreatorService
         _subscriptionCheckoutSessionService = subscriptionCheckoutSessionService;
         _subscriptionCancellationService = subscriptionCancellationService;
         _billingPortalService = billingPortalService;
+        _creatorOpenBalanceCheck = creatorOpenBalanceCheck;
+        _billingCustomerService = billingCustomerService;
+        _logger = logger;
     }
 
     public async Task<CreateCreatorResponseDto> CreateAsync(
@@ -74,14 +90,12 @@ public sealed partial class CreatorService : ICreatorService
         var language = NormalizeLanguage(request.Language);
 
         if (await _creatorRepository.SlugExistsAsync(slug, ct))
-            throw new ConflictException("This creator URL is already taken.");
+            throw new ConflictException(SlugTakenMessage, CreatorErrorCodes.SlugTaken);
 
         if (await _creatorRepository.ExistsByOwnerUserIdAsync(ownerUserId, ct))
-            throw new ConflictException("You already have a creator workspace.");
+            throw new ConflictException(AlreadyExistsMessage, CreatorErrorCodes.AlreadyExists);
 
-        var plan = await _creatorPlanRepository.GetByCodeAsync(planCode, ct);
-        if (plan is null || plan.Status != CreatorPlanStatus.Active)
-            throw new BadRequestException("Selected creator plan is not available.");
+        var plan = await GetAvailablePlanAsync(planCode, ct);
 
         var requiresPayment = plan.Code != FreePlanCode;
         var creatorStatus = requiresPayment
@@ -139,8 +153,7 @@ public sealed partial class CreatorService : ICreatorService
             RequiresPayment = requiresPayment,
             PaymentStatus = requiresPayment
                 ? CreatorSubscriptionStatus.PendingPayment.ToString()
-                : CreatorSubscriptionStatus.Active.ToString(),
-            CheckoutUrl = null
+                : CreatorSubscriptionStatus.Active.ToString()
         };
     }
 
@@ -252,12 +265,95 @@ public sealed partial class CreatorService : ICreatorService
             ct);
     }
 
-    public async Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
+    public async Task<int> DeleteCurrentAsync(int ownerUserId, CancellationToken ct)
     {
-        var disabledAt = DateTimeOffset.UtcNow;
-        var wasDisabled = await _creatorRepository.DisableByOwnerUserIdAsync(ownerUserId, disabledAt, ct);
-        if (!wasDisabled)
-            throw new NotFoundException("Creator workspace does not exist.");
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace does not exist.");
+
+        // 1. Money still owed to a bank-transfer creator blocks the deletion — checked before touching Stripe.
+        if (creator.PayoutMode == PayoutMode.BankTransfer
+            && await _creatorOpenBalanceCheck.HasOpenBalanceAsync(creator.Id, ct))
+        {
+            throw new ConflictException(
+                "Request a payout of your remaining balance before deleting this workspace.",
+                CreatorErrorCodes.WorkspaceHasBalance);
+        }
+
+        // 2–3. Stop the billing in Stripe first, outside the transaction: if Stripe fails, the call throws and the
+        // workspace and its subscription stay exactly as they were.
+        var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
+        if (subscription is not null)
+            await StopBillingAsync(creator, subscription, ct);
+
+        // An unpaid upgrade waiting next to the Free subscription: its Checkout must not stay payable either.
+        var pendingUpgrade = await _creatorSubscriptionRepository.GetPendingByCreatorIdAsync(creator.Id, ct);
+        if (pendingUpgrade is not null && pendingUpgrade.Id != subscription?.Id)
+            await StopBillingAsync(creator, pendingUpgrade, ct);
+
+        // 4. Cancel the subscription locally and disable the workspace together.
+        var now = DateTimeOffset.UtcNow;
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            foreach (var toCancel in new[] { subscription, pendingUpgrade }.OfType<CreatorSubscription>().DistinctBy(s => s.Id))
+            {
+                await _creatorSubscriptionRepository.LockForUpdateAsync(toCancel.Id, ct);
+                var trackedSubscription = await _creatorSubscriptionRepository.GetByIdForUpdateAsync(toCancel.Id, ct);
+                if (trackedSubscription is not null && trackedSubscription.Status != CreatorSubscriptionStatus.Cancelled)
+                    trackedSubscription.Cancel(now);
+            }
+
+            var trackedCreator = await _creatorRepository.GetByIdForUpdateAsync(creator.Id, ct);
+            // A concurrent deletion got here first.
+            if (trackedCreator is null || trackedCreator.Status == CreatorStatus.Disabled)
+                throw new NotFoundException("Creator workspace does not exist.");
+
+            trackedCreator.Disable(now);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, ct);
+
+        _logger.LogInformation(
+            "Creator workspace deleted (disabled). CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}",
+            creator.Id, subscription?.Id);
+
+        return creator.Id;
+    }
+
+    private async Task StopBillingAsync(Creator creator, CreatorSubscription subscription, CancellationToken ct)
+    {
+        // Only a Stripe-billed subscription is charged recurringly (a pending one is still Internal until paid).
+        if (subscription.Provider == SubscriptionProvider.Stripe
+            && subscription.Status is CreatorSubscriptionStatus.Active or CreatorSubscriptionStatus.PastDue)
+        {
+            if (string.IsNullOrWhiteSpace(subscription.ProviderSubscriptionId))
+            {
+                _logger.LogWarning(
+                    "Deleting a workspace whose paid subscription has no Stripe subscription id; nothing to cancel in Stripe. CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}",
+                    creator.Id, subscription.Id);
+                return;
+            }
+
+            // Immediately, not at period end: a deleted workspace must not be charged again.
+            await _subscriptionCancellationService.CancelImmediatelyAsync(subscription.ProviderSubscriptionId, ct);
+            return;
+        }
+
+        if (subscription.Status == CreatorSubscriptionStatus.PendingPayment)
+        {
+            if (subscription.CheckoutSessionId is not { } checkoutSessionId)
+            {
+                _logger.LogWarning(
+                    "Deleting a pending workspace without expiring a Checkout session: none is stored for its pending subscription. CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}",
+                    creator.Id, subscription.Id);
+                return;
+            }
+
+            var outcome = await _subscriptionCheckoutSessionService.ExpireAsync(checkoutSessionId, ct);
+            if (outcome == CheckoutSessionExpireOutcome.AlreadyCompleted)
+            {
+                // The customer just paid; the checkout.session.completed webhook activates the plan.
+                throw new ConflictException("Payment already completed.");
+            }
+        }
     }
 
     public async Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct)
@@ -321,15 +417,23 @@ public sealed partial class CreatorService : ICreatorService
 
     public async Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
         int ownerUserId,
+        string ownerEmail,
+        string? planCode,
         CancellationToken ct)
     {
         var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
         if (creator is null)
             throw new NotFoundException("Creator workspace does not exist.");
 
-        if (creator.Status != CreatorStatus.PendingPayment)
-            throw new BadRequestException("Creator workspace does not require payment.");
+        return creator.Status == CreatorStatus.PendingPayment
+            ? await StartFirstPaymentCheckoutAsync(creator, ct)
+            : await StartUpgradeCheckoutAsync(creator, ownerEmail, planCode, ct);
+    }
 
+    /// <summary>The original use: a new paid workspace pays for the plan it chose at sign-up.</summary>
+    private async Task<StartCreatorSubscriptionCheckoutResponseDto> StartFirstPaymentCheckoutAsync(
+        Creator creator, CancellationToken ct)
+    {
         var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
         if (subscription is null)
             throw new NotFoundException("Creator subscription does not exist.");
@@ -355,12 +459,214 @@ public sealed partial class CreatorService : ICreatorService
             },
             ct);
 
+        // Remember the session so it can be expired if the creator abandons the payment (see
+        // ContinueOnFreePlanAsync). A re-checkout replaces it; Stripe's idempotency key returns the same
+        // session for repeated calls within its window.
+        var trackedSubscription = await _creatorSubscriptionRepository.GetByIdForUpdateAsync(subscription.Id, ct);
+        trackedSubscription!.AttachCheckoutSession(checkoutSession.ProviderCheckoutSessionId, DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
         return new StartCreatorSubscriptionCheckoutResponseDto
         {
             RequiresPayment = true,
             PaymentStatus = subscription.Status.ToString(),
             CheckoutUrl = checkoutSession.CheckoutUrl
         };
+    }
+
+    /// <summary>Free → paid. The workspace stays Active on Free until checkout.session.completed activates the paid
+    /// subscription (and retires the Free one).</summary>
+    private async Task<StartCreatorSubscriptionCheckoutResponseDto> StartUpgradeCheckoutAsync(
+        Creator creator, string ownerEmail, string? planCode, CancellationToken ct)
+    {
+        var current = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
+        if (creator.Status != CreatorStatus.Active
+            || current is null
+            || current.Status != CreatorSubscriptionStatus.Active
+            || current.Plan.Code != FreePlanCode)
+        {
+            throw new ConflictException(
+                "Only an active workspace on the Free plan can upgrade here. Change a paid plan in the billing portal.");
+        }
+
+        if (string.IsNullOrWhiteSpace(planCode))
+            throw new BadRequestException("Choose the plan to upgrade to.");
+
+        var plan = await _creatorPlanRepository.GetByCodeAsync(planCode.Trim().ToLowerInvariant(), ct);
+        if (plan is null
+            || plan.Status != CreatorPlanStatus.Active
+            || plan.Code == FreePlanCode
+            || plan.PriceCents <= 0
+            || plan.BillingInterval == BillingInterval.None)
+        {
+            throw new BadRequestException("Selected creator plan is not available.");
+        }
+
+        if (string.IsNullOrWhiteSpace(plan.StripePriceId))
+            throw new BadRequestException("Stripe price is not configured for this creator plan.");
+
+        // An earlier, unpaid attempt: make its Checkout unpayable first, outside the transaction. If Stripe can't be
+        // reached, ExpireAsync throws and nothing changes; if it was paid meanwhile, the webhook activates that plan.
+        var earlier = await _creatorSubscriptionRepository.GetPendingByCreatorIdAsync(creator.Id, ct);
+        if (earlier?.CheckoutSessionId is { } earlierSessionId)
+        {
+            var outcome = await _subscriptionCheckoutSessionService.ExpireAsync(earlierSessionId, ct);
+            if (outcome == CheckoutSessionExpireOutcome.AlreadyCompleted)
+                throw new ConflictException("Payment already completed.");
+        }
+
+        // The Stripe customer the workspace is billed as (also what the billing portal needs). Stored right away, so
+        // a failure further on never leads to a second customer; Stripe's idempotency key covers a lost response.
+        var customerId = creator.StripeCustomerId;
+        if (string.IsNullOrWhiteSpace(customerId))
+        {
+            customerId = await _billingCustomerService.CreateAsync(
+                ownerEmail,
+                creator.Name,
+                new Dictionary<string, string>
+                {
+                    ["creatorId"] = creator.Id.ToString(),
+                    ["creatorPublicId"] = creator.PublicId.ToString(),
+                },
+                idempotencyKey: $"billing-customer-{creator.PublicId}",
+                ct);
+
+            var trackedCreator = await _creatorRepository.GetByIdForUpdateAsync(creator.Id, ct);
+            trackedCreator!.SetStripeCustomerId(customerId, DateTimeOffset.UtcNow);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
+
+        CreatorSubscription? pending = null;
+        var now = DateTimeOffset.UtcNow;
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            // Serializes concurrent upgrade requests on the Free subscription row.
+            await _creatorSubscriptionRepository.LockForUpdateAsync(current.Id, ct);
+
+            // Re-read under the lock. Only the attempt whose Checkout was expired above may be replaced; any other
+            // pending upgrade was created by a concurrent request (e.g. a double click) whose Checkout may already be
+            // open — cancelling it here would leave that Checkout payable for a plan that can no longer activate.
+            foreach (var other in await _creatorSubscriptionRepository.GetOtherCurrentByCreatorIdForUpdateAsync(creator.Id, current.Id, ct))
+            {
+                if (other.Status != CreatorSubscriptionStatus.PendingPayment)
+                    continue;
+
+                if (other.Id != earlier?.Id)
+                    throw new ConflictException(UpgradeInProgressMessage, UpgradeInProgressCode);
+
+                other.Cancel(now);
+            }
+
+            var trackedCreator = await _creatorRepository.GetByIdForUpdateAsync(creator.Id, ct);
+            pending = CreatorSubscription.CreatePendingPayment(
+                trackedCreator!, plan, plan.BillingInterval, SubscriptionProvider.Internal, null, now);
+            await _creatorSubscriptionRepository.AddAsync(pending, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, ct);
+
+        var checkoutSession = await _subscriptionCheckoutSessionService.CreateAsync(
+            plan.StripePriceId,
+            idempotencyKey: $"checkout-sub-{pending!.Id}-{plan.StripePriceId}",
+            new Dictionary<string, string>
+            {
+                ["creatorId"] = creator.Id.ToString(),
+                ["creatorPublicId"] = creator.PublicId.ToString(),
+                ["subscriptionId"] = pending.Id.ToString(),
+                ["planCode"] = plan.Code,
+            },
+            ct,
+            customerId);
+
+        pending.AttachCheckoutSession(checkoutSession.ProviderCheckoutSessionId, DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Upgrade checkout started. CreatorId: {CreatorId}, PendingSubscriptionId: {SubscriptionId}, Plan: {PlanCode}",
+            creator.Id, pending.Id, plan.Code);
+
+        return new StartCreatorSubscriptionCheckoutResponseDto
+        {
+            RequiresPayment = true,
+            PaymentStatus = pending.Status.ToString(),
+            CheckoutUrl = checkoutSession.CheckoutUrl
+        };
+    }
+
+    public async Task<CreatorResponseDto> ContinueOnFreePlanAsync(int ownerUserId, CancellationToken ct)
+    {
+        var (creator, hasPayoutProfile) = await _creatorRepository.GetByOwnerUserIdWithPayoutProfileAsync(ownerUserId, ct);
+        if (creator is null)
+            throw new NotFoundException("Creator workspace does not exist.");
+
+        var pendingSubscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
+        EnsureWaitingForPayment(creator, pendingSubscription);
+
+        var freePlan = await GetAvailablePlanAsync(FreePlanCode, ct);
+
+        // Close the Checkout session first, outside the transaction: a Free workspace must never sit behind a
+        // still-payable session. If Stripe can't be reached, ExpireAsync throws and nothing changes.
+        if (pendingSubscription!.CheckoutSessionId is { } checkoutSessionId)
+        {
+            var outcome = await _subscriptionCheckoutSessionService.ExpireAsync(checkoutSessionId, ct);
+            if (outcome == CheckoutSessionExpireOutcome.AlreadyCompleted)
+            {
+                // The customer paid; the checkout.session.completed webhook activates the paid plan.
+                throw new ConflictException("Payment already completed.");
+            }
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Switching a pending workspace to the Free plan without expiring a Checkout session: none is stored for its pending subscription (created before session ids were recorded). CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}",
+                creator.Id, pendingSubscription.Id);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        CreatorSubscription? freeSubscription = null;
+        Creator? trackedCreator = null;
+
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            // Serializes concurrent switches (e.g. a double click): the second request waits here, then sees the
+            // subscription already Cancelled and gets the 409 below instead of creating a second Free plan.
+            await _creatorSubscriptionRepository.LockForUpdateAsync(pendingSubscription.Id, ct);
+
+            var subscription = await _creatorSubscriptionRepository.GetByIdForUpdateAsync(pendingSubscription.Id, ct);
+            trackedCreator = await _creatorRepository.GetByIdForUpdateAsync(creator.Id, ct);
+            EnsureWaitingForPayment(trackedCreator, subscription);
+
+            subscription!.Cancel(now);
+            // The same Free subscription a free sign-up gets in CreateAsync.
+            freeSubscription = CreatorSubscription.CreateFree(trackedCreator!, freePlan, now);
+            trackedCreator!.Activate(now);
+
+            await _creatorSubscriptionRepository.AddAsync(freeSubscription, ct);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }, ct);
+
+        _logger.LogInformation(
+            "Pending workspace switched to the Free plan. CreatorId: {CreatorId}, CancelledSubscriptionId: {SubscriptionId}",
+            creator.Id, pendingSubscription.Id);
+
+        return ToResponse(trackedCreator!, freeSubscription, hasPayoutProfile);
+    }
+
+    private static void EnsureWaitingForPayment(Creator? creator, CreatorSubscription? subscription)
+    {
+        if (creator?.Status != CreatorStatus.PendingPayment
+            || subscription?.Status != CreatorSubscriptionStatus.PendingPayment)
+        {
+            throw new ConflictException("Only a workspace that is waiting for its first payment can switch to the Free plan.");
+        }
+    }
+
+    private async Task<CreatorPlan> GetAvailablePlanAsync(string planCode, CancellationToken ct)
+    {
+        var plan = await _creatorPlanRepository.GetByCodeAsync(planCode, ct);
+        if (plan is null || plan.Status != CreatorPlanStatus.Active)
+            throw new BadRequestException("Selected creator plan is not available.");
+
+        return plan;
     }
 
     private static string NormalizeName(string name)
@@ -564,6 +870,7 @@ public sealed partial class CreatorService : ICreatorService
             DefaultCurrency = creator.DefaultCurrency.ToString(),
             PlanCode = subscription?.Plan.Code ?? string.Empty,
             PlanName = subscription?.Plan.Name ?? string.Empty,
+            SubscriptionStatus = subscription?.Status.ToString(),
             CancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false,
             CurrentPeriodEnd = subscription?.CurrentPeriodEnd,
             CountryCode = creator.CountryCode,

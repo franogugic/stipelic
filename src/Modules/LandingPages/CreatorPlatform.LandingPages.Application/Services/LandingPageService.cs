@@ -11,7 +11,17 @@ public sealed partial class LandingPageService : ILandingPageService
 {
     private const int TitleMaxLength = 100;
     private const int SlugMaxLength = 100;
-    private const string DefaultBackgroundColor = "#ffffff";
+    // A section's content is a small JSON document (text, a few image URLs); the cap keeps one save from
+    // storing megabytes in a jsonb column that every public page view reads.
+    private const int ContentJsonMaxBytes = 64 * 1024;
+
+    // Publish-block codes: the editor picks its explanation by code, never by message.
+    public const string SubscriptionInactiveCode = "SUBSCRIPTION_INACTIVE";
+    public const string PayoutsNotReadyCode = "PAYOUTS_NOT_READY";
+    public const string PlanLimitReachedCode = "PLAN_LIMIT_REACHED";
+
+    /// <summary>The <c>details</c> of a PLAN_LIMIT_REACHED conflict: "{used} of {limit} pages".</summary>
+    public sealed record PlanLimitDetails(int Used, int Limit);
 
     private readonly ILandingPageRepository _landingPageRepository;
     private readonly ILandingPageSectionRepository _sectionRepository;
@@ -58,18 +68,18 @@ public sealed partial class LandingPageService : ILandingPageService
 
         await _landingPageRepository.AddAsync(landingPage, ct);
 
-        var navbarTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Navbar);
-        var heroTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Hero);
-        var ctaTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Cta);
-        var footerTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Footer);
-
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Navbar, 0, navbarTemplate.DefaultBackgroundColor, navbarTemplate.ContentJson, now), ct);
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Hero, 1, heroTemplate.DefaultBackgroundColor, heroTemplate.ContentJson, now), ct);
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Cta, 2, ctaTemplate.DefaultBackgroundColor, ctaTemplate.ContentJson, now), ct);
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Footer, 3, footerTemplate.DefaultBackgroundColor, footerTemplate.ContentJson, now), ct);
+        // Every page starts with the four required sections, each in its type's default layout.
+        LandingPageSectionType[] starterTypes =
+            [LandingPageSectionType.Navbar, LandingPageSectionType.Hero, LandingPageSectionType.Cta, LandingPageSectionType.Footer];
+        for (var i = 0; i < starterTypes.Length; i++)
+        {
+            var template = SectionTemplates.GetDefault(starterTypes[i]);
+            await _sectionRepository.AddAsync(LandingPageSection.Create(
+                landingPage, template.Type, template.Variant, i, template.DefaultBackgroundColor, template.ContentJson, now), ct);
+        }
         await _unitOfWork.SaveChangesAsync(ct);
 
-        return MapToDto(landingPage);
+        return MapToDto(landingPage, await GetProductInfoAsync(landingPage, ct));
     }
 
     public async Task<List<LandingPageResponseDto>> ListAsync(
@@ -82,7 +92,12 @@ public sealed partial class LandingPageService : ILandingPageService
 
         var pages = await _landingPageRepository.ListByCreatorIdAsync(creatorId, includeArchived, ct);
 
-        return pages.Select(MapToDto).ToList();
+        var productIds = pages.Where(p => p.ProductId.HasValue).Select(p => p.ProductId!.Value).Distinct().ToList();
+        var products = await _creatorContextProvider.GetProductInfosAsync(productIds, ct);
+
+        return pages
+            .Select(p => MapToDto(p, p.ProductId is int productId ? products.GetValueOrDefault(productId) : null))
+            .ToList();
     }
 
     public async Task<LandingPageWithSectionsResponseDto> GetWithSectionsAsync(
@@ -99,7 +114,7 @@ public sealed partial class LandingPageService : ILandingPageService
 
         var sections = await _sectionRepository.ListByLandingPageIdAsync(landingPage.Id, ct);
 
-        return MapToWithSectionsDto(landingPage, sections);
+        return MapToWithSectionsDto(landingPage, sections, await GetProductInfoAsync(landingPage, ct));
     }
 
     public async Task<LandingPageResponseDto> GetSummaryAsync(
@@ -114,7 +129,7 @@ public sealed partial class LandingPageService : ILandingPageService
         if (landingPage is null)
             throw new NotFoundException("Landing page not found.");
 
-        return MapToDto(landingPage);
+        return MapToDto(landingPage, await GetProductInfoAsync(landingPage, ct));
     }
 
     public async Task PublishAsync(string creatorSlug, Guid landingPagePublicId, int ownerUserId, CancellationToken ct)
@@ -132,7 +147,15 @@ public sealed partial class LandingPageService : ILandingPageService
             return;
 
         if (context.Status != CreatorStatus.Active)
-            throw new ConflictException("Complete your subscription payment before publishing.");
+            throw new ConflictException("Complete your subscription payment before publishing.", SubscriptionInactiveCode);
+
+        // Creating and restoring already stop at the limit, and drafts count, so a workspace is only OVER it after
+        // a downgrade. At the limit, publishing an existing draft is fine.
+        if (context.MaxLandingPages >= 0 && context.ActiveLandingPageCount > context.MaxLandingPages)
+            throw new ConflictException(
+                $"Your plan includes {context.MaxLandingPages} landing page(s) and you have {context.ActiveLandingPageCount}. Archive a page or upgrade your plan to publish.",
+                PlanLimitReachedCode,
+                new PlanLimitDetails(context.ActiveLandingPageCount, context.MaxLandingPages));
 
         if (landingPage.Type == LandingPageType.Sales)
         {
@@ -145,7 +168,7 @@ public sealed partial class LandingPageService : ILandingPageService
                 var missing = context.PayoutMode == PayoutMode.StripeConnect
                     ? "Stripe Connect onboarding"
                     : "bank account details";
-                throw new ConflictException($"Complete your payout setup ({missing}) before publishing a Sales page.");
+                throw new ConflictException($"Complete your payout setup ({missing}) before publishing a Sales page.", PayoutsNotReadyCode);
             }
         }
 
@@ -208,7 +231,7 @@ public sealed partial class LandingPageService : ILandingPageService
         landingPage.Restore(DateTimeOffset.UtcNow);
         await _unitOfWork.SaveChangesAsync(ct);
 
-        return MapToDto(landingPage);
+        return MapToDto(landingPage, await GetProductInfoAsync(landingPage, ct));
     }
 
     public async Task<LandingPageWithSectionsResponseDto> SaveEditorAsync(
@@ -295,12 +318,14 @@ public sealed partial class LandingPageService : ILandingPageService
 
             if (dto.PublicId.HasValue && existingById.TryGetValue(dto.PublicId.Value, out var existing))
             {
-                existing.Update(i, backgroundColor, contentJson, now);
+                var variant = NormalizeVariant(sectionType, dto.Variant) ?? existing.Variant;
+                existing.Update(variant, i, backgroundColor, contentJson, now);
                 resultSections.Add(existing);
             }
             else
             {
-                var newSection = LandingPageSection.Create(landingPage, sectionType, i, backgroundColor, contentJson, now);
+                var variant = NormalizeVariant(sectionType, dto.Variant) ?? SectionTemplates.GetDefault(sectionType).Variant;
+                var newSection = LandingPageSection.Create(landingPage, sectionType, variant, i, backgroundColor, contentJson, now);
                 await _sectionRepository.AddAsync(newSection, ct);
                 resultSections.Add(newSection);
             }
@@ -308,20 +333,23 @@ public sealed partial class LandingPageService : ILandingPageService
 
         await _unitOfWork.SaveChangesAsync(ct);
 
-        return MapToWithSectionsDto(landingPage, resultSections);
+        return MapToWithSectionsDto(landingPage, resultSections, await GetProductInfoAsync(landingPage, ct));
     }
 
     public List<SectionTemplateResponseDto> GetSectionTemplates()
     {
+        // Navbar and Footer are included (flagged locked) so the editor can switch their layout.
         return SectionTemplates.All
-            .Where(t => t.Type is not LandingPageSectionType.Navbar and not LandingPageSectionType.Footer)
             .Select(t => new SectionTemplateResponseDto
             {
                 Key = t.Key,
-                Name = t.Name,
                 Type = t.Type.ToString(),
+                Variant = t.Variant,
+                Name = t.Name,
+                Description = t.Description,
                 ContentJson = t.ContentJson,
-                DefaultBackgroundColor = t.DefaultBackgroundColor
+                DefaultBackgroundColor = t.DefaultBackgroundColor,
+                IsLocked = IsLockedSection(t.Type)
             })
             .ToList();
     }
@@ -356,11 +384,26 @@ public sealed partial class LandingPageService : ILandingPageService
         return slug;
     }
 
-    private static string NormalizeColor(string? value)
+    /// <summary>Null when no variant was sent (the caller keeps the current one or uses the default).</summary>
+    private static string? NormalizeVariant(LandingPageSectionType type, string? value)
+    {
+        var variant = value?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(variant))
+            return null;
+        if (SectionTemplates.FindVariant(type, variant) is null)
+        {
+            var valid = SectionTemplates.All.Where(t => t.Type == type).Select(t => t.Variant);
+            throw new BadRequestException($"Invalid layout for a {type} section. Valid values: {string.Join(", ", valid)}.");
+        }
+        return variant;
+    }
+
+    /// <summary>Null = the page default.</summary>
+    private static string? NormalizeColor(string? value)
     {
         var color = value?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(color))
-            return DefaultBackgroundColor;
+            return null;
         if (!ColorRegex().IsMatch(color))
             throw new BadRequestException("Background color must be a valid hex color (e.g. #ffffff).");
         return color.ToLowerInvariant();
@@ -371,6 +414,8 @@ public sealed partial class LandingPageService : ILandingPageService
         var json = value?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(json))
             throw new BadRequestException("Section content is required.");
+        if (System.Text.Encoding.UTF8.GetByteCount(json) > ContentJsonMaxBytes)
+            throw new BadRequestException($"Section content is too large (max {ContentJsonMaxBytes / 1024} KB per section).");
         try
         {
             System.Text.Json.JsonDocument.Parse(json);
@@ -399,7 +444,12 @@ public sealed partial class LandingPageService : ILandingPageService
     private static bool IsLockedSection(LandingPageSectionType type)
         => type is LandingPageSectionType.Navbar or LandingPageSectionType.Footer;
 
-    private static LandingPageResponseDto MapToDto(LandingPage lp) => new()
+    private async Task<ProductInfo?> GetProductInfoAsync(LandingPage landingPage, CancellationToken ct)
+        => landingPage.ProductId is int productId
+            ? await _creatorContextProvider.GetProductInfoAsync(productId, ct)
+            : null;
+
+    private static LandingPageResponseDto MapToDto(LandingPage lp, ProductInfo? product) => new()
     {
         Id = lp.Id,
         PublicId = lp.PublicId,
@@ -407,16 +457,23 @@ public sealed partial class LandingPageService : ILandingPageService
         Slug = lp.Slug,
         Type = lp.Type.ToString(),
         Status = lp.Status.ToString(),
-        ProductId = lp.ProductId,
+        ProductPublicId = product?.PublicId,
+        ProductName = product?.Name,
+        ProductThumbnailUrl = product?.ThumbnailUrl,
         CustomDomain = lp.CustomDomain,
         CreatedAt = lp.CreatedAt,
         UpdatedAt = lp.UpdatedAt
     };
 
-    private static LandingPageWithSectionsResponseDto MapToWithSectionsDto(LandingPage lp, List<LandingPageSection> sections) => new()
+    private static LandingPageWithSectionsResponseDto MapToWithSectionsDto(
+        LandingPage lp, List<LandingPageSection> sections, ProductInfo? product) => new()
     {
         Id = lp.Id,
         ProductId = lp.ProductId,
+        ProductPublicId = product?.PublicId,
+        ProductName = product?.Name,
+        ProductPriceCents = product?.PriceCents,
+        ProductThumbnailUrl = product?.ThumbnailUrl,
         PublicId = lp.PublicId,
         Title = lp.Title,
         Slug = lp.Slug,
@@ -432,6 +489,7 @@ public sealed partial class LandingPageService : ILandingPageService
     {
         PublicId = s.PublicId,
         Type = s.Type.ToString(),
+        Variant = s.Variant,
         SortOrder = s.SortOrder,
         BackgroundColor = s.BackgroundColor,
         ContentJson = s.ContentJson,

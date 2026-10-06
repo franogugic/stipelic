@@ -20,6 +20,11 @@ public sealed class MarketingOptions
     /// campaign emails (<c>{ApiBaseUrl}/api/public/unsubscribe/{token}</c>).</summary>
     public string ApiBaseUrl { get; init; } = string.Empty;
 
+    /// <summary>Base URL of the web app — the unsubscribe link inside campaign emails opens the creator-branded page
+    /// <c>{FrontendBaseUrl}/unsubscribe/{token}</c>. When unset, the hosts fall back to <c>Email:FrontendBaseUrl</c>
+    /// (the same app). Settable so that fallback can be applied after binding.</summary>
+    public string FrontendBaseUrl { get; set; } = string.Empty;
+
     /// <summary>How often <c>ScheduledCampaignDispatchWorker</c> polls for due Scheduled campaigns.</summary>
     public int ScheduledCampaignPollIntervalSeconds { get; init; } = 30;
 }

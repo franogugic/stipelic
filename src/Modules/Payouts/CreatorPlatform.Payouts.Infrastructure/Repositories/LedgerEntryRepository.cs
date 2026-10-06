@@ -43,14 +43,16 @@ public sealed class LedgerEntryRepository : ILedgerEntryRepository
         var query =
             from le in _context.Set<LedgerEntry>().AsNoTracking()
             join c in _context.Set<Creator>().AsNoTracking() on le.CreatorId equals c.Id
-            where c.PayoutMode == PayoutMode.BankTransfer && c.Status != CreatorStatus.Disabled
-            group le by new { c.Id, c.PublicId, c.Name, c.Slug, le.Currency } into g
+            // Deleted (Disabled) workspaces stay in: money still owed to them must be visible so it can be paid out.
+            where c.PayoutMode == PayoutMode.BankTransfer
+            group le by new { c.Id, c.PublicId, c.Name, c.Slug, c.Status, le.Currency } into g
             select new
             {
                 g.Key.Id,
                 g.Key.PublicId,
                 g.Key.Name,
                 g.Key.Slug,
+                g.Key.Status,
                 g.Key.Currency,
                 BalanceCents = g.Sum(e => e.AmountCents)
             };
@@ -65,6 +67,7 @@ public sealed class LedgerEntryRepository : ILedgerEntryRepository
                 x.PublicId,
                 x.Name,
                 x.Slug,
+                x.Status,
                 x.Currency,
                 x.BalanceCents,
                 HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(p => p.CreatorId == x.Id)
@@ -80,7 +83,8 @@ public sealed class LedgerEntryRepository : ILedgerEntryRepository
                 r.Slug,
                 r.Currency.ToString(),
                 r.BalanceCents,
-                r.HasPayoutProfile))
+                r.HasPayoutProfile,
+                r.Status.ToString()))
             .ToList();
     }
 }

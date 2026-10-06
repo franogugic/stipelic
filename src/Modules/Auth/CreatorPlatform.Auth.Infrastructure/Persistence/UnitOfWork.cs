@@ -29,6 +29,15 @@ public sealed class UnitOfWork : IUnitOfWork
         }
     }
 
+    public async Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+
+        await operation();
+
+        await transaction.CommitAsync(ct);
+    }
+
     private static bool IsUniqueEmailViolation(DbUpdateException exception)
     {
         return exception.InnerException is PostgresException postgresException &&

@@ -34,6 +34,8 @@ public class CreatorWebhookServiceTests
             planRepository,
             webhookFailureRepository,
             unitOfWork,
+            new FakeSubscriptionBillingPeriodService(),
+            new FakeCreatorCacheInvalidator(),
             NullLogger<CreatorWebhookService>.Instance);
     }
 
@@ -120,6 +122,91 @@ public class CreatorWebhookServiceTests
         Assert.Equal(0, uow.SaveChangesCallCount);
     }
 
+    private static Creator ConnectCreator()
+    {
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        creator.SetStripeConnectAccountId("acct_123", Now);
+        return creator;
+    }
+
+    private static AccountUpdatedData AccountEvent(bool detailsSubmitted, bool payoutsEnabled, DateTimeOffset occurredAt) => new()
+    {
+        AccountId = "acct_123",
+        DetailsSubmitted = detailsSubmitted,
+        ChargesEnabled = payoutsEnabled,
+        PayoutsEnabled = payoutsEnabled,
+        OccurredAt = occurredAt,
+    };
+
+    [Fact]
+    public async Task HandleAccountUpdated_StampsEachMilestoneWithTheEventTimeTheFirstTimeItsFlagIsTrue()
+    {
+        var creator = ConnectCreator();
+        var service = BuildService(new FakeCreatorRepository { CreatorByStripeConnectAccountId = creator }, new FakeCreatorsUnitOfWork());
+        var submitted = Now.AddHours(-3);
+        var enabled = Now.AddHours(-2);
+
+        await service.HandleAccountUpdatedAsync(AccountEvent(false, false, Now.AddHours(-4)), CancellationToken.None);
+        Assert.Null(creator.StripeConnectDetailsSubmittedAt);
+        Assert.Null(creator.StripeConnectPayoutsEnabledAt);
+
+        await service.HandleAccountUpdatedAsync(AccountEvent(true, false, submitted), CancellationToken.None);
+        Assert.Equal(submitted, creator.StripeConnectDetailsSubmittedAt);
+        Assert.Null(creator.StripeConnectPayoutsEnabledAt);
+
+        await service.HandleAccountUpdatedAsync(AccountEvent(true, true, enabled), CancellationToken.None);
+        Assert.Equal(submitted, creator.StripeConnectDetailsSubmittedAt);
+        Assert.Equal(enabled, creator.StripeConnectPayoutsEnabledAt);
+    }
+
+    [Fact]
+    public async Task HandleAccountUpdated_NeverClearsOrMovesTheMilestones()
+    {
+        var creator = ConnectCreator();
+        var service = BuildService(new FakeCreatorRepository { CreatorByStripeConnectAccountId = creator }, new FakeCreatorsUnitOfWork());
+        var first = Now.AddHours(-3);
+
+        await service.HandleAccountUpdatedAsync(AccountEvent(true, true, first), CancellationToken.None);
+        // Stripe asks for more details: both flags turn off, then back on.
+        await service.HandleAccountUpdatedAsync(AccountEvent(false, false, Now.AddHours(-2)), CancellationToken.None);
+        Assert.False(creator.StripeConnectPayoutsEnabled);
+        Assert.Equal(first, creator.StripeConnectDetailsSubmittedAt);
+        Assert.Equal(first, creator.StripeConnectPayoutsEnabledAt);
+
+        await service.HandleAccountUpdatedAsync(AccountEvent(true, true, Now.AddHours(-1)), CancellationToken.None);
+        Assert.Equal(first, creator.StripeConnectDetailsSubmittedAt);
+        Assert.Equal(first, creator.StripeConnectPayoutsEnabledAt);
+    }
+
+    [Fact]
+    public async Task HandleAccountUpdated_StaleEvent_DoesNotSetTheMilestones()
+    {
+        var creator = ConnectCreator();
+        var service = BuildService(new FakeCreatorRepository { CreatorByStripeConnectAccountId = creator }, new FakeCreatorsUnitOfWork());
+
+        await service.HandleAccountUpdatedAsync(AccountEvent(false, false, Now), CancellationToken.None);
+        // An older event, delivered late, that reports both flags true: behind the stale guard, so ignored.
+        await service.HandleAccountUpdatedAsync(AccountEvent(true, true, Now.AddHours(-1)), CancellationToken.None);
+
+        Assert.Null(creator.StripeConnectDetailsSubmittedAt);
+        Assert.Null(creator.StripeConnectPayoutsEnabledAt);
+        Assert.False(creator.StripeConnectDetailsSubmitted);
+    }
+
+    [Fact]
+    public async Task HandleAccountUpdated_ReplayOfTheSameEvent_KeepsTheMilestones()
+    {
+        var creator = ConnectCreator();
+        var service = BuildService(new FakeCreatorRepository { CreatorByStripeConnectAccountId = creator }, new FakeCreatorsUnitOfWork());
+        var at = Now.AddHours(-1);
+
+        await service.HandleAccountUpdatedAsync(AccountEvent(true, true, at), CancellationToken.None);
+        await service.HandleAccountUpdatedAsync(AccountEvent(true, true, at), CancellationToken.None);
+
+        Assert.Equal(at, creator.StripeConnectDetailsSubmittedAt);
+        Assert.Equal(at, creator.StripeConnectPayoutsEnabledAt);
+    }
+
     private const string StripeSubscriptionId = "sub_test123";
 
     private static CreatorPlan BuildPlan(string code, string stripePriceId, int platformFeeBasisPoints) =>
@@ -148,7 +235,8 @@ public class CreatorWebhookServiceTests
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var proPlan = BuildPlan("pro", "price_pro", 250);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
         var planRepo = new FakeCreatorPlanRepository();
@@ -172,7 +260,8 @@ public class CreatorWebhookServiceTests
         var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
         var planRepo = new FakeCreatorPlanRepository(); // no plan registered for "price_unknown"
@@ -201,7 +290,8 @@ public class CreatorWebhookServiceTests
         var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };
         var uow = new FakeCreatorsUnitOfWork();
@@ -220,7 +310,8 @@ public class CreatorWebhookServiceTests
         var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
-        subscription.ActivateWithProvider(StripeSubscriptionId, Now, Now.AddMonths(1), Now);
+        subscription.ActivateWithProvider(StripeSubscriptionId, Now);
+        subscription.AdvancePeriod(Now, Now.AddMonths(1), Now);
         subscription.ScheduleCancel(Now);
 
         var subscriptionRepo = new FakeCreatorSubscriptionRepository { SubscriptionByProviderSubscriptionId = subscription };

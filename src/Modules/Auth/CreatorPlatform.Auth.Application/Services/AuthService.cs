@@ -17,6 +17,7 @@ public sealed class AuthService : IAuthService
 {
     private const string InvalidEmailVerificationTokenMessage = "Invalid or expired email verification token.";
     private const string EmailVerifiedSuccessfullyMessage = "Email verified successfully.";
+    private const string EmailVerificationLinkExpiredMessage = "This verification link has expired.";
     private const string LoggedOutSuccessfullyMessage = "Logged out successfully.";
     private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
     private const string InvalidLoginCredentialsMessage = "Invalid email or password.";
@@ -71,6 +72,9 @@ public sealed class AuthService : IAuthService
     public async Task<RegisterUserResponseDto> RegisterAsync(RegisterUserRequestDto request,
         CancellationToken ct)
     {
+        if (!request.AcceptTerms)
+            throw new BadRequestException("You must accept the Terms and Privacy Policy.");
+
         var email = request.Email.Trim().ToLowerInvariant();
         var doesExist = await _userRepository.ExistsByEmailAsync(email, ct);
         if (doesExist)
@@ -92,6 +96,7 @@ public sealed class AuthService : IAuthService
             firstName,
             lastName,
             createdAt);
+        user.AcceptTerms(createdAt);
         
         var rawEmailVerificationToken = _tokenGenerator.GenerateToken();
         var hashedEmailVerificationToken = _tokenHasher.Hash(rawEmailVerificationToken);
@@ -113,6 +118,7 @@ public sealed class AuthService : IAuthService
         await _userRoleRepository.AddAsync(userRole, ct);
         await _emailOutboxService.QueueEmailVerificationAsync(
             user.Email,
+            user.FirstName,
             user.PublicId.ToString(),
             rawEmailVerificationToken,
             ct);
@@ -205,27 +211,38 @@ public sealed class AuthService : IAuthService
         var now = DateTimeOffset.UtcNow;
 
 
-        if (emailVerificationToken.User.IsEmailVerified)
+        var user = emailVerificationToken.User;
+
+        if (user.IsEmailVerified)
+            return CreateEmailVerifiedResponse(user);
+
+        // A real token mailed to this address, but no longer usable: tell the holder which address it was for
+        // (they received it there) so a fresh link can be sent. Nothing is written.
+        if (emailVerificationToken.IsUsed || emailVerificationToken.IsExpired(now))
         {
             return new VerifyEmailResponseDto
             {
-                Message = EmailVerifiedSuccessfullyMessage
+                Message = EmailVerificationLinkExpiredMessage,
+                Outcome = VerifyEmailOutcome.Expired,
+                Email = user.Email
             };
         }
 
-        if (emailVerificationToken.IsUsed || emailVerificationToken.IsExpired(now))
-        {
-            throw new BadRequestException(InvalidEmailVerificationTokenMessage);
-        }
-
-        emailVerificationToken.User.VerifyEmail(now);
+        user.VerifyEmail(now);
         emailVerificationToken.MarkAsUsed(now);
 
         await _unitOfWork.SaveChangesAsync(ct);
 
+        return CreateEmailVerifiedResponse(user);
+    }
+
+    private static VerifyEmailResponseDto CreateEmailVerifiedResponse(User user)
+    {
         return new VerifyEmailResponseDto
         {
-            Message = EmailVerifiedSuccessfullyMessage
+            Message = EmailVerifiedSuccessfullyMessage,
+            Outcome = VerifyEmailOutcome.Verified,
+            FirstName = user.FirstName
         };
     }
 
@@ -294,6 +311,7 @@ public sealed class AuthService : IAuthService
         await _emailVerificationTokenRepository.AddAsync(emailVerificationToken, ct);
         await _emailOutboxService.QueueEmailVerificationAsync(
             user.Email,
+            user.FirstName,
             user.PublicId.ToString(),
             rawEmailVerificationToken,
             ct);
@@ -348,6 +366,7 @@ public sealed class AuthService : IAuthService
         await _passwordResetTokenRepository.AddAsync(passwordResetToken, ct);
         await _emailOutboxService.QueuePasswordResetAsync(
             user.Email,
+            user.FirstName,
             user.PublicId.ToString(),
             rawPasswordResetToken,
             ct);
@@ -403,6 +422,68 @@ public sealed class AuthService : IAuthService
         return new ResetPasswordResponseDto
         {
             Message = PasswordResetSuccessMessage
+        };
+    }
+
+    public async Task<LoginUserResponseDto> UpdateProfileAsync(
+        CurrentUserDto currentUser,
+        UpdateProfileRequestDto request,
+        CancellationToken ct)
+    {
+        var firstName = request.FirstName.Trim();
+        var lastName = request.LastName.Trim();
+
+        CheckName(firstName, nameof(request.FirstName));
+        CheckName(lastName, nameof(request.LastName));
+
+        var user = await _userRepository.GetByIdForUpdateAsync(currentUser.Id, ct)
+            ?? throw new UnauthorizedException("Authentication is required.");
+
+        user.UpdateName(firstName, lastName, DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Profile updated. UserPublicId: {UserPublicId}.", user.PublicId);
+
+        return new LoginUserResponseDto
+        {
+            PublicId = user.PublicId,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email,
+            IsEmailVerified = user.IsEmailVerified,
+            Status = user.Status.ToString(),
+            Roles = currentUser.Roles
+        };
+    }
+
+    public async Task<InspectPasswordResetTokenResponseDto> InspectPasswordResetTokenAsync(
+        InspectPasswordResetTokenRequestDto request,
+        CancellationToken ct)
+    {
+        // Read-only: lets the reset page show whom the link is for (or that it is dead) before anything is
+        // typed. Never saves — the token stays exactly as usable as it was.
+        if (string.IsNullOrWhiteSpace(request.Token))
+            throw new BadRequestException(InvalidPasswordResetTokenMessage);
+
+        var tokenHash = _tokenHasher.Hash(request.Token.Trim());
+        var passwordResetToken = await _passwordResetTokenRepository.GetByTokenHashAsync(tokenHash, ct);
+
+        if (passwordResetToken is null)
+            throw new BadRequestException(InvalidPasswordResetTokenMessage);
+
+        // Same rule as ResetPasswordAsync: used and expired are one state, and a dead link reveals no email.
+        if (passwordResetToken.IsUsed || passwordResetToken.IsExpired(DateTimeOffset.UtcNow))
+        {
+            return new InspectPasswordResetTokenResponseDto
+            {
+                Status = PasswordResetTokenStatus.Expired
+            };
+        }
+
+        return new InspectPasswordResetTokenResponseDto
+        {
+            Status = PasswordResetTokenStatus.Valid,
+            Email = passwordResetToken.User.Email
         };
     }
 

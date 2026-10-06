@@ -16,15 +16,31 @@ public interface ICreatorService
 
     Task<CreateCreatorResponseDto> CreateAsync(int ownerUserId, CreateCreatorRequestDto request, CancellationToken ct);
 
+    /// <summary>Two uses. A workspace waiting for its first payment (PendingPayment) gets the Checkout of its chosen
+    /// plan; <paramref name="planCode"/> is ignored. An Active workspace on the Free plan upgrades to
+    /// <paramref name="planCode"/> (a paid, active plan; 400 otherwise): a pending subscription is created next to the
+    /// still-active Free one, an earlier unpaid upgrade attempt is expired and replaced, and the Checkout bills the
+    /// workspace's Stripe customer (created on first use). Any other workspace → 409.</summary>
     Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
         int ownerUserId,
+        string ownerEmail,
+        string? planCode,
         CancellationToken ct);
 
     Task CancelSubscriptionAsync(int ownerUserId, CancellationToken ct);
 
+    /// <summary>For a workspace still waiting for its first payment: expires the open Checkout session, cancels
+    /// the pending paid subscription and activates the workspace on the Free plan. 409 when the workspace is not
+    /// waiting for payment, or when the customer already paid.</summary>
+    Task<CreatorResponseDto> ContinueOnFreePlanAsync(int ownerUserId, CancellationToken ct);
+
     Task<string> GetBillingPortalUrlAsync(int ownerUserId, CancellationToken ct);
 
-    Task DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
+    /// <summary>Disables the owner's workspace after settling its money: 409 WORKSPACE_HAS_BALANCE while a
+    /// bank-transfer balance or pending payout remains; a paid Stripe subscription is cancelled immediately and a
+    /// pending Checkout session expired (409 when it was already paid). Any Stripe failure throws before anything
+    /// changes. Returns the internal id of the disabled workspace (for cache invalidation).</summary>
+    Task<int> DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 
     /// <summary>Null when the creator has not saved payout bank details yet.</summary>
     Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct);

@@ -30,6 +30,7 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<IEmailSendFailureHandler, CampaignBroadcastFailureHandler>();
         services.AddScoped<IContactsRepository, ContactsRepository>();
         services.AddScoped<IContactsService, ContactsService>();
+        services.AddScoped<IUnsubscribePageService, UnsubscribePageService>();
 
         return services;
     }

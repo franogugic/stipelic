@@ -10,14 +10,16 @@ public sealed class LandingPageSection
         Guid publicId,
         LandingPage landingPage,
         LandingPageSectionType type,
+        string variant,
         int sortOrder,
-        string backgroundColor,
+        string? backgroundColor,
         string contentJson,
         DateTimeOffset createdAt)
     {
         PublicId = publicId;
         LandingPage = landingPage;
         Type = type;
+        Variant = variant;
         SortOrder = sortOrder;
         BackgroundColor = backgroundColor;
         ContentJson = contentJson;
@@ -28,8 +30,9 @@ public sealed class LandingPageSection
     public static LandingPageSection Create(
         LandingPage landingPage,
         LandingPageSectionType type,
+        string variant,
         int sortOrder,
-        string backgroundColor,
+        string? backgroundColor,
         string contentJson,
         DateTimeOffset createdAt)
     {
@@ -37,6 +40,7 @@ public sealed class LandingPageSection
             Guid.NewGuid(),
             landingPage,
             type,
+            variant,
             sortOrder,
             backgroundColor,
             contentJson,
@@ -44,11 +48,13 @@ public sealed class LandingPageSection
     }
 
     public void Update(
+        string variant,
         int sortOrder,
-        string backgroundColor,
+        string? backgroundColor,
         string contentJson,
         DateTimeOffset updatedAt)
     {
+        Variant = variant;
         SortOrder = sortOrder;
         BackgroundColor = backgroundColor;
         ContentJson = contentJson;
@@ -65,9 +71,13 @@ public sealed class LandingPageSection
 
     public LandingPageSectionType Type { get; private set; }
 
+    /// <summary>The layout of the section, one of the type's variants in <c>SectionTemplates</c>.</summary>
+    public string Variant { get; private set; } = string.Empty;
+
     public int SortOrder { get; private set; }
 
-    public string BackgroundColor { get; private set; } = string.Empty;
+    /// <summary>A hex colour, or null for the page default (follows the page's light / dark theme).</summary>
+    public string? BackgroundColor { get; private set; }
 
     public string ContentJson { get; private set; } = string.Empty;
 

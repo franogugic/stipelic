@@ -14,6 +14,15 @@ public sealed class CreatorPayoutContextProvider : ICreatorPayoutContextProvider
         _context = context;
     }
 
+    public async Task<CreatorPayoutBankDetails?> GetBankDetailsAsync(int creatorId, CancellationToken ct)
+    {
+        return await _context.Set<CreatorPayoutProfile>()
+            .AsNoTracking()
+            .Where(p => p.CreatorId == creatorId)
+            .Select(p => new CreatorPayoutBankDetails(p.AccountHolderName, p.Iban, p.BankCountryCode))
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<CreatorPayoutContext?> GetByPublicIdAsync(Guid creatorPublicId, CancellationToken ct)
     {
         return await _context.Set<Creator>()

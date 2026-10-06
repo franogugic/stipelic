@@ -2,6 +2,7 @@ using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
 using CreatorPlatform.Payments.Application.Options;
 using CreatorPlatform.Shared.Application.Exceptions;
+using System.Net;
 using Microsoft.Extensions.Options;
 using Stripe;
 using Stripe.Checkout;
@@ -21,7 +22,8 @@ public sealed class StripeSubscriptionCheckoutSessionService : ISubscriptionChec
         string stripePriceId,
         string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? customerId = null)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey))
             throw new BadRequestException("Stripe secret key is not configured.");
@@ -35,6 +37,7 @@ public sealed class StripeSubscriptionCheckoutSessionService : ISubscriptionChec
         var options = new SessionCreateOptions
         {
             Mode = "subscription",
+            Customer = customerId,
             SuccessUrl = _options.SuccessUrl,
             CancelUrl = _options.CancelUrl,
             Metadata = new Dictionary<string, string>(metadata),
@@ -68,4 +71,47 @@ public sealed class StripeSubscriptionCheckoutSessionService : ISubscriptionChec
             CheckoutUrl = session.Url
         };
     }
+
+    public async Task<CheckoutSessionExpireOutcome> ExpireAsync(string checkoutSessionId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+            throw new InternalServerException("Stripe secret key is not configured.");
+
+        var service = new SessionService();
+        var requestOptions = new RequestOptions { ApiKey = _options.SecretKey };
+
+        try
+        {
+            await service.ExpireAsync(checkoutSessionId, null, requestOptions, ct);
+            return CheckoutSessionExpireOutcome.Expired;
+        }
+        catch (StripeException exception) when (exception.HttpStatusCode == HttpStatusCode.BadRequest)
+        {
+            // Stripe refuses to expire a session that is no longer open. Ask it which terminal state the
+            // session is in instead of parsing the error message.
+            Session session;
+            try
+            {
+                session = await service.GetAsync(checkoutSessionId, null, requestOptions, ct);
+            }
+            catch (StripeException lookupException)
+            {
+                throw ProviderUnavailable(lookupException);
+            }
+
+            return session.Status switch
+            {
+                "complete" => CheckoutSessionExpireOutcome.AlreadyCompleted,
+                "expired" => CheckoutSessionExpireOutcome.AlreadyExpired,
+                _ => throw ProviderUnavailable(exception)
+            };
+        }
+        catch (StripeException exception)
+        {
+            throw ProviderUnavailable(exception);
+        }
+    }
+
+    private static InternalServerException ProviderUnavailable(StripeException exception) =>
+        new("The payment provider could not be reached. Nothing was changed — please try again.", exception);
 }

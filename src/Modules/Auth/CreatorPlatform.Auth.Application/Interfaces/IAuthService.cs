@@ -15,4 +15,14 @@ public interface IAuthService
         RequestPasswordResetRequestDto request,
         CancellationToken ct);
     Task<ResetPasswordResponseDto> ResetPasswordAsync(ResetPasswordRequestDto request, CancellationToken ct);
+    /// <summary>Updates the signed-in user's first and last name and returns the updated current user (the same
+    /// shape as GET /api/auth/me).</summary>
+    Task<LoginUserResponseDto> UpdateProfileAsync(
+        CurrentUserDto currentUser,
+        UpdateProfileRequestDto request,
+        CancellationToken ct);
+
+    Task<InspectPasswordResetTokenResponseDto> InspectPasswordResetTokenAsync(
+        InspectPasswordResetTokenRequestDto request,
+        CancellationToken ct);
 }

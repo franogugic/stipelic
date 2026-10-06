@@ -63,13 +63,13 @@ public sealed class GlobalExceptionMiddleware
         {
             var statusCode = StatusCodes.Status409Conflict;
             _logger.LogWarning(e, "Conflict: {Message}", e.Message);
-            await HandleExceptionAsync(context, statusCode, e.Message, "CONFLICT");
+            await HandleExceptionAsync(context, statusCode, e.Message, e.Code, e.Details);
         }
         catch (NotFoundException e)
         {
             var statusCode = StatusCodes.Status404NotFound;
             _logger.LogWarning(e, "Not found: {Message}", e.Message);
-            await HandleExceptionAsync(context, statusCode, e.Message, "NOT_FOUND");
+            await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
         }
         catch (InternalServerException e)
         {
@@ -85,7 +85,8 @@ public sealed class GlobalExceptionMiddleware
         }
     }
     
-    private static async Task HandleExceptionAsync(HttpContext context, int statusCode, string message, string errorCode)
+    private static async Task HandleExceptionAsync(
+        HttpContext context, int statusCode, string message, string errorCode, object? details = null)
     {
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = statusCode;
@@ -94,7 +95,8 @@ public sealed class GlobalExceptionMiddleware
         {
             StatusCode = statusCode,
             Message = message,
-            Code = errorCode
+            Code = errorCode,
+            Details = details
         };
 
         await context.Response.WriteAsJsonAsync(response);

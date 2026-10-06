@@ -6,6 +6,8 @@ public interface ICreatorWebhookService
 {
     Task HandleCheckoutSessionCompletedAsync(CheckoutSessionCompletedData data, CancellationToken ct);
 
+    Task HandleSubscriptionCreatedAsync(SubscriptionChangedData data, CancellationToken ct);
+
     Task HandleSubscriptionUpdatedAsync(SubscriptionChangedData data, CancellationToken ct);
 
     Task HandleSubscriptionDeletedAsync(SubscriptionChangedData data, CancellationToken ct);

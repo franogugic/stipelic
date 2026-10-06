@@ -43,6 +43,12 @@ builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 builder.Services.AddEmailInfrastructure(builder.Configuration);
 
 builder.Services.Configure<MarketingOptions>(builder.Configuration.GetSection(MarketingOptions.SectionName));
+// The unsubscribe page lives in the same web app the other emails link to.
+builder.Services.PostConfigure<MarketingOptions>(options =>
+{
+    if (string.IsNullOrWhiteSpace(options.FrontendBaseUrl))
+        options.FrontendBaseUrl = builder.Configuration["Email:FrontendBaseUrl"] ?? string.Empty;
+});
 
 // Hand-picked registrations, not the full AddMarketingInfrastructure()/AddCreatorsInfrastructure()
 // bundles — this worker only ever needs the CampaignBroadcast send-failure handler (usage-counter

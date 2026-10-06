@@ -161,8 +161,16 @@ public sealed class StripeWebhooksController : ControllerBase
                     .HandleCheckoutSessionCompletedAsync(
                         new OrderCheckoutCompletedDto(
                             webhookEvent.CheckoutSessionCompleted.SessionId,
-                            webhookEvent.CheckoutSessionCompleted.StripePaymentIntentId),
+                            webhookEvent.CheckoutSessionCompleted.StripePaymentIntentId,
+                            webhookEvent.CheckoutSessionCompleted.CustomerEmail,
+                            webhookEvent.CheckoutSessionCompleted.CustomerName),
                         ct);
+                break;
+
+            case StripeEventTypes.CustomerSubscriptionCreated
+                when webhookEvent.SubscriptionChanged is not null:
+                await _creatorWebhookService
+                    .HandleSubscriptionCreatedAsync(webhookEvent.SubscriptionChanged, ct);
                 break;
 
             case StripeEventTypes.CustomerSubscriptionUpdated

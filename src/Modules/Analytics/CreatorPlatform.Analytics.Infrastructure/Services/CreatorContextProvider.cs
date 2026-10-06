@@ -14,6 +14,15 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         _context = context;
     }
 
+    public async Task<int?> GetCreatorIdBySlugForOwnerAsync(string slug, int ownerUserId, CancellationToken ct)
+    {
+        return await _context.Set<Creator>()
+            .AsNoTracking()
+            .Where(c => c.Slug == slug && c.OwnerUserId == ownerUserId && c.Status != CreatorStatus.Disabled)
+            .Select(c => (int?)c.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<int?> GetActivePlanLimitAsync(int creatorId, string limitKey, CancellationToken ct)
     {
         return await (

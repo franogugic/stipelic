@@ -6,4 +6,9 @@ public sealed class InternalServerException : Exception
         : base(message)
     {
     }
+
+    public InternalServerException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

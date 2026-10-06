@@ -5,7 +5,9 @@ using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
+using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -22,8 +24,6 @@ public sealed class LandingPagesController : ControllerBase
     private readonly IOrderService _orderService;
     private readonly ILandingPageInsightsService _landingPageInsightsService;
     private readonly ILandingPageTimeSeriesCache _timeSeriesCache;
-    private readonly IHomeSummaryCache _homeSummaryCache;
-    private readonly IViewsSummaryCache _viewsSummaryCache;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
@@ -33,8 +33,6 @@ public sealed class LandingPagesController : ControllerBase
         IOrderService orderService,
         ILandingPageInsightsService landingPageInsightsService,
         ILandingPageTimeSeriesCache timeSeriesCache,
-        IHomeSummaryCache homeSummaryCache,
-        IViewsSummaryCache viewsSummaryCache,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
@@ -43,8 +41,6 @@ public sealed class LandingPagesController : ControllerBase
         _orderService = orderService;
         _landingPageInsightsService = landingPageInsightsService;
         _timeSeriesCache = timeSeriesCache;
-        _homeSummaryCache = homeSummaryCache;
-        _viewsSummaryCache = viewsSummaryCache;
         _currentUserContext = currentUserContext;
     }
 
@@ -67,15 +63,19 @@ public sealed class LandingPagesController : ControllerBase
         var ordersByPage = (await _orderService.GetOrdersSummaryByCreatorGroupedByLandingPageAsync(slug, user.Id, ct))
             .ToDictionary(o => o.LandingPagePublicId);
 
+        // And email captures — one grouped count over the pages already resolved for this owner.
+        var capturesByPage = await _emailCaptureService.GetCaptureCountsAsync(pages.Select(p => p.Id).ToList(), ct);
+
         var merged = pages
             .Select(p =>
             {
                 var withViews = viewsByPage.TryGetValue(p.PublicId, out var views)
                     ? p with { TotalViews = views.TotalViews, UniqueVisitors = views.UniqueVisitors }
                     : p;
-                return ordersByPage.TryGetValue(p.PublicId, out var orders)
+                var withOrders = ordersByPage.TryGetValue(p.PublicId, out var orders)
                     ? withViews with { PurchaseCount = orders.PurchaseCount, TotalRevenueCents = orders.TotalRevenueCents }
                     : withViews;
+                return withOrders with { CaptureCount = capturesByPage.GetValueOrDefault(p.Id) };
             })
             .ToList();
 
@@ -104,9 +104,9 @@ public sealed class LandingPagesController : ControllerBase
         var user = GetVerifiedUser();
         var page = await _landingPageService.CreateAsync(slug, user.Id, request, ct);
         // Landing page count on the home summary changed — invalidate so the dashboard reflects it immediately.
-        _homeSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
         // New page isn't in the previously cached views summary yet — invalidate so it shows up right away.
-        _viewsSummaryCache.Remove(slug);
+        await _pageViewService.InvalidateViewsSummaryAsync(slug, user.Id);
         return StatusCode(StatusCodes.Status201Created, ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status201Created, "Landing page created.", page));
     }
 
@@ -131,8 +131,8 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         await _landingPageService.ArchiveAsync(slug, pageId, user.Id, ct);
-        _homeSummaryCache.Remove(slug);
-        _viewsSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
+        await _pageViewService.InvalidateViewsSummaryAsync(slug, user.Id);
         return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Landing page archived.", null));
     }
 
@@ -141,8 +141,8 @@ public sealed class LandingPagesController : ControllerBase
     {
         var user = GetVerifiedUser();
         var page = await _landingPageService.RestoreAsync(slug, pageId, user.Id, ct);
-        _homeSummaryCache.Remove(slug);
-        _viewsSummaryCache.Remove(slug);
+        await _orderService.InvalidateHomeSummaryAsync(slug, user.Id);
+        await _pageViewService.InvalidateViewsSummaryAsync(slug, user.Id);
         return Ok(ApiResponse<LandingPageResponseDto>.Success(StatusCodes.Status200OK, "Landing page restored.", page));
     }
 
@@ -167,23 +167,33 @@ public sealed class LandingPagesController : ControllerBase
         var user = GetAuthenticatedUser();
         var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
 
-        var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, ct);
-        var captureCount = await _emailCaptureService.GetCaptureCountAsync(page.Id, ct);
-        var orderSummary = await _orderService.GetSummaryByLandingPageIdAsync(page.Id, ct);
+        // One instant for every source, so views, sales and emails of a period are cut at the same moment.
+        var periods = StatsPeriods.At(DateTimeOffset.UtcNow);
+        var stats = await _pageViewService.GetLandingPageStatsAsync(page.Id, periods, ct);
+        var captures = await _emailCaptureService.GetCaptureCountsByPeriodAsync(page.Id, periods, ct);
+        var sales = await _orderService.GetSalesByPeriodForLandingPageAsync(page.Id, periods, ct);
+
+        static PeriodStatsDto Merge(PeriodStatsDto views, PeriodSalesDto periodSales, long captureCount) => views with
+        {
+            PurchaseCount = periodSales.PurchaseCount,
+            RevenueCents = periodSales.RevenueCents,
+            CaptureCount = captureCount
+        };
 
         var analytics = new LandingPageAnalyticsResponseDto
         {
             Title = page.Title,
             Slug = page.Slug,
             Status = page.Status,
-            AllTime = stats.AllTime,
-            Today = stats.Today,
-            Last7Days = stats.Last7Days,
-            Last30Days = stats.Last30Days,
-            TotalEmailCaptures = captureCount,
-            PurchaseCount = orderSummary.PaidOrderCount,
-            TotalRevenueCents = orderSummary.TotalPaidAmountCents,
-            Currency = orderSummary.Currency
+            AllTime = Merge(stats.AllTime, sales.AllTime, captures.AllTime),
+            Today = Merge(stats.Today, sales.Today, captures.Today),
+            Last7Days = Merge(stats.Last7Days, sales.Last7Days, captures.Last7Days),
+            Last30Days = Merge(stats.Last30Days, sales.Last30Days, captures.Last30Days),
+            TotalEmailCaptures = captures.AllTime,
+            PurchaseCount = sales.AllTime.PurchaseCount,
+            // Same int range as before (the old SQL cast to int as well).
+            TotalRevenueCents = checked((int)sales.AllTime.RevenueCents),
+            Currency = sales.Currency
         };
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
     }
@@ -211,11 +221,12 @@ public sealed class LandingPagesController : ControllerBase
     public async Task<ActionResult<ApiResponse<List<EmailCaptureResponseDto>>>> ListCaptures(
         string slug,
         Guid pageId,
+        [FromQuery] int limit,
         CancellationToken ct)
     {
         var user = GetAuthenticatedUser();
         var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
-        var captures = await _emailCaptureService.ListCapturesAsync(page.Id, ct);
+        var captures = await _emailCaptureService.ListCapturesAsync(page.Id, limit, ct);
         return Ok(ApiResponse<List<EmailCaptureResponseDto>>.Success(StatusCodes.Status200OK, "Captures loaded.", captures));
     }
 

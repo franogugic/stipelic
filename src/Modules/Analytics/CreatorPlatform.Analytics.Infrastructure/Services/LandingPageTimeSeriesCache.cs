@@ -25,5 +25,11 @@ public sealed class LandingPageTimeSeriesCache : ILandingPageTimeSeriesCache
         _cache.Set(Key(landingPageId, period), value, Ttl);
     }
 
+    public void Remove(int landingPageId)
+    {
+        foreach (var period in Enum.GetValues<TimeSeriesPeriod>())
+            _cache.Remove(Key(landingPageId, period));
+    }
+
     private static string Key(int landingPageId, TimeSeriesPeriod period) => $"landingpage-timeseries:{landingPageId}:{period}";
 }

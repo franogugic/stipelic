@@ -17,6 +17,10 @@ public sealed class CreatorResponseDto
     /// <summary>Display name of the current plan (e.g. "Pro"); empty when the creator has no subscription.</summary>
     public string PlanName { get; init; } = string.Empty;
 
+    /// <summary>Status of the current subscription: "PendingPayment", "Active" or "PastDue"; null when the creator has
+    /// none. (A Cancelled subscription is never the current one, so "Cancelled" does not occur here.)</summary>
+    public string? SubscriptionStatus { get; init; }
+
     public bool CancelAtPeriodEnd { get; init; }
 
     /// <summary>End of the current billing period — the renewal or cancellation date; null when unknown (e.g. the free plan).</summary>

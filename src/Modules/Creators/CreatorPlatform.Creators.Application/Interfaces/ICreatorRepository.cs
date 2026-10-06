@@ -28,6 +28,4 @@ public interface ICreatorRepository
     Task<bool> SlugExistsAsync(string slug, CancellationToken ct);
 
     Task AddAsync(Creator creator, CancellationToken ct);
-
-    Task<bool> DisableByOwnerUserIdAsync(int ownerUserId, DateTimeOffset disabledAt, CancellationToken ct);
 }

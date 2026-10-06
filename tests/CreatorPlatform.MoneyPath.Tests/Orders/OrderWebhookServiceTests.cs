@@ -106,7 +106,7 @@ public class OrderWebhookServiceTests
     public async Task HandleChargeRefunded_BankTransfer_BooksReversalEntries()
     {
         var order = BuildOrder(PayoutMode.BankTransfer);
-        order.MarkPaid("pi_1", DateTimeOffset.UtcNow);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
         var (service, orderRepository, ledgerRepository) = BuildService(order);
 
         await service.HandleChargeRefundedAsync(new OrderChargeRefundedDto("pi_1", "ch_1"), CancellationToken.None);
@@ -121,7 +121,7 @@ public class OrderWebhookServiceTests
     public async Task HandleChargeRefunded_CalledTwice_RemainsIdempotent()
     {
         var order = BuildOrder(PayoutMode.BankTransfer);
-        order.MarkPaid("pi_1", DateTimeOffset.UtcNow);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
         var (service, _, ledgerRepository) = BuildService(order);
         var data = new OrderChargeRefundedDto("pi_1", "ch_1");
 

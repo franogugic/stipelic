@@ -55,7 +55,12 @@ public class CampaignSendServiceTests
         var progressProvider = new FakeCampaignProgressProvider();
         var renderer = new CampaignEmailRenderer();
         var tokenService = new UnsubscribeTokenService(
-            Options.Create(new MarketingOptions { UnsubscribeTokenSecret = "test-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
+            Options.Create(new MarketingOptions
+            {
+                UnsubscribeTokenSecret = "test-secret-value-1234567890",
+                ApiBaseUrl = "http://localhost:5000",
+                FrontendBaseUrl = "https://app.luma.test",
+            }));
         var openTrackingTokenService = new OpenTrackingTokenService(
             Options.Create(new MarketingOptions { OpenTrackingSecret = "test-open-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
 
@@ -263,6 +268,24 @@ public class CampaignSendServiceTests
             Assert.Equal(CreatorId, payload!.CreatorId);
             Assert.Equal(message.ToEmail, payload.Email);
         }
+    }
+
+    [Fact]
+    public async Task SendAsync_TheBodyLinksToTheUnsubscribePage_TheHeaderKeepsTheOneClickApiUrl()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+
+        var message = Assert.Single(h.EmailOutboxService.QueuedCampaignMessages);
+        var token = h.TokenService.Create(CreatorId, "a@test.com");
+        Assert.Equal($"http://localhost:5000/api/public/unsubscribe/{token}", message.ListUnsubscribeUrl);
+        Assert.Contains($"href=\"https://app.luma.test/unsubscribe/{token}\"", message.HtmlBody);
+        Assert.Contains($"https://app.luma.test/unsubscribe/{token}", message.PlainTextBody);
+        Assert.DoesNotContain("/api/public/unsubscribe/", message.HtmlBody);
     }
 
     // --- R2.4: inline content ---

@@ -1,7 +1,9 @@
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Email.Application.Interfaces;
+using CreatorPlatform.Email.Application.Templates;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Options;
+using CreatorPlatform.Orders.Application.Receipts;
 using CreatorPlatform.Orders.Domain.Orders;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -65,7 +67,20 @@ public sealed class OrderWebhookService : IOrderWebhookService
             }
 
             var paidAt = DateTimeOffset.UtcNow;
-            order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt);
+            if (order.Email is null && string.IsNullOrWhiteSpace(data.CustomerEmail))
+            {
+                // Stripe always collects an email, so this should never happen. Throwing rolls the transaction
+                // back (the order stays Pending) and the controller records a webhook failure for reprocessing.
+                _logger.LogError(
+                    "checkout.session.completed has no customer email for an order without one. OrderId: {OrderId}, SessionId: {SessionId}",
+                    order.PublicId,
+                    data.SessionId);
+                throw new InvalidOperationException(
+                    $"checkout.session.completed for order {order.PublicId} carries no customer email.");
+            }
+
+            order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt, data.CustomerEmail, data.CustomerName);
+            var buyerEmail = order.Email!;
 
             // Connect orders never touch the ledger — the money already left via the destination-charge
             // split, so there is no platform-held balance to track for them.
@@ -75,10 +90,28 @@ public sealed class OrderWebhookService : IOrderWebhookService
                     order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.Currency, paidAt, ct);
             }
 
-            var productName = await _creatorContextProvider.GetProductNameAsync(order.ProductId, ct) ?? "your purchase";
             var accessUrl = $"{_options.ApiBaseUrl.TrimEnd('/')}/api/access/{order.PublicId}";
+            var emailContext = await _creatorContextProvider.GetOrderEmailContextAsync(order.ProductId, ct);
 
-            await _emailOutboxService.QueueOrderAccessAsync(order.Email, order.PublicId.ToString(), productName, accessUrl, ct);
+            await _emailOutboxService.QueueOrderAccessAsync(
+                buyerEmail,
+                order.PublicId.ToString(),
+                new OrderAccessEmail(
+                    OrderNumbers.From(order.PublicId),
+                    order.Name,
+                    buyerEmail,
+                    emailContext?.ProductName ?? "your purchase",
+                    emailContext?.ProductTypeLabel ?? "Digital download",
+                    emailContext?.ProductThumbnailUrl,
+                    order.AmountCents,
+                    order.Currency.ToString(),
+                    paidAt,
+                    accessUrl,
+                    emailContext?.CreatorName ?? "Luma",
+                    emailContext?.BrandColor,
+                    emailContext?.LogoUrl,
+                    emailContext?.SupportEmail),
+                ct);
 
             await _unitOfWork.SaveChangesAsync(ct);
 
@@ -87,7 +120,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
         // Revenue / order count / recent transactions on the creator's home summary changed — drop the cache
         // so the dashboard recomputes on next read instead of serving up to 5 min stale numbers.
-        await InvalidateHomeSummaryAsync(affectedCreatorId, ct);
+        InvalidateHomeSummary(affectedCreatorId);
     }
 
     public async Task HandleChargeRefundedAsync(OrderChargeRefundedDto data, CancellationToken ct)
@@ -130,16 +163,12 @@ public sealed class OrderWebhookService : IOrderWebhookService
         }, ct);
 
         // Refund lowers revenue on the creator's home summary — invalidate so it isn't stale.
-        await InvalidateHomeSummaryAsync(affectedCreatorId, ct);
+        InvalidateHomeSummary(affectedCreatorId);
     }
 
-    private async Task InvalidateHomeSummaryAsync(int? creatorId, CancellationToken ct)
+    private void InvalidateHomeSummary(int? creatorId)
     {
-        if (creatorId is not int id)
-            return;
-
-        var slug = await _creatorContextProvider.GetCreatorSlugByIdAsync(id, ct);
-        if (slug is not null)
-            _homeSummaryCache.Remove(slug);
+        if (creatorId is int id)
+            _homeSummaryCache.Remove(id);
     }
 }

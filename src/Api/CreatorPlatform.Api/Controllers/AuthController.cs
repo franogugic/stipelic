@@ -84,6 +84,123 @@ public sealed class AuthController : ControllerBase
         });
     }
 
+    /// <summary>Settings → Profile: first and last name. Returns the updated current user (same shape as /me).</summary>
+    [HttpPut("me/profile")]
+    [EnableRateLimiting("UpdateProfile")]
+    public async Task<ActionResult<LoginUserResponseDto>> UpdateProfile(
+        [FromServices] ICurrentUserContext currentUserContext,
+        UpdateProfileRequestDto request,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiErrorResponse
+            {
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = "Authentication is required.",
+                Code = "UNAUTHORIZED"
+            });
+        }
+
+        var response = await _authService.UpdateProfileAsync(currentUser, request, ct);
+        return Ok(response);
+    }
+
+    /// <summary>Settings → Profile → change email: needs the current password; a confirmation link goes to the new
+    /// address. Always 202 for a valid request, whether or not the address is taken.</summary>
+    [HttpPost("me/email-change")]
+    [EnableRateLimiting("RequestEmailChange")]
+    public async Task<ActionResult<RequestEmailChangeResponseDto>> RequestEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        RequestEmailChangeRequestDto request,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+        {
+            return Unauthorized(new ApiErrorResponse
+            {
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = "Authentication is required.",
+                Code = "UNAUTHORIZED"
+            });
+        }
+
+        var response = await emailChangeService.RequestAsync(currentUser, request, ct);
+        return StatusCode(StatusCodes.Status202Accepted, response);
+    }
+
+    /// <summary>Settings → Profile: the pending email change, or null (200 with a null body).</summary>
+    [HttpGet("me/email-change")]
+    public async Task<ActionResult<PendingEmailChangeDto?>> GetPendingEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+            return UnauthorizedResponse();
+
+        var pending = await emailChangeService.GetPendingAsync(currentUser, ct);
+        // A JsonResult writes a literal null; Ok(null) would turn into a 204 without a body.
+        return new JsonResult(pending);
+    }
+
+    /// <summary>Sends the pending change's confirmation link again (the password was checked when it was requested).
+    /// 202 whether a link was sent or the address has been taken since; 404 without a pending change.</summary>
+    [HttpPost("me/email-change/resend")]
+    [EnableRateLimiting("ResendEmailChange")]
+    public async Task<ActionResult<RequestEmailChangeResponseDto>> ResendEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+            return UnauthorizedResponse();
+
+        var response = await emailChangeService.ResendAsync(currentUser, ct);
+        return StatusCode(StatusCodes.Status202Accepted, response);
+    }
+
+    /// <summary>Cancels the pending change: every unused link stops working. 204, also when nothing was pending.</summary>
+    [HttpDelete("me/email-change")]
+    public async Task<IActionResult> CancelEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        CancellationToken ct)
+    {
+        var currentUser = currentUserContext.User;
+        if (currentUser is null)
+            return UnauthorizedResponse();
+
+        await emailChangeService.CancelAsync(currentUser, ct);
+        return NoContent();
+    }
+
+    private UnauthorizedObjectResult UnauthorizedResponse() => Unauthorized(new ApiErrorResponse
+    {
+        StatusCode = StatusCodes.Status401Unauthorized,
+        Message = "Authentication is required.",
+        Code = "UNAUTHORIZED"
+    });
+
+    /// <summary>The link from the confirmation email. Works signed in or not; when signed in as the same user,
+    /// that session stays signed in and every other one is revoked.</summary>
+    [HttpPost("email-change/confirm")]
+    [EnableRateLimiting("ConfirmEmailChange")]
+    public async Task<ActionResult<ConfirmEmailChangeResponseDto>> ConfirmEmailChange(
+        [FromServices] ICurrentUserContext currentUserContext,
+        [FromServices] IEmailChangeService emailChangeService,
+        ConfirmEmailChangeRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await emailChangeService.ConfirmAsync(request, currentUserContext.User, ct);
+        return Ok(response);
+    }
+
     [HttpPost("logout")]
     public async Task<ActionResult<LogoutResponseDto>> Logout(
         [FromServices] ICurrentUserContext currentUserContext,
@@ -146,6 +263,17 @@ public sealed class AuthController : ControllerBase
         CancellationToken ct)
     {
         var response = await _authService.ResetPasswordAsync(request, ct);
+        return Ok(response);
+    }
+
+    /// <summary>Read-only check of a reset link. POST so the token never lands in URLs or access logs.</summary>
+    [HttpPost("reset-password/inspect")]
+    [EnableRateLimiting("InspectResetToken")]
+    public async Task<ActionResult<InspectPasswordResetTokenResponseDto>> InspectResetPasswordToken(
+        InspectPasswordResetTokenRequestDto request,
+        CancellationToken ct)
+    {
+        var response = await _authService.InspectPasswordResetTokenAsync(request, ct);
         return Ok(response);
     }
 

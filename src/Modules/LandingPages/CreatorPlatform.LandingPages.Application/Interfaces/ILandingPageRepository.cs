@@ -16,5 +16,8 @@ public interface ILandingPageRepository
 
     Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct);
 
+    /// <summary>The creator's published pages, most recently updated first.</summary>
+    Task<List<LandingPage>> ListPublishedByCreatorIdAsync(int creatorId, int limit, CancellationToken ct);
+
     Task AddAsync(LandingPage landingPage, CancellationToken ct);
 }

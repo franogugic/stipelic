@@ -24,7 +24,7 @@ public class ProductRestoreTests
         var unitOfWork = new FakeProductsUnitOfWork();
         var orderRepository = new FakeOrderContextProvider();
 
-        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository);
+        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository, new FakeLandingPageContextProvider(), new FakeAnalyticsContextProvider());
 
         return (service, productRepository);
     }

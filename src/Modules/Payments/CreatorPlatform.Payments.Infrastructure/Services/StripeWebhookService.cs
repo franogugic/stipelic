@@ -63,6 +63,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
         return stripeEvent.Type switch
         {
             StripeEventTypes.CheckoutSessionCompleted => MapCheckoutSessionCompleted(stripeEvent),
+            StripeEventTypes.CustomerSubscriptionCreated => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.CustomerSubscriptionUpdated => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.CustomerSubscriptionDeleted => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.InvoicePaymentFailed => MapInvoicePaymentFailed(stripeEvent),
@@ -88,13 +89,14 @@ public sealed class StripeWebhookService : IStripeWebhookService
             EventType = stripeEvent.Type,
             CheckoutSessionCompleted = new CheckoutSessionCompletedData
             {
+                EventId = stripeEvent.Id,
                 SessionId = session.Id,
                 StripeSubscriptionId = session.SubscriptionId ?? string.Empty,
                 StripeCustomerId = session.CustomerId ?? string.Empty,
                 StripePaymentIntentId = session.PaymentIntentId,
-                Metadata = session.Metadata ?? new Dictionary<string, string>(),
-                CurrentPeriodStart = DateTimeOffset.UtcNow,
-                CurrentPeriodEnd = null
+                CustomerEmail = session.CustomerDetails?.Email,
+                CustomerName = session.CustomerDetails?.Name,
+                Metadata = session.Metadata ?? new Dictionary<string, string>()
             }
         };
     }
@@ -114,8 +116,14 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 stripeEvent.Id, subscription.Id);
         }
 
-        var periodStart = firstItem?.CurrentPeriodStart ?? DateTime.UtcNow;
-        var periodEnd = firstItem?.CurrentPeriodEnd ?? DateTime.UtcNow.AddMonths(1);
+        // No item → no period (left null) rather than an invented one: the stored period never moves backwards,
+        // so a made-up future end would stick.
+        DateTimeOffset? periodStart = firstItem is null
+            ? null
+            : new DateTimeOffset(DateTime.SpecifyKind(firstItem.CurrentPeriodStart, DateTimeKind.Utc));
+        DateTimeOffset? periodEnd = firstItem is null
+            ? null
+            : new DateTimeOffset(DateTime.SpecifyKind(firstItem.CurrentPeriodEnd, DateTimeKind.Utc));
 
         var stripePriceId = firstItem?.Price?.Id;
 
@@ -131,9 +139,10 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 Status = subscription.Status,
                 CancelAtPeriodEnd = subscription.CancelAtPeriodEnd,
                 StripePriceId = stripePriceId,
-                CurrentPeriodStart = new DateTimeOffset(periodStart, TimeSpan.Zero),
-                CurrentPeriodEnd = new DateTimeOffset(periodEnd, TimeSpan.Zero),
-                Metadata = subscription.Metadata ?? new Dictionary<string, string>()
+                CurrentPeriodStart = periodStart,
+                CurrentPeriodEnd = periodEnd,
+                Metadata = subscription.Metadata ?? new Dictionary<string, string>(),
+                OccurredAt = new DateTimeOffset(DateTime.SpecifyKind(stripeEvent.Created, DateTimeKind.Utc))
             }
         };
     }

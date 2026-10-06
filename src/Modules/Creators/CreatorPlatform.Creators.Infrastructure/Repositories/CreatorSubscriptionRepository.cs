@@ -28,8 +28,37 @@ public sealed class CreatorSubscriptionRepository : ICreatorSubscriptionReposito
             .Where(subscription =>
                 subscription.CreatorId == creatorId
                 && subscription.Status != CreatorSubscriptionStatus.Cancelled)
+            // A pending upgrade sits next to the still-active Free subscription until it is paid: the subscription in
+            // force (Active / PastDue) wins over a pending one. A workspace that has only a pending one gets that.
+            .OrderBy(subscription => subscription.Status == CreatorSubscriptionStatus.PendingPayment ? 1 : 0)
+            .ThenByDescending(subscription => subscription.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<CreatorSubscription?> GetPendingByCreatorIdAsync(int creatorId, CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorSubscription>()
+            .AsNoTracking()
+            .Include(subscription => subscription.Plan)
+            .Where(subscription =>
+                subscription.CreatorId == creatorId
+                && subscription.Status == CreatorSubscriptionStatus.PendingPayment)
             .OrderByDescending(subscription => subscription.CreatedAt)
             .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<CreatorSubscription>> GetOtherCurrentByCreatorIdForUpdateAsync(
+        int creatorId, int excludedSubscriptionId, CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorSubscription>()
+            .Include(subscription => subscription.Plan)
+            .Where(subscription =>
+                subscription.CreatorId == creatorId
+                && subscription.Id != excludedSubscriptionId
+                && subscription.Status != CreatorSubscriptionStatus.Cancelled)
+            .ToListAsync(ct);
     }
 
     public async Task<CreatorSubscription?> GetByIdForUpdateAsync(int id, CancellationToken ct)
@@ -38,6 +67,22 @@ public sealed class CreatorSubscriptionRepository : ICreatorSubscriptionReposito
             .Set<CreatorSubscription>()
             .Include(subscription => subscription.Plan)
             .FirstOrDefaultAsync(subscription => subscription.Id == id, ct);
+    }
+
+    public async Task<CreatorSubscriptionStatus?> GetStatusAsync(int id, CancellationToken ct)
+    {
+        return await _context
+            .Set<CreatorSubscription>()
+            .AsNoTracking()
+            .Where(subscription => subscription.Id == id)
+            .Select(subscription => (CreatorSubscriptionStatus?)subscription.Status)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task LockForUpdateAsync(int id, CancellationToken ct)
+    {
+        await _context.Database.ExecuteSqlAsync(
+            $"""SELECT 1 FROM creators.creator_subscriptions WHERE "Id" = {id} FOR UPDATE""", ct);
     }
 
     public async Task<CreatorSubscription?> GetByProviderSubscriptionIdForUpdateAsync(

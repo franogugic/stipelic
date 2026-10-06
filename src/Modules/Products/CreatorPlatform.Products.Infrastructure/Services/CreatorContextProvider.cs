@@ -35,7 +35,9 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         var maxProducts = await _context.Set<CreatorSubscription>()
             .AsNoTracking()
             .Where(cs => cs.CreatorId == creator.Id && cs.Status != CreatorSubscriptionStatus.Cancelled)
-            .OrderByDescending(cs => cs.CreatedAt)
+            // The plan in force: a pending upgrade from Free must not lift the limits before it is paid.
+            .OrderBy(cs => cs.Status == CreatorSubscriptionStatus.PendingPayment ? 1 : 0)
+            .ThenByDescending(cs => cs.CreatedAt)
             .SelectMany(cs => _context.Set<CreatorPlanLimit>()
                 .Where(cpl => cpl.PlanId == cs.PlanId && cpl.LimitKey == MaxProductsLimitKey)
                 .Select(cpl => (int?)cpl.LimitValue))

@@ -14,7 +14,11 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
     private readonly ICreatorPlanRepository _creatorPlanRepository;
     private readonly IWebhookFailureRepository _webhookFailureRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
+    private readonly ISubscriptionBillingPeriodService _billingPeriodService;
+    private readonly ICreatorCacheInvalidator _cacheInvalidator;
     private readonly ILogger<CreatorWebhookService> _logger;
+
+    private const string FreePlanCode = "free";
 
     public CreatorWebhookService(
         ICreatorRepository creatorRepository,
@@ -22,6 +26,8 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         ICreatorPlanRepository creatorPlanRepository,
         IWebhookFailureRepository webhookFailureRepository,
         ICreatorsUnitOfWork unitOfWork,
+        ISubscriptionBillingPeriodService billingPeriodService,
+        ICreatorCacheInvalidator cacheInvalidator,
         ILogger<CreatorWebhookService> logger)
     {
         _creatorRepository = creatorRepository;
@@ -29,6 +35,8 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         _creatorPlanRepository = creatorPlanRepository;
         _webhookFailureRepository = webhookFailureRepository;
         _unitOfWork = unitOfWork;
+        _billingPeriodService = billingPeriodService;
+        _cacheInvalidator = cacheInvalidator;
         _logger = logger;
     }
 
@@ -62,7 +70,12 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
             return;
         }
 
+        // Read outside the transaction (no HTTP call while holding row locks). Never blocks activation: on failure
+        // the period stays as it is and customer.subscription.created/updated fills it in.
+        var period = await TryReadBillingPeriodAsync(data.StripeSubscriptionId, data.SessionId, ct);
+
         var now = DateTimeOffset.UtcNow;
+        var activated = false;
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
@@ -101,6 +114,32 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                 return;
             }
 
+            // The workspace switched to the Free plan (ContinueOnFreePlanAsync) but the customer still paid —
+            // normally impossible because the session is expired first, but a legacy pending subscription has no
+            // stored session to expire. Never activate it: record a webhook failure so an admin can refund the
+            // charge and cancel the Stripe subscription.
+            if (subscription.Status == CreatorSubscriptionStatus.Cancelled)
+            {
+                _logger.LogWarning(
+                    "Checkout completed for a cancelled pending subscription; not activating. SubscriptionId: {SubscriptionId}, StripeSubscriptionId: {StripeSubscriptionId}, SessionId: {SessionId}",
+                    subscriptionId, data.StripeSubscriptionId, data.SessionId);
+
+                var failure = WebhookFailure.Create(
+                    provider: "stripe",
+                    eventId: data.EventId,
+                    eventType: "checkout.session.completed",
+                    payload: $"CreatorId={creatorId}, SubscriptionId={subscriptionId}, SessionId={data.SessionId}, " +
+                        $"StripeSubscriptionId={data.StripeSubscriptionId}, StripeCustomerId={data.StripeCustomerId}",
+                    errorMessage: "Checkout was paid after the pending subscription was cancelled (the workspace " +
+                        "switched to the Free plan). The paid plan was not activated — refund the charge and cancel " +
+                        "the Stripe subscription.",
+                    occurredAt: now);
+
+                await _webhookFailureRepository.AddAsync(failure, ct);
+                await _unitOfWork.SaveChangesAsync(ct);
+                return;
+            }
+
             if (subscription.Status != CreatorSubscriptionStatus.PendingPayment
                 && subscription.Status != CreatorSubscriptionStatus.Active)
             {
@@ -110,37 +149,71 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                 return;
             }
 
-            subscription.ActivateWithProvider(
-                data.StripeSubscriptionId,
-                data.CurrentPeriodStart,
-                data.CurrentPeriodEnd,
-                now);
+            subscription.ActivateWithProvider(data.StripeSubscriptionId, now);
+
+            // Kept as is when customer.subscription.created already stored a period that is not older.
+            if (period is not null)
+                subscription.AdvancePeriod(period.CurrentPeriodStart, period.CurrentPeriodEnd, now);
 
             if (!string.IsNullOrWhiteSpace(data.StripeCustomerId))
                 creator.SetStripeCustomerId(data.StripeCustomerId, now);
 
             creator.Activate(now);
 
+            // An upgrade from Free: the paid subscription takes over, so the Free one (and any other leftover) is
+            // retired in the same transaction — one current subscription per creator.
+            foreach (var other in await _creatorSubscriptionRepository.GetOtherCurrentByCreatorIdForUpdateAsync(creatorId, subscription.Id, ct))
+            {
+                if (other.Provider == SubscriptionProvider.Stripe && other.Status is CreatorSubscriptionStatus.Active or CreatorSubscriptionStatus.PastDue)
+                {
+                    // Never expected (only Free workspaces upgrade here); cancelling it only locally would keep billing.
+                    _logger.LogWarning(
+                        "A second Stripe-billed subscription is still active after checkout; left as is. CreatorId: {CreatorId}, SubscriptionId: {OtherId}",
+                        creatorId, other.Id);
+                    continue;
+                }
+
+                other.Cancel(now);
+                _logger.LogInformation(
+                    "Subscription retired by the new paid plan. CreatorId: {CreatorId}, RetiredSubscriptionId: {OtherId}, Plan: {PlanCode}",
+                    creatorId, other.Id, other.Plan.Code);
+            }
+
             await _unitOfWork.SaveChangesAsync(ct);
+            activated = true;
 
             _logger.LogInformation(
                 "Creator activated via Stripe checkout. CreatorId: {CreatorId}, SubscriptionId: {SubscriptionId}, StripeSubscriptionId: {StripeSubscriptionId}",
                 creatorId, subscriptionId, data.StripeSubscriptionId);
         }, ct);
+
+        if (activated)
+            _cacheInvalidator.Invalidate(creatorId);
     }
 
-    public async Task HandleSubscriptionUpdatedAsync(
+    public async Task HandleSubscriptionCreatedAsync(
         SubscriptionChangedData data,
         CancellationToken ct)
     {
-        var subscription = await _creatorSubscriptionRepository
-            .GetByProviderSubscriptionIdForUpdateAsync(data.StripeSubscriptionId, ct);
+        const string eventType = "customer.subscription.created";
 
-        if (subscription is null)
+        // Usually created arrives after checkout.session.completed linked the Stripe id: then it is just another
+        // state update.
+        var linked = await _creatorSubscriptionRepository
+            .GetByProviderSubscriptionIdForUpdateAsync(data.StripeSubscriptionId, ct);
+        if (linked is not null)
+        {
+            await ApplySubscriptionChangeAsync(linked, data, eventType, ct);
+            return;
+        }
+
+        // Created before checkout completed: find our row through the metadata set on the Checkout session.
+        if (!data.Metadata.TryGetValue("subscriptionId", out var subscriptionIdStr)
+            || !int.TryParse(subscriptionIdStr, out var subscriptionId))
         {
             _logger.LogInformation(
-                "No subscription found for customer.subscription.updated. StripeSubscriptionId: {StripeSubscriptionId} — likely a non-platform subscription, ignoring.",
-                data.StripeSubscriptionId);
+                "No subscription found for {EventType}. StripeSubscriptionId: {StripeSubscriptionId} — likely a non-platform subscription, ignoring.",
+                eventType, data.StripeSubscriptionId);
             return;
         }
 
@@ -148,10 +221,101 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
+            var subscription = await _creatorSubscriptionRepository.GetByIdForUpdateAsync(subscriptionId, ct);
+
+            if (subscription is null
+                || (data.Metadata.TryGetValue("creatorId", out var creatorIdStr)
+                    && int.TryParse(creatorIdStr, out var creatorId)
+                    && subscription.CreatorId != creatorId))
+            {
+                _logger.LogWarning(
+                    "{EventType} references an unknown subscription. SubscriptionId: {SubscriptionId}, StripeSubscriptionId: {StripeSubscriptionId}",
+                    eventType, subscriptionId, data.StripeSubscriptionId);
+                return;
+            }
+
+            // The workspace switched to Free (continue-free). Nothing to do here; checkout.session.completed
+            // records the actionable "paid after switching" failure.
+            if (subscription.Status == CreatorSubscriptionStatus.Cancelled)
+            {
+                _logger.LogWarning(
+                    "{EventType} for a cancelled pending subscription, ignoring. SubscriptionId: {SubscriptionId}, StripeSubscriptionId: {StripeSubscriptionId}",
+                    eventType, subscriptionId, data.StripeSubscriptionId);
+                return;
+            }
+
+            if (subscription.Status != CreatorSubscriptionStatus.PendingPayment)
+            {
+                _logger.LogWarning(
+                    "{EventType} matched by metadata to a subscription that is not pending, ignoring. SubscriptionId: {SubscriptionId}, Status: {Status}",
+                    eventType, subscriptionId, subscription.Status);
+                return;
+            }
+
+            if (subscription.IsStaleProviderEvent(data.OccurredAt))
+            {
+                LogStaleEvent(eventType, data);
+                return;
+            }
+
+            // Only the period: activation and linking the Stripe id stay with checkout.session.completed, the
+            // single activator.
+            if (data.CurrentPeriodStart is { } periodStart && data.CurrentPeriodEnd is { } periodEnd)
+                subscription.AdvancePeriod(periodStart, periodEnd, now);
+            subscription.RecordProviderEvent(data.OccurredAt, now);
+
+            await _unitOfWork.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Billing period recorded for a pending subscription before checkout completed. SubscriptionId: {SubscriptionId}, StripeSubscriptionId: {StripeSubscriptionId}",
+                subscriptionId, data.StripeSubscriptionId);
+        }, ct);
+    }
+
+    public async Task HandleSubscriptionUpdatedAsync(
+        SubscriptionChangedData data,
+        CancellationToken ct)
+    {
+        const string eventType = "customer.subscription.updated";
+
+        var subscription = await _creatorSubscriptionRepository
+            .GetByProviderSubscriptionIdForUpdateAsync(data.StripeSubscriptionId, ct);
+
+        if (subscription is null)
+        {
+            _logger.LogInformation(
+                "No subscription found for {EventType}. StripeSubscriptionId: {StripeSubscriptionId} — likely a non-platform subscription, ignoring.",
+                eventType, data.StripeSubscriptionId);
+            return;
+        }
+
+        await ApplySubscriptionChangeAsync(subscription, data, eventType, ct);
+    }
+
+    /// <summary>The shared customer.subscription.created/updated path for a subscription already linked to
+    /// its Stripe id: rejects stale events, then applies status, period (never backwards), cancel flag and plan.</summary>
+    private async Task ApplySubscriptionChangeAsync(
+        CreatorSubscription subscription,
+        SubscriptionChangedData data,
+        string eventType,
+        CancellationToken ct)
+    {
+        if (subscription.IsStaleProviderEvent(data.OccurredAt))
+        {
+            LogStaleEvent(eventType, data);
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var plansChanged = false;
+
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
             switch (data.Status)
             {
                 case "active":
-                    subscription.UpdatePeriod(data.CurrentPeriodStart, data.CurrentPeriodEnd, now);
+                    if (data.CurrentPeriodStart is { } periodStart && data.CurrentPeriodEnd is { } periodEnd)
+                        subscription.AdvancePeriod(periodStart, periodEnd, now);
 
                     if (subscription.Creator.Status != CreatorStatus.Active)
                         subscription.Creator.Activate(now);
@@ -188,7 +352,7 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                             var failure = WebhookFailure.Create(
                                 provider: "stripe",
                                 eventId: data.EventId,
-                                eventType: "customer.subscription.updated",
+                                eventType: eventType,
                                 payload: $"StripeSubscriptionId={data.StripeSubscriptionId}, " +
                                     $"StripePriceId={data.StripePriceId}, " +
                                     $"CurrentPlanCode={subscription.Plan.Code}",
@@ -215,23 +379,96 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
 
                 case "canceled":
                 case "cancelled":
-                    subscription.Cancel(now);
-                    subscription.Creator.Suspend(now);
-
-                    _logger.LogWarning(
-                        "Subscription cancelled via subscription.updated event. StripeSubscriptionId: {StripeSubscriptionId}",
-                        data.StripeSubscriptionId);
+                    // Same end as customer.subscription.deleted (Stripe sends both): the workspace moves to Free.
+                    if (!await EndPaidSubscriptionAsync(subscription, eventType, data, now, ct))
+                        return;
+                    plansChanged = true;
                     break;
 
                 default:
                     _logger.LogInformation(
-                        "Unhandled subscription status in customer.subscription.updated. Status: {Status}, StripeSubscriptionId: {StripeSubscriptionId}",
-                        data.Status, data.StripeSubscriptionId);
+                        "Unhandled subscription status in {EventType}. Status: {Status}, StripeSubscriptionId: {StripeSubscriptionId}",
+                        eventType, data.Status, data.StripeSubscriptionId);
                     return;
             }
 
+            subscription.RecordProviderEvent(data.OccurredAt, now);
             await _unitOfWork.SaveChangesAsync(ct);
         }, ct);
+
+        if (plansChanged)
+            _cacheInvalidator.Invalidate(subscription.CreatorId);
+    }
+
+    /// <summary>
+    /// The paid subscription has ended in Stripe (cancelled at period end, or the final payment failed). Inside the
+    /// caller's transaction: the subscription is cancelled and the workspace moves to an Active Free subscription —
+    /// its pages and products stay as they are; the Free limits only block creating or restoring beyond them. A
+    /// deleted (Disabled) workspace stays deleted and gets no Free plan. Returns false when a concurrent event already
+    /// ended this subscription (nothing to do).
+    /// </summary>
+    private async Task<bool> EndPaidSubscriptionAsync(
+        CreatorSubscription subscription, string eventType, SubscriptionChangedData data, DateTimeOffset now,
+        CancellationToken ct)
+    {
+        // customer.subscription.deleted and .updated(canceled) arrive together: serialize them on the row and re-read
+        // its committed status, so only one of them creates the Free subscription.
+        await _creatorSubscriptionRepository.LockForUpdateAsync(subscription.Id, ct);
+        if (await _creatorSubscriptionRepository.GetStatusAsync(subscription.Id, ct) == CreatorSubscriptionStatus.Cancelled)
+        {
+            _logger.LogInformation(
+                "Subscription already ended by a concurrent event, skipping {EventType}. StripeSubscriptionId: {StripeSubscriptionId}",
+                eventType, data.StripeSubscriptionId);
+            return false;
+        }
+
+        subscription.Cancel(now);
+        var creator = subscription.Creator;
+
+        if (creator.Status == CreatorStatus.Disabled)
+        {
+            _logger.LogInformation(
+                "Paid subscription of a deleted workspace ended via {EventType}; no Free plan. CreatorId: {CreatorId}, StripeSubscriptionId: {StripeSubscriptionId}",
+                eventType, creator.Id, data.StripeSubscriptionId);
+            return true;
+        }
+
+        var freePlan = await _creatorPlanRepository.GetByCodeAsync(FreePlanCode, ct)
+            ?? throw new InvalidOperationException("The Free plan is missing; cannot move the workspace to it.");
+        await _creatorSubscriptionRepository.AddAsync(CreatorSubscription.CreateFree(creator, freePlan, now), ct);
+
+        // Workspaces suspended by the old behaviour (before this change) come back too.
+        if (creator.Status == CreatorStatus.Suspended)
+            creator.Activate(now);
+
+        _logger.LogWarning(
+            "Paid subscription ended via {EventType}; workspace moved to the Free plan. CreatorId: {CreatorId}, StripeSubscriptionId: {StripeSubscriptionId}",
+            eventType, creator.Id, data.StripeSubscriptionId);
+        return true;
+    }
+
+    private async Task<SubscriptionBillingPeriodDto?> TryReadBillingPeriodAsync(
+        string stripeSubscriptionId, string sessionId, CancellationToken ct)
+    {
+        try
+        {
+            return await _billingPeriodService.GetBillingPeriodAsync(stripeSubscriptionId, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Could not read the billing period from Stripe; activating without it. StripeSubscriptionId: {StripeSubscriptionId}, SessionId: {SessionId}",
+                stripeSubscriptionId, sessionId);
+            return null;
+        }
+    }
+
+    private void LogStaleEvent(string eventType, SubscriptionChangedData data)
+    {
+        _logger.LogInformation(
+            "Ignoring stale {EventType}: older than the last applied subscription event. EventId: {EventId}, StripeSubscriptionId: {StripeSubscriptionId}, OccurredAt: {OccurredAt}",
+            eventType, data.EventId, data.StripeSubscriptionId, data.OccurredAt);
     }
 
     public async Task HandleSubscriptionDeletedAsync(
@@ -249,6 +486,12 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
             return;
         }
 
+        if (subscription.IsStaleProviderEvent(data.OccurredAt))
+        {
+            LogStaleEvent("customer.subscription.deleted", data);
+            return;
+        }
+
         // Idempotency: already cancelled
         if (subscription.Status == CreatorSubscriptionStatus.Cancelled)
         {
@@ -259,18 +502,20 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         }
 
         var now = DateTimeOffset.UtcNow;
+        var ended = false;
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            subscription.Cancel(now);
-            subscription.Creator.Suspend(now);
+            ended = await EndPaidSubscriptionAsync(subscription, "customer.subscription.deleted", data, now, ct);
+            if (!ended)
+                return;
 
+            subscription.RecordProviderEvent(data.OccurredAt, now);
             await _unitOfWork.SaveChangesAsync(ct);
-
-            _logger.LogWarning(
-                "Creator suspended due to subscription deletion. CreatorId: {CreatorId}, StripeSubscriptionId: {StripeSubscriptionId}",
-                subscription.Creator.Id, data.StripeSubscriptionId);
         }, ct);
+
+        if (ended)
+            _cacheInvalidator.Invalidate(subscription.CreatorId);
     }
 
     public async Task HandleInvoicePaymentFailedAsync(

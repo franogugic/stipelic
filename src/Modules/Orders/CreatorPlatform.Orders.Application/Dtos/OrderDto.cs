@@ -2,7 +2,7 @@ namespace CreatorPlatform.Orders.Application.Dtos;
 
 public sealed record OrderDto(
     Guid PublicId,
-    string Email,
+    string? Email,
     string? Name,
     string ProductName,
     int AmountCents,

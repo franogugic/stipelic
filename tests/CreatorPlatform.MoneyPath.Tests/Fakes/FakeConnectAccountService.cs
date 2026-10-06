@@ -1,3 +1,4 @@
+using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
 
 namespace CreatorPlatform.MoneyPath.Tests.Fakes;
@@ -30,4 +31,17 @@ public sealed class FakeConnectAccountService : IConnectAccountService
         _callLog.Add("CreateOnboardingLink");
         return Task.FromResult(UrlToReturn);
     }
+
+    public PayoutScheduleDto? ScheduleToReturn { get; set; }
+
+    public List<string> LoginLinkRequestsFor { get; } = [];
+
+    public Task<string> CreateDashboardLoginLinkAsync(string accountId, CancellationToken ct)
+    {
+        LoginLinkRequestsFor.Add(accountId);
+        return Task.FromResult($"https://connect.stripe.com/express/login/{accountId}");
+    }
+
+    public Task<PayoutScheduleDto?> GetPayoutScheduleAsync(string accountId, CancellationToken ct)
+        => Task.FromResult(ScheduleToReturn);
 }

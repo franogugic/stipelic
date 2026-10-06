@@ -22,4 +22,7 @@ public sealed record RegisterUserRequestDto
     [Required]
     [MinLength(8)]
     public string Password { get; init; } = string.Empty;
+
+    /// <summary>The user agreed to the Terms and Privacy Policy; registration is refused without it.</summary>
+    public bool AcceptTerms { get; init; }
 }

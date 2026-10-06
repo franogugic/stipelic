@@ -131,6 +131,54 @@ public class PayoutAdminServiceTests
         Assert.Contains(ledgerRepository.Entries, e => e.Type == LedgerEntryType.Adjustment && e.AmountCents == 10_000);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task MarkFailedAsync_WithoutAReason_Is400_AndChangesNothing(string? note)
+    {
+        var (service, ledgerRepository, payoutRepository, _) = BuildService(BuildContext());
+        ledgerRepository.Entries.Add(LedgerEntry.CreateSaleCredit(CreatorId, 1, 20_000, Currency.Eur, Now));
+        var created = await service.CreatePayoutAsync(BuildRequest(10_000), CancellationToken.None);
+        payoutRepository.PayoutByPublicId = payoutRepository.Added[0];
+        var entriesBefore = ledgerRepository.Entries.Count;
+
+        var exception = await Assert.ThrowsAsync<BadRequestException>(() => service.MarkFailedAsync(
+            created.PublicId, new MarkPayoutFailedRequestDto { Note = note }, CancellationToken.None));
+
+        Assert.Equal("Add the reason — the creator sees it in their payout history.", exception.Message);
+        Assert.Equal(PayoutStatus.Pending, payoutRepository.Added[0].Status);
+        Assert.Equal(entriesBefore, ledgerRepository.Entries.Count);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_AReasonOver500Characters_Is400()
+    {
+        var (service, ledgerRepository, payoutRepository, _) = BuildService(BuildContext());
+        ledgerRepository.Entries.Add(LedgerEntry.CreateSaleCredit(CreatorId, 1, 20_000, Currency.Eur, Now));
+        var created = await service.CreatePayoutAsync(BuildRequest(10_000), CancellationToken.None);
+        payoutRepository.PayoutByPublicId = payoutRepository.Added[0];
+
+        await Assert.ThrowsAsync<BadRequestException>(() => service.MarkFailedAsync(
+            created.PublicId, new MarkPayoutFailedRequestDto { Note = new string('x', 501) }, CancellationToken.None));
+        Assert.Equal(PayoutStatus.Pending, payoutRepository.Added[0].Status);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_StoresTheTrimmedReason()
+    {
+        var (service, ledgerRepository, payoutRepository, _) = BuildService(BuildContext());
+        ledgerRepository.Entries.Add(LedgerEntry.CreateSaleCredit(CreatorId, 1, 20_000, Currency.Eur, Now));
+        var created = await service.CreatePayoutAsync(BuildRequest(10_000), CancellationToken.None);
+        payoutRepository.PayoutByPublicId = payoutRepository.Added[0];
+
+        var failed = await service.MarkFailedAsync(
+            created.PublicId, new MarkPayoutFailedRequestDto { Note = "  IBAN rejected by the bank  " }, CancellationToken.None);
+
+        Assert.Equal((PayoutStatus.Failed, "IBAN rejected by the bank"), (payoutRepository.Added[0].Status, payoutRepository.Added[0].Note));
+        Assert.Equal("IBAN rejected by the bank", failed.Note);
+    }
+
     [Fact]
     public async Task MarkPaidAsync_AlreadyPaid_ThrowsConflict()
     {
