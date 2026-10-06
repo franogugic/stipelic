@@ -10,4 +10,9 @@ public interface ICreatorConnectService
 
     /// <summary>404 when the slug isn't the user's workspace. The schedule is read live from Stripe.</summary>
     Task<ConnectPayoutDetailsResponseDto> GetPayoutDetailsAsync(string slug, int ownerUserId, CancellationToken ct);
+
+    /// <summary>A login link to the owner's Stripe Express dashboard. 404 without a workspace; 409
+    /// <c>connect_dashboard_unavailable</c> unless it is a StripeConnect workspace whose connected account has
+    /// submitted its details. Never cached (the link is single-use).</summary>
+    Task<ConnectDashboardLinkResponseDto> CreateDashboardLoginLinkAsync(int ownerUserId, CancellationToken ct);
 }

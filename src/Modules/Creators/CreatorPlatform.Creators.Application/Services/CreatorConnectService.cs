@@ -11,6 +11,8 @@ namespace CreatorPlatform.Creators.Application.Services;
 
 public sealed class CreatorConnectService : ICreatorConnectService
 {
+    public const string DashboardUnavailableCode = "connect_dashboard_unavailable";
+
     private readonly ICreatorRepository _creatorRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly IConnectAccountService _connectAccountService;
@@ -74,6 +76,23 @@ public sealed class CreatorConnectService : ICreatorConnectService
             creator.StripeConnectDetailsSubmittedAt,
             creator.StripeConnectPayoutsEnabledAt,
             schedule);
+    }
+
+    public async Task<ConnectDashboardLinkResponseDto> CreateDashboardLoginLinkAsync(int ownerUserId, CancellationToken ct)
+    {
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace does not exist.");
+
+        // Stripe only issues login links for an Express account that has completed onboarding.
+        if (creator.PayoutMode != PayoutMode.StripeConnect
+            || creator.StripeConnectAccountId is not { } accountId
+            || !creator.StripeConnectDetailsSubmitted)
+        {
+            throw new ConflictException(
+                "The Stripe dashboard is available once your Stripe account is set up.", DashboardUnavailableCode);
+        }
+
+        return new ConnectDashboardLinkResponseDto(await _connectAccountService.CreateDashboardLoginLinkAsync(accountId, ct));
     }
 
     /// <summary>Only called after the ownership check above, so the cache is keyed by the creator's internal id.</summary>

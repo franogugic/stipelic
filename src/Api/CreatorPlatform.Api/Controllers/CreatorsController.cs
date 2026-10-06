@@ -194,6 +194,22 @@ public sealed class CreatorsController : ControllerBase
             response));
     }
 
+    /// <summary>Signs the owner into their Stripe Express dashboard (balance, payouts, bank account). The link is
+    /// single-use and expires within minutes, so the client opens it immediately.</summary>
+    [HttpPost("current/payouts/connect/login-link")]
+    [EnableRateLimiting("ConnectDashboardLink")]
+    public async Task<ActionResult<ApiResponse<ConnectDashboardLinkResponseDto>>> ConnectDashboardLoginLink(CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var response = await _creatorConnectService.CreateDashboardLoginLinkAsync(currentUser.Id, ct);
+
+        return Ok(ApiResponse<ConnectDashboardLinkResponseDto>.Success(
+            StatusCodes.Status200OK,
+            "Stripe dashboard link created.",
+            response));
+    }
+
     [HttpPost("current/subscription/checkout")]
     [EnableRateLimiting("StartCreatorCheckout")]
     public async Task<ActionResult<ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>>> StartSubscriptionCheckout(

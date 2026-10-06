@@ -86,6 +86,15 @@ public sealed class StripeConnectAccountService : IConnectAccountService
         return link.Url;
     }
 
+    public async Task<string> CreateDashboardLoginLinkAsync(string accountId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+            throw new BadRequestException("Stripe secret key is not configured.");
+
+        var link = await new AccountLoginLinkService(_stripeClient).CreateAsync(accountId, options: null, requestOptions: null, ct);
+        return link.Url;
+    }
+
     public async Task<PayoutScheduleDto?> GetPayoutScheduleAsync(string accountId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey))
