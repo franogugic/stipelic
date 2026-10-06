@@ -33,7 +33,7 @@ public sealed class OrderReceiptService : IOrderReceiptService
             OrderNumbers.From(row.OrderPublicId),
             row.Status,
             FirstName(row.BuyerName),
-            EmailMask.Mask(row.BuyerEmail),
+            row.BuyerEmail is null ? null : EmailMask.Mask(row.BuyerEmail),
             row.ProductName,
             row.AmountCents,
             row.Currency,

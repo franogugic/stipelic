@@ -13,7 +13,7 @@ public sealed class Order
         int creatorId,
         int productId,
         int? landingPageId,
-        string email,
+        string? email,
         string? name,
         int amountCents,
         Currency currency,
@@ -45,7 +45,7 @@ public sealed class Order
         int creatorId,
         int productId,
         int? landingPageId,
-        string email,
+        string? email,
         string? name,
         int amountCents,
         Currency currency,
@@ -72,8 +72,21 @@ public sealed class Order
             createdAt);
     }
 
-    public void MarkPaid(string stripePaymentIntentId, DateTimeOffset paidAt)
+    /// <summary>Stripe Checkout collects the buyer's email when the page didn't ask for it, so it arrives here.
+    /// An email given at checkout (passed to Stripe as a locked prefill) is kept. A paid order always has one.</summary>
+    public void MarkPaid(string stripePaymentIntentId, DateTimeOffset paidAt, string? buyerEmail, string? buyerName)
     {
+        var email = Email ?? (string.IsNullOrWhiteSpace(buyerEmail) ? null : buyerEmail.Trim());
+        if (email is null)
+            throw new InvalidOperationException($"Order {PublicId} cannot be paid without a buyer email.");
+
+        Email = email;
+        if (Name is null && !string.IsNullOrWhiteSpace(buyerName))
+        {
+            var name = buyerName.Trim();
+            Name = name.Length > NameMaxLength ? name[..NameMaxLength] : name;
+        }
+
         Status = OrderStatus.Paid;
         StripePaymentIntentId = stripePaymentIntentId;
         PaidAt = paidAt;
@@ -102,7 +115,10 @@ public sealed class Order
 
     public int? LandingPageId { get; private set; }
 
-    public string Email { get; private set; } = string.Empty;
+    public const int NameMaxLength = 50;
+
+    /// <summary>Null only while Pending, when the buyer hasn't typed it into Stripe Checkout yet.</summary>
+    public string? Email { get; private set; }
 
     public string? Name { get; private set; }
 

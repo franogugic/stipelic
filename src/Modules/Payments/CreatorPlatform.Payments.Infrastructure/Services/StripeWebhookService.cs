@@ -94,6 +94,8 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 StripeSubscriptionId = session.SubscriptionId ?? string.Empty,
                 StripeCustomerId = session.CustomerId ?? string.Empty,
                 StripePaymentIntentId = session.PaymentIntentId,
+                CustomerEmail = session.CustomerDetails?.Email,
+                CustomerName = session.CustomerDetails?.Name,
                 Metadata = session.Metadata ?? new Dictionary<string, string>()
             }
         };

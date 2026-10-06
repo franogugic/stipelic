@@ -38,9 +38,11 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
     public async Task<CreateCheckoutResultDto> CreateCheckoutAsync(
         string creatorSlug,
         string landingPageSlug,
-        string email,
+        string? buyerEmail,
         CancellationToken ct)
     {
+        var email = string.IsNullOrWhiteSpace(buyerEmail) ? null : buyerEmail.Trim();
+
         var productInfo = await _creatorContextProvider.GetProductInfoByLandingPageSlugAsync(creatorSlug, landingPageSlug, ct);
         if (productInfo is null)
             throw new NotFoundException("Landing page not found.");

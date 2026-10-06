@@ -94,7 +94,7 @@ public sealed class OrderRepository : IOrderRepository
             // AddOrderCustomerSearchIndexes). The term's own %, _ and \ are escaped so they match literally.
             var pattern = LikePatterns.Contains(customerSearch.ToLowerInvariant());
             query = query.Where(x =>
-                EF.Functions.Like(x.o.Email.ToLower(), pattern, LikePatterns.EscapeCharacter)
+                (x.o.Email != null && EF.Functions.Like(x.o.Email.ToLower(), pattern, LikePatterns.EscapeCharacter))
                 || (x.o.Name != null && EF.Functions.Like(x.o.Name.ToLower(), pattern, LikePatterns.EscapeCharacter)));
         }
 

@@ -20,7 +20,7 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
         string productName,
         int priceCents,
         string currency,
-        string customerEmail,
+        string? customerEmail,
         string successUrl,
         string cancelUrl,
         string idempotencyKey,

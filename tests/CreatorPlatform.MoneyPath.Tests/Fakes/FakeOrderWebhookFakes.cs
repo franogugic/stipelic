@@ -101,12 +101,14 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
     }
 
     public OrderAccessEmail? LastOrderAccess { get; private set; }
+    public string? LastOrderAccessTo { get; private set; }
     public PayoutRequestedEmail? LastPayoutRequested { get; private set; }
 
     public Task QueueOrderAccessAsync(string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct)
     {
         OrderAccessQueuedCount++;
         LastOrderAccess = order;
+        LastOrderAccessTo = toEmail;
         return Task.CompletedTask;
     }
 

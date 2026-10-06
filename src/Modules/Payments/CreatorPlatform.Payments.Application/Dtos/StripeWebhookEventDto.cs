@@ -31,6 +31,10 @@ public sealed class CheckoutSessionCompletedData
     public required string StripeSubscriptionId { get; init; }
     public required string StripeCustomerId { get; init; }
     public string? StripePaymentIntentId { get; init; }
+    /// <summary><c>customer_details.email</c> — what the buyer entered in Checkout (or the prefilled address).</summary>
+    public string? CustomerEmail { get; init; }
+    /// <summary><c>customer_details.name</c>.</summary>
+    public string? CustomerName { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
 }
 

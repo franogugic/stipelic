@@ -28,12 +28,13 @@ public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionS
     public string? LastThumbnailUrl { get; private set; }
     public string? LastSuccessUrl { get; private set; }
     public int CallCount { get; private set; }
+    public string? LastCustomerEmail { get; private set; }
 
     public Task<PaymentCheckoutSessionDto> CreateAsync(
         string productName,
         int priceCents,
         string currency,
-        string customerEmail,
+        string? customerEmail,
         string successUrl,
         string cancelUrl,
         string idempotencyKey,
@@ -44,6 +45,7 @@ public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionS
         string? thumbnailUrl = null)
     {
         CallCount++;
+        LastCustomerEmail = customerEmail;
         LastApplicationFeeAmountCents = applicationFeeAmountCents;
         LastDestinationAccountId = destinationAccountId;
         LastMetadata = metadata;

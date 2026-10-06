@@ -62,6 +62,18 @@ public sealed class OrderReceiptTests
         Assert.Equal(new OrderReceiptCreatorDto("Test Creator", creator.Slug, null, null, null), receipt.Creator);
     }
 
+    [Fact]
+    public async Task BeforeTheWebhook_AnEmailTypedIntoStripe_IsNotKnownYet()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        var productId = await AddProductAsync(creator.CreatorId, "Course");
+        var (sessionId, _) = await AddOrderAsync(creator.CreatorId, productId, null, null, "Pending", null);
+
+        var receipt = await GetAsync(sessionId);
+
+        Assert.Equal(("Pending", (string?)null), (receipt.Status, receipt.BuyerEmail));
+    }
+
     [Theory]
     [InlineData("cs_test_does_not_exist")]
     [InlineData("")]
@@ -105,7 +117,7 @@ public sealed class OrderReceiptTests
     }
 
     private async Task<(string SessionId, Guid PublicId)> AddOrderAsync(
-        int creatorId, int productId, string email, string? name, string status, DateTimeOffset? paidAt,
+        int creatorId, int productId, string? email, string? name, string status, DateTimeOffset? paidAt,
         DateTimeOffset? createdAt = null)
     {
         await using var db = _fixture.CreateDbContext();

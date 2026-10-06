@@ -7,7 +7,7 @@ public sealed record OrderReceiptRow(
     Guid OrderPublicId,
     string Status,
     string? BuyerName,
-    string BuyerEmail,
+    string? BuyerEmail,
     int AmountCents,
     string Currency,
     DateTimeOffset CreatedAt,

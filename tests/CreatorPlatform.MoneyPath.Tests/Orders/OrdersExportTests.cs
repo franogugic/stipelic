@@ -13,9 +13,10 @@ public class OrdersExportTests
 
     private static OrderDto Order(
         string? name = "Ana Kovač", string product = "Preset Pack", string? landingPage = "Spring Sale",
-        int amountCents = 2900, int feeCents = 145, string status = "Paid", Guid? id = null, DateTimeOffset? createdAt = null) => new(
+        int amountCents = 2900, int feeCents = 145, string status = "Paid", Guid? id = null, DateTimeOffset? createdAt = null,
+        string? email = "ana@example.com") => new(
         id ?? OrderId,
-        "ana@example.com",
+        email,
         name,
         product,
         amountCents,
@@ -61,6 +62,14 @@ public class OrdersExportTests
         Assert.Equal(
             $"{OrderId},2026-09-30T12:05:09Z,,ana@example.com,Preset Pack,,Paid,29.00,1.45,27.55,EUR",
             OrdersCsv.Row(Order(name: null, landingPage: null)));
+    }
+
+    [Fact]
+    public void Row_APendingOrderWithoutAnEmailYet_HasAnEmptyEmailField()
+    {
+        Assert.Equal(
+            $"{OrderId},2026-09-30T12:05:09Z,,,Preset Pack,Spring Sale,Pending,29.00,1.45,27.55,EUR",
+            OrdersCsv.Row(Order(name: null, email: null, status: "Pending")));
     }
 
     [Fact]

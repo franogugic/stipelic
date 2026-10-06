@@ -7,6 +7,6 @@ public interface IOrderCheckoutService
     Task<CreateCheckoutResultDto> CreateCheckoutAsync(
         string creatorSlug,
         string landingPageSlug,
-        string email,
+        string? email,
         CancellationToken ct);
 }

@@ -67,7 +67,20 @@ public sealed class OrderWebhookService : IOrderWebhookService
             }
 
             var paidAt = DateTimeOffset.UtcNow;
-            order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt);
+            if (order.Email is null && string.IsNullOrWhiteSpace(data.CustomerEmail))
+            {
+                // Stripe always collects an email, so this should never happen. Throwing rolls the transaction
+                // back (the order stays Pending) and the controller records a webhook failure for reprocessing.
+                _logger.LogError(
+                    "checkout.session.completed has no customer email for an order without one. OrderId: {OrderId}, SessionId: {SessionId}",
+                    order.PublicId,
+                    data.SessionId);
+                throw new InvalidOperationException(
+                    $"checkout.session.completed for order {order.PublicId} carries no customer email.");
+            }
+
+            order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt, data.CustomerEmail, data.CustomerName);
+            var buyerEmail = order.Email!;
 
             // Connect orders never touch the ledger — the money already left via the destination-charge
             // split, so there is no platform-held balance to track for them.
@@ -81,12 +94,12 @@ public sealed class OrderWebhookService : IOrderWebhookService
             var emailContext = await _creatorContextProvider.GetOrderEmailContextAsync(order.ProductId, ct);
 
             await _emailOutboxService.QueueOrderAccessAsync(
-                order.Email,
+                buyerEmail,
                 order.PublicId.ToString(),
                 new OrderAccessEmail(
                     OrderNumbers.From(order.PublicId),
                     order.Name,
-                    order.Email,
+                    buyerEmail,
                     emailContext?.ProductName ?? "your purchase",
                     emailContext?.ProductTypeLabel ?? "Digital download",
                     emailContext?.ProductThumbnailUrl,
