@@ -1,29 +1,40 @@
+using static CreatorPlatform.Email.Application.Templates.EmailLayout;
+
 namespace CreatorPlatform.Email.Application.Templates;
 
-/// <summary>Sent to the NEW address: confirming proves the user controls it.</summary>
+/// <summary><c>designer-prototype/emails/email-change-confirm.html</c>. Sent to the NEW address: confirming proves the
+/// user controls it.</summary>
 public static class EmailChangeVerificationTemplate
 {
-    public const string Subject = "Confirm your new email address";
+    public const string Subject = "Confirm your new email";
 
-    public static string BuildHtml(string confirmationUrl)
+    public static RenderedEmail Render(
+        EmailBranding branding, string? firstName, string currentEmail, string newEmail, string confirmationUrl)
     {
-        return $"""
-            <h1>Confirm your new email address</h1>
-            <p>Click the link below to use this address to sign in to Luma:</p>
-            <p><a href="{confirmationUrl}">Confirm email change</a></p>
-            <p>This link expires in 24 hours. If you didn't ask for this, ignore this email — nothing changes.</p>
-            """;
-    }
+        var card =
+            Heading("Confirm your ", "new email.") +
+            Greeting(firstName) +
+            Paragraph($"You asked to change the email on your Luma account from {Strong(currentEmail)} to {Strong(newEmail)}. Confirm to finish — until then, nothing changes.") +
+            Button("Confirm new email", confirmationUrl) +
+            FallbackLink(confirmationUrl) +
+            Note("The link works for 24 hours. Didn’t ask for this? Ignore this email and your account stays as it is.");
 
-    public static string BuildPlainText(string confirmationUrl)
-    {
-        return $"""
-            Confirm your new email address
+        var html = Document(
+            Subject, $"Confirm {newEmail} to finish changing your Luma email.", LumaHeader(branding.LogoUrl), card, LumaFooter(branding));
 
-            Open this link to use this address to sign in to Luma:
+        var text = $"""
+            {EmailVerificationTemplate.PlainGreeting(firstName)}
+
+            You asked to change the email on your Luma account from {currentEmail} to {newEmail}. Confirm to finish — until then, nothing changes.
+
+            Confirm your new email:
             {confirmationUrl}
 
-            This link expires in 24 hours. If you didn't ask for this, ignore this email — nothing changes.
+            The link works for 24 hours. Didn’t ask for this? Ignore this email and your account stays as it is.
+
+            — Luma
             """;
+
+        return new RenderedEmail(Subject, html, text);
     }
 }

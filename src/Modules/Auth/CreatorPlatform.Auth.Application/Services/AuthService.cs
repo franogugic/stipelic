@@ -118,6 +118,7 @@ public sealed class AuthService : IAuthService
         await _userRoleRepository.AddAsync(userRole, ct);
         await _emailOutboxService.QueueEmailVerificationAsync(
             user.Email,
+            user.FirstName,
             user.PublicId.ToString(),
             rawEmailVerificationToken,
             ct);
@@ -310,6 +311,7 @@ public sealed class AuthService : IAuthService
         await _emailVerificationTokenRepository.AddAsync(emailVerificationToken, ct);
         await _emailOutboxService.QueueEmailVerificationAsync(
             user.Email,
+            user.FirstName,
             user.PublicId.ToString(),
             rawEmailVerificationToken,
             ct);
@@ -364,6 +366,7 @@ public sealed class AuthService : IAuthService
         await _passwordResetTokenRepository.AddAsync(passwordResetToken, ct);
         await _emailOutboxService.QueuePasswordResetAsync(
             user.Email,
+            user.FirstName,
             user.PublicId.ToString(),
             rawPasswordResetToken,
             ct);

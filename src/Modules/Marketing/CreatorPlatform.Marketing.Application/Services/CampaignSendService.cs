@@ -315,7 +315,8 @@ public sealed class CampaignSendService : ICampaignSendService
             campaign.CtaUrl,
             context.BrandName,
             context.LogoUrl,
-            context.PrimaryColor);
+            context.PrimaryColor,
+            context.SupportEmail);
 
         foreach (var recipient in recipients)
         {

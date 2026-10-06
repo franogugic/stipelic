@@ -1,7 +1,9 @@
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.Email.Application.Interfaces;
+using CreatorPlatform.Email.Application.Templates;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Options;
+using CreatorPlatform.Orders.Application.Receipts;
 using CreatorPlatform.Orders.Domain.Orders;
 using CreatorPlatform.Payouts.Application.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -75,10 +77,28 @@ public sealed class OrderWebhookService : IOrderWebhookService
                     order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.Currency, paidAt, ct);
             }
 
-            var productName = await _creatorContextProvider.GetProductNameAsync(order.ProductId, ct) ?? "your purchase";
             var accessUrl = $"{_options.ApiBaseUrl.TrimEnd('/')}/api/access/{order.PublicId}";
+            var emailContext = await _creatorContextProvider.GetOrderEmailContextAsync(order.ProductId, ct);
 
-            await _emailOutboxService.QueueOrderAccessAsync(order.Email, order.PublicId.ToString(), productName, accessUrl, ct);
+            await _emailOutboxService.QueueOrderAccessAsync(
+                order.Email,
+                order.PublicId.ToString(),
+                new OrderAccessEmail(
+                    OrderNumbers.From(order.PublicId),
+                    order.Name,
+                    order.Email,
+                    emailContext?.ProductName ?? "your purchase",
+                    emailContext?.ProductTypeLabel ?? "Digital download",
+                    emailContext?.ProductThumbnailUrl,
+                    order.AmountCents,
+                    order.Currency.ToString(),
+                    paidAt,
+                    accessUrl,
+                    emailContext?.CreatorName ?? "Luma",
+                    emailContext?.BrandColor,
+                    emailContext?.LogoUrl,
+                    emailContext?.SupportEmail),
+                ct);
 
             await _unitOfWork.SaveChangesAsync(ct);
 

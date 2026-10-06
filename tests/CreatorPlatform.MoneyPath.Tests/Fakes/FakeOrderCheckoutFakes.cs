@@ -13,8 +13,11 @@ public sealed class FakeOrdersCreatorContextProvider : ICreatorContextProvider
         string creatorSlug, string landingPageSlug, CancellationToken ct)
         => Task.FromResult(ProductInfo);
 
-    public Task<string?> GetProductNameAsync(int productId, CancellationToken ct)
-        => Task.FromResult<string?>("Product");
+    public OrderEmailContext? OrderEmailContext { get; set; } =
+        new("Product", "Digital download", null, "Creator", null, null, null);
+
+    public Task<OrderEmailContext?> GetOrderEmailContextAsync(int productId, CancellationToken ct)
+        => Task.FromResult(OrderEmailContext);
 }
 
 public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionService

@@ -1,4 +1,5 @@
 using CreatorPlatform.Email.Application.Interfaces;
+using CreatorPlatform.Email.Application.Templates;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
@@ -70,13 +71,13 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
     public List<(string ToEmail, string Subject, string CorrelationKey, string? ReplyTo, string ListUnsubscribeUrl, string HtmlBody, string PlainTextBody)> QueuedCampaignMessages { get; } = new();
     public List<(string ToEmail, string UserPublicId, string Token)> QueuedPasswordResetMessages { get; } = new();
 
-    public Task QueueEmailVerificationAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
+    public Task QueueEmailVerificationAsync(string toEmail, string? firstName, string userPublicId, string token, CancellationToken ct)
         => Task.CompletedTask;
 
     public Task CancelUnsentEmailVerificationMessagesAsync(string userPublicId, CancellationToken ct)
         => Task.CompletedTask;
 
-    public Task QueuePasswordResetAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
+    public Task QueuePasswordResetAsync(string toEmail, string? firstName, string userPublicId, string token, CancellationToken ct)
     {
         QueuedPasswordResetMessages.Add((toEmail, userPublicId, token));
         return Task.CompletedTask;
@@ -85,34 +86,34 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
     public List<(string ToEmail, string UserPublicId, string Token)> QueuedEmailChangeVerifications { get; } = new();
     public List<(string ToEmail, string UserPublicId, string NewEmail)> QueuedEmailChangedNotifications { get; } = new();
 
-    public Task QueueEmailChangeVerificationAsync(string toEmail, string userPublicId, string token, CancellationToken ct)
+    public Task QueueEmailChangeVerificationAsync(
+        string toEmail, string? firstName, string currentEmail, string userPublicId, string token, CancellationToken ct)
     {
         QueuedEmailChangeVerifications.Add((toEmail, userPublicId, token));
         return Task.CompletedTask;
     }
 
-    public Task QueueEmailChangedNotificationAsync(string toEmail, string userPublicId, string newEmail, CancellationToken ct)
+    public Task QueueEmailChangedNotificationAsync(
+        string toEmail, string? firstName, string userPublicId, string newEmail, DateTimeOffset changedAt, CancellationToken ct)
     {
         QueuedEmailChangedNotifications.Add((toEmail, userPublicId, newEmail));
         return Task.CompletedTask;
     }
 
-    public Task QueueOrderAccessAsync(string toEmail, string orderPublicId, string productName, string accessUrl, CancellationToken ct)
+    public OrderAccessEmail? LastOrderAccess { get; private set; }
+    public PayoutRequestedEmail? LastPayoutRequested { get; private set; }
+
+    public Task QueueOrderAccessAsync(string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct)
     {
         OrderAccessQueuedCount++;
+        LastOrderAccess = order;
         return Task.CompletedTask;
     }
 
-    public Task QueuePayoutRequestedAsync(
-        string toEmail,
-        string payoutPublicId,
-        string creatorName,
-        string creatorSlug,
-        int amountCents,
-        string currency,
-        CancellationToken ct)
+    public Task QueuePayoutRequestedAsync(string toEmail, string payoutPublicId, PayoutRequestedEmail payout, CancellationToken ct)
     {
         PayoutRequestedQueuedCount++;
+        LastPayoutRequested = payout;
         return Task.CompletedTask;
     }
 

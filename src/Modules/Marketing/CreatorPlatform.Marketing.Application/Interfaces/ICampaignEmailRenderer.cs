@@ -8,7 +8,7 @@ public interface ICampaignEmailRenderer
     /// contain a literal <c>{{UNSUBSCRIBE_URL}}</c> placeholder (and the HTML one a literal
     /// <c>{{OPEN_PIXEL_URL}}</c> placeholder) that the caller substitutes per recipient at queue time (see
     /// the send pipeline), so this (branded, potentially large) template is never rebuilt per
-    /// recipient.</summary>
+    /// recipient. <paramref name="supportEmail"/> is the public address named in the footer ("Reply to …").</summary>
     CampaignEmailContent Render(
         string subject,
         string bodyText,
@@ -16,5 +16,6 @@ public interface ICampaignEmailRenderer
         string? ctaUrl,
         string brandName,
         string? logoUrl,
-        string primaryColor);
+        string primaryColor,
+        string? supportEmail = null);
 }

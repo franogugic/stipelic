@@ -1,47 +1,20 @@
-using System.Net;
+using CreatorPlatform.Email.Application.Templates;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using static CreatorPlatform.Email.Application.Templates.EmailLayout;
 
 namespace CreatorPlatform.Marketing.Infrastructure.Services;
 
-/// <summary>Brand-neutral-except-for-creator-colors HTML template: inline styles only (no external CSS —
-/// most email clients strip &lt;style&gt; blocks or class-based CSS), max-width 600px, plain-text version
-/// always produced alongside. The <c>{{UNSUBSCRIBE_URL}}</c> placeholder is left in both bodies, and
-/// <c>{{OPEN_PIXEL_URL}}</c> in the HTML body only (the plain-text version carries no tracking pixel), for
-/// the send pipeline to substitute per recipient.</summary>
+/// <summary>
+/// <c>designer-prototype/emails/campaign.html</c>: the creator's text in Luma's email-safe layout, with the creator's
+/// header (logo or monogram in their colour), a brand-coloured button and the unsubscribe footer. The
+/// <c>{{UNSUBSCRIBE_URL}}</c> placeholder is left in both bodies and <c>{{OPEN_PIXEL_URL}}</c> in the HTML body only (the
+/// plain-text version carries no tracking pixel), for the send pipeline to substitute per recipient. Every value is
+/// HTML-encoded.
+/// </summary>
 public sealed class CampaignEmailRenderer : ICampaignEmailRenderer
 {
-    private const string HtmlTemplate = """
-        <!DOCTYPE html>
-        <html>
-        <body style="margin:0;padding:0;background-color:#f5f5f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f4;padding:32px 0;">
-            <tr>
-              <td align="center">
-                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;padding:32px;">
-                  <tr><td>
-                    __LOGO__
-                    __BODY__
-                    __CTA__
-                    <hr style="border:none;border-top:1px solid #eeeeee;margin:32px 0 16px;" />
-                    <p style="font-size:12px;color:#999999;margin:0 0 8px;">Sent via Creator Platform</p>
-                    <p style="font-size:12px;color:#999999;margin:0;"><a href="{{UNSUBSCRIBE_URL}}" style="color:#999999;">Unsubscribe</a> from these emails.</p>
-                  </td></tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-          <img src="{{OPEN_PIXEL_URL}}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">
-        </body>
-        </html>
-        """;
-
-    private const string PlainTextTemplate = """
-        __BODY__
-        __CTA__
-        ---
-        Sent via Creator Platform
-        Unsubscribe: {{UNSUBSCRIBE_URL}}
-        """;
+    public const string UnsubscribePlaceholder = "{{UNSUBSCRIBE_URL}}";
+    public const string OpenPixelPlaceholder = "{{OPEN_PIXEL_URL}}";
 
     public CampaignEmailContent Render(
         string subject,
@@ -50,47 +23,33 @@ public sealed class CampaignEmailRenderer : ICampaignEmailRenderer
         string? ctaUrl,
         string brandName,
         string? logoUrl,
-        string primaryColor)
+        string primaryColor,
+        string? supportEmail = null)
     {
-        var encodedBrandName = WebUtility.HtmlEncode(brandName);
+        var brand = BrandPalette.From(primaryColor);
         var hasCta = !string.IsNullOrWhiteSpace(ctaLabel) && !string.IsNullOrWhiteSpace(ctaUrl);
+        var lines = bodyText.Replace("\r\n", "\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-        var logoHtml = !string.IsNullOrWhiteSpace(logoUrl)
-            ? $"""<img src="{WebUtility.HtmlEncode(logoUrl)}" alt="{encodedBrandName}" style="max-height:40px;margin-bottom:16px;" />"""
-            : $"""<p style="font-weight:700;font-size:18px;margin:0 0 16px;color:#111111;">{encodedBrandName}</p>""";
+        var card = string.Concat(lines.Select(line => Paragraph(E(line))))
+            + (hasCta ? Button(ctaLabel!, ctaUrl!, brand) : string.Empty);
 
-        var ctaHtml = hasCta
-            ? $"""
-              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;">
-                <tr>
-                  <td style="border-radius:8px;background-color:{primaryColor};">
-                    <a href="{WebUtility.HtmlEncode(ctaUrl)}" style="display:inline-block;padding:12px 24px;color:#ffffff;text-decoration:none;font-weight:600;">{WebUtility.HtmlEncode(ctaLabel)}</a>
-                  </td>
-                </tr>
-              </table>
-              """
-            : string.Empty;
+        var replyTo = string.IsNullOrWhiteSpace(supportEmail) ? string.Empty : $" · Reply to {E(supportEmail)}";
+        var footer =
+            $"You’re receiving this because you signed up at {E(brandName)}.<br>" +
+            $"""<a class="muted" href="{UnsubscribePlaceholder}" style="color:#6B695F; text-decoration:underline;">Unsubscribe</a>{replyTo}<br><br>Sent with Luma""";
 
-        var html = HtmlTemplate
-            .Replace("__LOGO__", logoHtml)
-            .Replace("__BODY__", BuildBodyHtml(bodyText))
-            .Replace("__CTA__", ctaHtml);
+        var html = Document(subject, FirstLine(lines), CreatorHeader(brandName, logoUrl, brand), card, footer, brand.TextDark)
+            .Replace("</body>", $"""  <img src="{OpenPixelPlaceholder}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px">\n</body>""");
 
-        var ctaPlainText = hasCta ? $"\n{ctaLabel}: {ctaUrl}\n" : string.Empty;
-        var plainText = PlainTextTemplate
-            .Replace("__BODY__", bodyText)
-            .Replace("__CTA__", ctaPlainText);
+        var plainText = string.Join("\n\n", lines)
+            + (hasCta ? $"\n\n{ctaLabel}: {ctaUrl}" : string.Empty)
+            + $"\n\n---\nYou’re receiving this because you signed up at {brandName}.\nUnsubscribe: {UnsubscribePlaceholder}"
+            + (string.IsNullOrWhiteSpace(supportEmail) ? string.Empty : $"\nReply to {supportEmail}")
+            + "\nSent with Luma\n";
 
         return new CampaignEmailContent(subject, html, plainText);
     }
 
-    private static string BuildBodyHtml(string bodyText)
-    {
-        var paragraphs = bodyText
-            .Replace("\r\n", "\n")
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => $"""<p style="margin:0 0 16px;line-height:1.5;color:#333333;">{WebUtility.HtmlEncode(line)}</p>""");
-
-        return string.Join("\n", paragraphs);
-    }
+    /// <summary>The inbox preview line: the first line of the message.</summary>
+    private static string FirstLine(string[] lines) => lines.Length == 0 ? string.Empty : lines[0].Trim();
 }

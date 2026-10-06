@@ -99,7 +99,7 @@ public sealed class EmailChangeService : IEmailChangeService
         var token = EmailChangeToken.Create(user, newEmail, _tokenHasher.Hash(rawToken), now.Add(TokenLifetime), now);
 
         await _emailChangeTokenRepository.AddAsync(token, ct);
-        await _emailOutboxService.QueueEmailChangeVerificationAsync(newEmail, user.PublicId.ToString(), rawToken, ct);
+        await _emailOutboxService.QueueEmailChangeVerificationAsync(newEmail, user.FirstName, user.Email, user.PublicId.ToString(), rawToken, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
         _logger.LogInformation("Email change requested. UserPublicId: {UserPublicId}.", user.PublicId);
@@ -156,7 +156,7 @@ public sealed class EmailChangeService : IEmailChangeService
                 }
 
                 await _emailOutboxService.QueueEmailChangedNotificationAsync(
-                    oldEmail, user.PublicId.ToString(), token.NewEmail, ct);
+                    oldEmail, user.FirstName, user.PublicId.ToString(), token.NewEmail, now, ct);
 
                 await _unitOfWork.SaveChangesAsync(ct);
 
@@ -212,7 +212,7 @@ public sealed class EmailChangeService : IEmailChangeService
         var fresh = EmailChangeToken.Create(user, pending.NewEmail, _tokenHasher.Hash(rawToken), now.Add(TokenLifetime), now);
 
         await _emailChangeTokenRepository.AddAsync(fresh, ct);
-        await _emailOutboxService.QueueEmailChangeVerificationAsync(pending.NewEmail, user.PublicId.ToString(), rawToken, ct);
+        await _emailOutboxService.QueueEmailChangeVerificationAsync(pending.NewEmail, user.FirstName, user.Email, user.PublicId.ToString(), rawToken, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
         _logger.LogInformation("Email change link sent again. UserPublicId: {UserPublicId}.", user.PublicId);

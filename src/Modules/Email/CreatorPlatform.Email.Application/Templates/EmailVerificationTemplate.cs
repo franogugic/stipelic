@@ -1,28 +1,40 @@
+using static CreatorPlatform.Email.Application.Templates.EmailLayout;
+
 namespace CreatorPlatform.Email.Application.Templates;
 
+/// <summary><c>designer-prototype/emails/verify-email.html</c>.</summary>
 public static class EmailVerificationTemplate
 {
-    public const string Subject = "Verify your email address";
+    public const string Subject = "Confirm your email";
 
-    public static string BuildHtml(string verificationUrl)
+    public static RenderedEmail Render(EmailBranding branding, string? firstName, string email, string verificationUrl)
     {
-        return $"""
-            <h1>Verify your email address</h1>
-            <p>Click the link below to verify your account:</p>
-            <p><a href="{verificationUrl}">Verify email</a></p>
-            <p>This link expires in 24 hours.</p>
-            """;
-    }
+        var card =
+            Heading("Confirm your ", "email.") +
+            Greeting(firstName) +
+            Paragraph($"Thanks for signing up. Confirm {Strong(email)} and your account is ready — next you’ll set up your workspace.") +
+            Button("Confirm email", verificationUrl) +
+            FallbackLink(verificationUrl) +
+            Note("The link works for 24 hours. Didn’t sign up? You can safely ignore this email.");
 
-    public static string BuildPlainText(string verificationUrl)
-    {
-        return $"""
-            Verify your email address
+        var html = Document(Subject, "One click and your Luma account is ready.", LumaHeader(branding.LogoUrl), card, LumaFooter(branding));
 
-            Open this link to verify your account:
+        var text = $"""
+            {PlainGreeting(firstName)}
+
+            Thanks for signing up. Confirm {email} and your account is ready — next you’ll set up your workspace.
+
+            Confirm your email:
             {verificationUrl}
 
-            This link expires in 24 hours.
+            The link works for 24 hours. Didn’t sign up? You can safely ignore this email.
+
+            — Luma
             """;
+
+        return new RenderedEmail(Subject, html, text);
     }
+
+    internal static string PlainGreeting(string? firstName) =>
+        string.IsNullOrWhiteSpace(firstName) ? "Hi," : $"Hi {firstName.Trim()},";
 }
