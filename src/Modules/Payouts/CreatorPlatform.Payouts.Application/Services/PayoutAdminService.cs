@@ -12,6 +12,7 @@ public sealed class PayoutAdminService : IPayoutAdminService
 {
     private const int DefaultBalancesLimit = 100;
     private const int DefaultQueueLimit = 50;
+    private const int MaxFailureNoteLength = 500;
 
     private readonly ICreatorPayoutContextProvider _creatorPayoutContextProvider;
     private readonly ILedgerEntryRepository _ledgerEntryRepository;
@@ -99,6 +100,13 @@ public sealed class PayoutAdminService : IPayoutAdminService
 
     public async Task<PayoutDto> MarkFailedAsync(Guid payoutPublicId, MarkPayoutFailedRequestDto request, CancellationToken ct)
     {
+        // The creator sees this reason in their payout history, so a failure always carries one.
+        var note = request.Note?.Trim();
+        if (string.IsNullOrEmpty(note))
+            throw new BadRequestException("Add the reason — the creator sees it in their payout history.");
+        if (note.Length > MaxFailureNoteLength)
+            throw new BadRequestException($"Keep the reason to {MaxFailureNoteLength} characters or fewer.");
+
         PayoutDto? result = null;
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
@@ -111,7 +119,7 @@ public sealed class PayoutAdminService : IPayoutAdminService
 
             try
             {
-                payout.MarkFailed(request.Note, now);
+                payout.MarkFailed(note, now);
             }
             catch (InvalidOperationException e)
             {
