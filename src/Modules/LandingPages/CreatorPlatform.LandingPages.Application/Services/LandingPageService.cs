@@ -11,7 +11,9 @@ public sealed partial class LandingPageService : ILandingPageService
 {
     private const int TitleMaxLength = 100;
     private const int SlugMaxLength = 100;
-    private const string DefaultBackgroundColor = "#ffffff";
+    // A section's content is a small JSON document (text, a few image URLs); the cap keeps one save from
+    // storing megabytes in a jsonb column that every public page view reads.
+    private const int ContentJsonMaxBytes = 64 * 1024;
 
     private readonly ILandingPageRepository _landingPageRepository;
     private readonly ILandingPageSectionRepository _sectionRepository;
@@ -58,15 +60,15 @@ public sealed partial class LandingPageService : ILandingPageService
 
         await _landingPageRepository.AddAsync(landingPage, ct);
 
-        var navbarTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Navbar);
-        var heroTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Hero);
-        var ctaTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Cta);
-        var footerTemplate = SectionTemplates.GetDefault(LandingPageSectionType.Footer);
-
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Navbar, 0, navbarTemplate.DefaultBackgroundColor, navbarTemplate.ContentJson, now), ct);
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Hero, 1, heroTemplate.DefaultBackgroundColor, heroTemplate.ContentJson, now), ct);
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Cta, 2, ctaTemplate.DefaultBackgroundColor, ctaTemplate.ContentJson, now), ct);
-        await _sectionRepository.AddAsync(LandingPageSection.Create(landingPage, LandingPageSectionType.Footer, 3, footerTemplate.DefaultBackgroundColor, footerTemplate.ContentJson, now), ct);
+        // Every page starts with the four required sections, each in its type's default layout.
+        LandingPageSectionType[] starterTypes =
+            [LandingPageSectionType.Navbar, LandingPageSectionType.Hero, LandingPageSectionType.Cta, LandingPageSectionType.Footer];
+        for (var i = 0; i < starterTypes.Length; i++)
+        {
+            var template = SectionTemplates.GetDefault(starterTypes[i]);
+            await _sectionRepository.AddAsync(LandingPageSection.Create(
+                landingPage, template.Type, template.Variant, i, template.DefaultBackgroundColor, template.ContentJson, now), ct);
+        }
         await _unitOfWork.SaveChangesAsync(ct);
 
         return MapToDto(landingPage, await GetProductInfoAsync(landingPage, ct));
@@ -300,12 +302,14 @@ public sealed partial class LandingPageService : ILandingPageService
 
             if (dto.PublicId.HasValue && existingById.TryGetValue(dto.PublicId.Value, out var existing))
             {
-                existing.Update(i, backgroundColor, contentJson, now);
+                var variant = NormalizeVariant(sectionType, dto.Variant) ?? existing.Variant;
+                existing.Update(variant, i, backgroundColor, contentJson, now);
                 resultSections.Add(existing);
             }
             else
             {
-                var newSection = LandingPageSection.Create(landingPage, sectionType, i, backgroundColor, contentJson, now);
+                var variant = NormalizeVariant(sectionType, dto.Variant) ?? SectionTemplates.GetDefault(sectionType).Variant;
+                var newSection = LandingPageSection.Create(landingPage, sectionType, variant, i, backgroundColor, contentJson, now);
                 await _sectionRepository.AddAsync(newSection, ct);
                 resultSections.Add(newSection);
             }
@@ -318,15 +322,18 @@ public sealed partial class LandingPageService : ILandingPageService
 
     public List<SectionTemplateResponseDto> GetSectionTemplates()
     {
+        // Navbar and Footer are included (flagged locked) so the editor can switch their layout.
         return SectionTemplates.All
-            .Where(t => t.Type is not LandingPageSectionType.Navbar and not LandingPageSectionType.Footer)
             .Select(t => new SectionTemplateResponseDto
             {
                 Key = t.Key,
-                Name = t.Name,
                 Type = t.Type.ToString(),
+                Variant = t.Variant,
+                Name = t.Name,
+                Description = t.Description,
                 ContentJson = t.ContentJson,
-                DefaultBackgroundColor = t.DefaultBackgroundColor
+                DefaultBackgroundColor = t.DefaultBackgroundColor,
+                IsLocked = IsLockedSection(t.Type)
             })
             .ToList();
     }
@@ -361,11 +368,26 @@ public sealed partial class LandingPageService : ILandingPageService
         return slug;
     }
 
-    private static string NormalizeColor(string? value)
+    /// <summary>Null when no variant was sent (the caller keeps the current one or uses the default).</summary>
+    private static string? NormalizeVariant(LandingPageSectionType type, string? value)
+    {
+        var variant = value?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(variant))
+            return null;
+        if (SectionTemplates.FindVariant(type, variant) is null)
+        {
+            var valid = SectionTemplates.All.Where(t => t.Type == type).Select(t => t.Variant);
+            throw new BadRequestException($"Invalid layout for a {type} section. Valid values: {string.Join(", ", valid)}.");
+        }
+        return variant;
+    }
+
+    /// <summary>Null = the page default.</summary>
+    private static string? NormalizeColor(string? value)
     {
         var color = value?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(color))
-            return DefaultBackgroundColor;
+            return null;
         if (!ColorRegex().IsMatch(color))
             throw new BadRequestException("Background color must be a valid hex color (e.g. #ffffff).");
         return color.ToLowerInvariant();
@@ -376,6 +398,8 @@ public sealed partial class LandingPageService : ILandingPageService
         var json = value?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(json))
             throw new BadRequestException("Section content is required.");
+        if (System.Text.Encoding.UTF8.GetByteCount(json) > ContentJsonMaxBytes)
+            throw new BadRequestException($"Section content is too large (max {ContentJsonMaxBytes / 1024} KB per section).");
         try
         {
             System.Text.Json.JsonDocument.Parse(json);
@@ -449,6 +473,7 @@ public sealed partial class LandingPageService : ILandingPageService
     {
         PublicId = s.PublicId,
         Type = s.Type.ToString(),
+        Variant = s.Variant,
         SortOrder = s.SortOrder,
         BackgroundColor = s.BackgroundColor,
         ContentJson = s.ContentJson,

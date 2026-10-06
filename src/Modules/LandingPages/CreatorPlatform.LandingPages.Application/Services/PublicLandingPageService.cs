@@ -56,6 +56,7 @@ public sealed class PublicLandingPageService : IPublicLandingPageService
                 {
                     PublicId = s.PublicId,
                     Type = s.Type.ToString(),
+                    Variant = s.Variant,
                     SortOrder = s.SortOrder,
                     BackgroundColor = s.BackgroundColor,
                     ContentJson = s.ContentJson,
