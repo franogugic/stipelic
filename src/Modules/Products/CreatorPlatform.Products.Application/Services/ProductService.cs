@@ -85,8 +85,12 @@ public sealed class ProductService : IProductService
 
         var products = await _productRepository.ListByCreatorIdAsync(creatorId, includeArchived, ct);
         var revenueByProductId = await _orderContextProvider.GetProductRevenueByCreatorIdAsync(creatorId, ct);
+        var trendByProductId = await _orderContextProvider.GetProductSalesTrendsAsync(
+            creatorId, ProductSalesTrend.FirstMonth(DateTimeOffset.UtcNow), ct);
 
-        return products.Select(p => MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id))).ToList();
+        return products
+            .Select(p => MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id), trendByProductId.GetValueOrDefault(p.Id)))
+            .ToList();
     }
 
     public async Task<ProductResponseDto> UpdateAsync(
@@ -282,7 +286,7 @@ public sealed class ProductService : IProductService
         return status;
     }
 
-    private static ProductResponseDto MapToDto(Product product, ProductRevenueDto? revenue = null) => new()
+    private static ProductResponseDto MapToDto(Product product, ProductRevenueDto? revenue = null, int[]? salesTrend = null) => new()
     {
         PublicId = product.PublicId,
         Name = product.Name,
@@ -295,6 +299,7 @@ public sealed class ProductService : IProductService
         CreatedAt = product.CreatedAt,
         UpdatedAt = product.UpdatedAt,
         RevenueCents = revenue?.RevenueCents ?? 0,
-        PaidOrderCount = revenue?.PaidOrderCount ?? 0
+        PaidOrderCount = revenue?.PaidOrderCount ?? 0,
+        SalesTrend = salesTrend ?? new int[ProductSalesTrend.Months]
     };
 }

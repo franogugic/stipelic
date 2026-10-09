@@ -65,6 +65,11 @@ public sealed class FakeOrderContextProvider : IOrderContextProvider
     public Task<Dictionary<int, ProductRevenueDto>> GetProductRevenueByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(RevenueByProductId);
 
+    public Dictionary<int, int[]> TrendByProductId { get; set; } = [];
+
+    public Task<Dictionary<int, int[]>> GetProductSalesTrendsAsync(int creatorId, DateTimeOffset firstMonth, CancellationToken ct)
+        => Task.FromResult(TrendByProductId);
+
     public Task<ProductOrderStatsDto> GetProductOrderStatsAsync(
         int creatorId, int productId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket,
         DateTimeOffset monthStart, CancellationToken ct)

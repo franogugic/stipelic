@@ -246,6 +246,34 @@ public sealed class ProductAnalyticsTests
 
     private sealed record SeededPage(int Id, Guid PublicId);
 
+    // ---- Six-month sales trend on the list ----------------------------------------------------------------
+
+    [Fact]
+    public async Task List_CarriesASixMonthTrendOfPaidOrders_OldestFirst()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        var other = await _data.CreateCreatorAsync();
+        var sold = await CreateProductAsync(creator.CreatorId);
+        var unsold = await CreateProductAsync(creator.CreatorId);
+        var thisMonth = MonthStart().AddDays(1);
+
+        await InsertOrderAsync(creator.CreatorId, sold.Id, 1000, "Paid", thisMonth, thisMonth);
+        await InsertOrderAsync(creator.CreatorId, sold.Id, 1000, "Paid", null, thisMonth); // before PaidAt existed
+        await InsertOrderAsync(creator.CreatorId, sold.Id, 1000, "Paid", MonthStart().AddMonths(-2).AddDays(3), MonthStart().AddMonths(-2));
+        await InsertOrderAsync(creator.CreatorId, sold.Id, 1000, "Paid", MonthStart().AddMonths(-5), MonthStart().AddMonths(-5));
+        await InsertOrderAsync(creator.CreatorId, sold.Id, 1000, "Paid", MonthStart().AddMonths(-6).AddDays(10), MonthStart().AddMonths(-6)); // too old
+        await InsertOrderAsync(creator.CreatorId, sold.Id, 1000, "Refunded", thisMonth, thisMonth);
+        await InsertOrderAsync(creator.CreatorId, sold.Id, 1000, "Pending", null, thisMonth);
+        await InsertOrderAsync(other.CreatorId, sold.Id, 1000, "Paid", thisMonth, thisMonth); // another workspace
+
+        await using var db = _fixture.CreateDbContext();
+        var products = (await CreateService(db).ListAsync(creator.Slug, creator.OwnerUserId, false, CancellationToken.None))
+            .ToDictionary(p => p.PublicId);
+
+        Assert.Equal([1, 0, 0, 1, 0, 2], products[sold.PublicId].SalesTrend);
+        Assert.Equal([0, 0, 0, 0, 0, 0], products[unsold.PublicId].SalesTrend);
+    }
+
     private async Task<SeededProduct> CreateProductAsync(int creatorId, string status = "Active")
     {
         await using var db = _fixture.CreateDbContext();
