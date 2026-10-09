@@ -207,5 +207,45 @@ public sealed class SectionVariantTests
         });
     }
 
+    [Fact]
+    public async Task ANewPage_NavbarHasAnEmptyBrandName_SoTheCreatorsBrandShows()
+    {
+        var (_, page) = await CreatePageAsync();
+
+        var navbar = page.Sections.Single(s => s.Type == "Navbar");
+        Assert.Equal("", System.Text.Json.JsonDocument.Parse(navbar.ContentJson).RootElement.GetProperty("brandName").GetString());
+    }
+
+    [Fact]
+    public async Task TheBrandNameMigration_ClearsOnlyTheExactDefault()
+    {
+        var landingPageId = await _data.CreateLandingPageAsync((await _data.CreateCreatorAsync()).CreatorId);
+        await using var db = _fixture.CreateDbContext();
+        var now = DateTimeOffset.UtcNow;
+        string[] brandNames = ["My Brand", "my brand", "My Brand ", "Acme Studio", ""];
+        for (var i = 0; i < brandNames.Length; i++)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(new { brandName = brandNames[i], links = Array.Empty<object>() });
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO landing_pages.landing_page_sections ("PublicId", "LandingPageId", "Type", "Variant", "SortOrder", "BackgroundColor", "ContentJson", "CreatedAt", "UpdatedAt")
+                VALUES ({Guid.NewGuid()}, {landingPageId}, 'Navbar', 'simple', {i}, NULL, {json}::jsonb, {now}, {now})
+                """);
+        }
+        // A non-navbar section with the same text is not a navbar's default.
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO landing_pages.landing_page_sections ("PublicId", "LandingPageId", "Type", "Variant", "SortOrder", "BackgroundColor", "ContentJson", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {landingPageId}, 'Hero', 'split', 9, NULL, {"{\"brandName\":\"My Brand\"}"}::jsonb, {now}, {now})
+            """);
+
+        // ExecuteSqlRaw formats the text, so the jsonb path's braces are escaped (the migration runs it verbatim).
+        await db.Database.ExecuteSqlRawAsync(ClearDefaultNavbarBrandName.ClearSql.Replace("{", "{{").Replace("}", "}}"));
+
+        var after = await db.Database.SqlQuery<string>($"""
+            SELECT "ContentJson" ->> 'brandName' AS "Value" FROM landing_pages.landing_page_sections
+            WHERE "LandingPageId" = {landingPageId} ORDER BY "SortOrder"
+            """).ToListAsync();
+        Assert.Equal(["", "my brand", "My Brand ", "Acme Studio", "", "My Brand"], after);
+    }
+
     private sealed record BackfilledRow(string Type, string Variant, string? BackgroundColor);
 }

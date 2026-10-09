@@ -36,7 +36,7 @@ public static class SectionTemplates
             Variant = "simple",
             Name = "Simple",
             Description = "Logo left, links right",
-            ContentJson = """{"brandName":"My Brand","links":[]}"""
+            ContentJson = """{"brandName":"","links":[]}"""
         },
         new SectionTemplate
         {
@@ -44,7 +44,7 @@ public static class SectionTemplates
             Variant = "centered",
             Name = "Centered",
             Description = "Logo centred above the links",
-            ContentJson = """{"brandName":"My Brand","links":[]}"""
+            ContentJson = """{"brandName":"","links":[]}"""
         },
         new SectionTemplate
         {
