@@ -89,6 +89,16 @@ public sealed class EmailTemplate
         UpdatedAt = archivedAt;
     }
 
+    /// <summary>Brings an archived template back to Active. Restoring an Active template changes nothing.</summary>
+    public void Restore(DateTimeOffset restoredAt)
+    {
+        if (Status == EmailTemplateStatus.Active)
+            return;
+
+        Status = EmailTemplateStatus.Active;
+        UpdatedAt = restoredAt;
+    }
+
     private static void ValidateName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

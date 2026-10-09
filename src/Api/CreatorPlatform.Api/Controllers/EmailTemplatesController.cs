@@ -106,6 +106,20 @@ public sealed class EmailTemplatesController : ControllerBase
             template));
     }
 
+    [HttpPost("{templatePublicId:guid}/restore")]
+    [EnableRateLimiting("MutateTemplate")]
+    public async Task<ActionResult<ApiResponse<EmailTemplateDto>>> Restore(string slug, Guid templatePublicId, CancellationToken ct)
+    {
+        var currentUser = GetVerifiedUser();
+
+        var template = await _templateService.RestoreAsync(slug, currentUser.Id, templatePublicId, ct);
+
+        return Ok(ApiResponse<EmailTemplateDto>.Success(
+            StatusCodes.Status200OK,
+            "Template restored.",
+            template));
+    }
+
     /// <summary>Returns the authenticated user or throws 401.</summary>
     private CurrentUserDto GetAuthenticatedUser()
     {
