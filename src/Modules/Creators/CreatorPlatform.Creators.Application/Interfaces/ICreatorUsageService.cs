@@ -19,12 +19,15 @@ public interface ICreatorUsageService
     /// control; see IMarketingUnitOfWork.AcquireCreatorCampaignLockAsync / the Payouts module's
     /// equivalent). <paramref name="limit"/> &lt; 0 means unlimited: always succeeds (usage is still
     /// recorded for observability). Returns false — with no state changed — if consuming would exceed
-    /// the limit. Does not call SaveChanges; the caller's unit of work flushes it.</summary>
-    Task<bool> TryConsumeAsync(int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct);
+    /// the limit. Does not call SaveChanges; the caller's unit of work flushes it.
+    /// <paramref name="asOf"/> picks the period (default: now) — a resend of an earlier send is consumed in
+    /// the original send's period, the same one <see cref="RefundAsync"/> credits when it fails again.</summary>
+    Task<bool> TryConsumeAsync(
+        int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct, DateTimeOffset? asOf = null);
 
     /// <summary>Read-only: how much of <paramref name="usageKey"/> has been used in the current period.
     /// Zero if no counter row exists yet (nothing consumed this period).</summary>
-    Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct);
+    Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct, DateTimeOffset? asOf = null);
 
     /// <summary>Gives back <paramref name="amount"/> units previously consumed via
     /// <see cref="TryConsumeAsync"/> — e.g. a send that was counted against the monthly limit but then

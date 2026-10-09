@@ -20,10 +20,11 @@ public sealed class CreatorUsageService : ICreatorUsageService
     /// insert branch is itself conditioned on the limit (via the SELECT ... WHERE), and the conflict branch
     /// re-checks the limit against the row's current value — so a rowcount of 0 always means "exceeded",
     /// whichever branch would have fired.</summary>
-    public async Task<bool> TryConsumeAsync(int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct)
+    public async Task<bool> TryConsumeAsync(
+        int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct, DateTimeOffset? asOf = null)
     {
         var now = DateTimeOffset.UtcNow;
-        var (periodStart, periodEnd) = UsagePeriodResolver.Resolve(period, now);
+        var (periodStart, periodEnd) = UsagePeriodResolver.Resolve(period, asOf ?? now);
 
         var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync(
             $"""
@@ -41,9 +42,9 @@ public sealed class CreatorUsageService : ICreatorUsageService
         return rowsAffected > 0;
     }
 
-    public async Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct)
+    public async Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct, DateTimeOffset? asOf = null)
     {
-        var (periodStart, periodEnd) = UsagePeriodResolver.Resolve(period, DateTimeOffset.UtcNow);
+        var (periodStart, periodEnd) = UsagePeriodResolver.Resolve(period, asOf ?? DateTimeOffset.UtcNow);
 
         return await _context.Set<CreatorUsageCounter>()
             .AsNoTracking()

@@ -156,9 +156,8 @@ public sealed class CampaignsController : ControllerBase
             campaign));
     }
 
-    /// <summary>Manually requeues every currently-Failed recipient of this send — see
-    /// <see cref="ICampaignSendService.ResendFailedAsync"/> for why this never touches the monthly usage
-    /// counter.</summary>
+    /// <summary>Manually requeues every currently-Failed recipient of this send; they count against the
+    /// monthly sends again — see <see cref="ICampaignSendService.ResendFailedAsync"/>.</summary>
     [HttpPost("{campaignPublicId:guid}/resend-failed")]
     [EnableRateLimiting("ResendFailedCampaign")]
     public async Task<ActionResult<ApiResponse<ResendFailedResultDto>>> ResendFailed(
