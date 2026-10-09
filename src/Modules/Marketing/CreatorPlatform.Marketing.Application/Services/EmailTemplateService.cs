@@ -126,7 +126,7 @@ public sealed class EmailTemplateService : IEmailTemplateService
     public List<EmailTemplateStarterDto> GetStarters()
     {
         return EmailTemplateStarters.All
-            .Select(t => new EmailTemplateStarterDto(t.Key, t.Name, t.Subject, t.BodyText, t.CtaLabel, t.CtaUrl))
+            .Select(t => new EmailTemplateStarterDto(t.Key, t.Name, t.Description, t.Subject, t.BodyText, t.CtaLabel, t.CtaUrl))
             .ToList();
     }
 
