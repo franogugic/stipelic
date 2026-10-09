@@ -164,7 +164,7 @@ public static class SectionTemplates
             Variant = "simple",
             Name = "Simple",
             Description = "Copyright left, credit right",
-            ContentJson = """{"copyright":"© My Brand. All rights reserved."}"""
+            ContentJson = """{"copyright":""}"""
         },
         new SectionTemplate
         {
@@ -172,7 +172,7 @@ public static class SectionTemplates
             Variant = "centered",
             Name = "Centered",
             Description = "Everything centred",
-            ContentJson = """{"copyright":"© My Brand. All rights reserved."}"""
+            ContentJson = """{"copyright":""}"""
         }
     ];
 

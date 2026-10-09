@@ -247,5 +247,46 @@ public sealed class SectionVariantTests
         Assert.Equal(["", "my brand", "My Brand ", "Acme Studio", "", "My Brand"], after);
     }
 
+    [Fact]
+    public async Task ANewPage_FooterHasAnEmptyCopyright_SoTheCreatorsBrandShows()
+    {
+        var (_, page) = await CreatePageAsync();
+
+        var footer = page.Sections.Single(s => s.Type == "Footer");
+        Assert.Equal("", System.Text.Json.JsonDocument.Parse(footer.ContentJson).RootElement.GetProperty("copyright").GetString());
+    }
+
+    [Fact]
+    public async Task TheCopyrightMigration_ClearsOnlyTheExactDefaults()
+    {
+        var landingPageId = await _data.CreateLandingPageAsync((await _data.CreateCreatorAsync()).CreatorId);
+        await using var db = _fixture.CreateDbContext();
+        var now = DateTimeOffset.UtcNow;
+        string[] copyrights =
+        [
+            "© My Brand. All rights reserved.",
+            "© 2025 My Brand. All rights reserved.",
+            "© 2026 My Brand. All rights reserved.",
+            "© My Brand. All rights reserved. ",
+            "© 2026 Acme Studio",
+        ];
+        for (var i = 0; i < copyrights.Length; i++)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(new { copyright = copyrights[i] });
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO landing_pages.landing_page_sections ("PublicId", "LandingPageId", "Type", "Variant", "SortOrder", "BackgroundColor", "ContentJson", "CreatedAt", "UpdatedAt")
+                VALUES ({Guid.NewGuid()}, {landingPageId}, 'Footer', 'simple', {i}, NULL, {json}::jsonb, {now}, {now})
+                """);
+        }
+
+        await db.Database.ExecuteSqlRawAsync(ClearDefaultFooterCopyright.ClearSql.Replace("{", "{{").Replace("}", "}}"));
+
+        var after = await db.Database.SqlQuery<string>($"""
+            SELECT "ContentJson" ->> 'copyright' AS "Value" FROM landing_pages.landing_page_sections
+            WHERE "LandingPageId" = {landingPageId} ORDER BY "SortOrder"
+            """).ToListAsync();
+        Assert.Equal(["", "", "© 2026 My Brand. All rights reserved.", "© My Brand. All rights reserved. ", "© 2026 Acme Studio"], after);
+    }
+
     private sealed record BackfilledRow(string Type, string Variant, string? BackgroundColor);
 }
