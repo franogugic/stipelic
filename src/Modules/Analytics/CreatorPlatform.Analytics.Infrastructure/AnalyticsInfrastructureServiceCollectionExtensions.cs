@@ -20,6 +20,8 @@ public static class AnalyticsInfrastructureServiceCollectionExtensions
         services.AddSingleton<IViewsSummaryCache, ViewsSummaryCache>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<IAnalyticsUnitOfWork, AnalyticsUnitOfWork>();
+        services.AddScoped<IAnalyticsSeriesReader, AnalyticsSeriesReader>();
+        services.AddScoped<IAnalyticsSeriesService, AnalyticsSeriesService>();
 
         return services;
     }
