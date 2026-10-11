@@ -5,8 +5,9 @@ namespace CreatorPlatform.Marketing.Application.Dtos;
 /// <param name="Total">Every contact in the creator's directory.</param>
 /// <param name="Active">Contacts that have not unsubscribed from this creator.</param>
 /// <param name="NewThisMonth">Contacts first captured since the start of the current month in the creator's timezone.</param>
-/// <param name="Unsubscribed">Opt-outs recorded for this creator (kept even when the contact itself was
-/// deleted, so this can exceed <c>Total - Active</c>).</param>
+/// <param name="Unsubscribed">Contacts that have unsubscribed from this creator, so
+/// <c>Total = Active + Unsubscribed</c>. An opt-out of a deleted contact, or of an address that never subscribed,
+/// is not counted here (it still appears in <c>Monthly</c>, which describes opt-out events).</param>
 /// <param name="Growth">One point per calendar month (creator timezone) of the last 12, oldest first, current month
 /// last.</param>
 /// <param name="Sources">Every landing page (archived included) with at least one contact, most contacts

@@ -110,14 +110,16 @@ public sealed class ContactsRepository : IContactsRepository
     {
         // One pass over the creator's summaries. Active is an anti-join written as LEFT JOIN … IS NULL so the
         // planner can hash the (small) unsubscribe set once; a NOT EXISTS inside the aggregate FILTER runs as
-        // a per-row SubPlan instead (~150 ms vs ~14 ms at 100k contacts). No row multiplication: unsubscribes
-        // is unique on (CreatorId, Email). An aggregate without GROUP BY always yields exactly one row.
+        // a per-row SubPlan instead (~150 ms vs ~14 ms at 100k contacts). Unsubscribed is the matching semi-join
+        // over the same rows, so it counts existing subscribers only (an opt-out of a deleted contact or of an
+        // address that never subscribed is not counted) and Total = Active + Unsubscribed. No row multiplication:
+        // unsubscribes is unique on (CreatorId, Email). An aggregate without GROUP BY always yields exactly one row.
         var rows = await _context.Database.SqlQuery<ContactStatsCountsRow>($"""
             SELECT
                 COUNT(*)::int AS "Total",
                 (COUNT(*) FILTER (WHERE u."Id" IS NULL))::int AS "Active",
                 (COUNT(*) FILTER (WHERE cs."FirstCapturedAt" >= {monthStart}))::int AS "NewThisMonth",
-                (SELECT COUNT(*) FROM marketing.unsubscribes u2 WHERE u2."CreatorId" = {creatorId})::int AS "Unsubscribed"
+                (COUNT(*) FILTER (WHERE u."Id" IS NOT NULL))::int AS "Unsubscribed"
             FROM marketing.contact_summaries cs
             LEFT JOIN marketing.unsubscribes u
                 ON u."CreatorId" = {creatorId}

@@ -83,6 +83,36 @@ public sealed class ContactStatusAndMonthlyTests
         Assert.Equal((3, 2), (monthly.Sum(m => m.Joined), monthly.Sum(m => m.Unsubscribed)));
     }
 
+    [Fact]
+    public async Task Stats_CountUnsubscribedAmongExistingContactsOnly()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        var other = await _data.CreateCreatorAsync();
+        var now = DateTimeOffset.UtcNow;
+        await AddContactAsync(creator.CreatorId, "a@example.test", now);
+        await AddContactAsync(creator.CreatorId, "b@example.test", now);
+        await AddContactAsync(creator.CreatorId, "c@example.test", now);
+        await AddContactAsync(creator.CreatorId, "gone@example.test", now);
+        await AddUnsubscribeAsync(creator.CreatorId, "b@example.test", now);
+        await AddUnsubscribeAsync(creator.CreatorId, "gone@example.test", now);
+        await AddUnsubscribeAsync(creator.CreatorId, "never-subscribed@example.test", now); // not a contact
+        await AddUnsubscribeAsync(other.CreatorId, "c@example.test", now); // another creator's opt-out
+        await WithServiceAsync(async s =>
+        {
+            await s.DeleteAsync(creator.Slug, creator.OwnerUserId, "gone@example.test", CancellationToken.None);
+            return 0;
+        });
+
+        var stats = await WithServiceAsync(s => s.GetStatsAsync(creator.Slug, creator.OwnerUserId, CancellationToken.None));
+
+        Assert.Equal((3, 2, 1), (stats.Total, stats.Active, stats.Unsubscribed));
+        Assert.Equal(stats.Total, stats.Active + stats.Unsubscribed);
+        // The tile matches the status filter's list.
+        Assert.Single(await ListAsync(creator, "unsubscribed"));
+        // The per-month series is event-based: all three opt-outs of this creator are still in it.
+        Assert.Equal(3, stats.Monthly.Sum(m => m.Unsubscribed));
+    }
+
     private async Task SetTimezoneAsync(int creatorId, string timezone)
     {
         await using var db = _fixture.CreateDbContext();
