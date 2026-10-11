@@ -12,8 +12,9 @@ public sealed record ContactExport(string CreatorSlug, IAsyncEnumerable<ContactD
 
 public interface IContactsService
 {
+    /// <summary><paramref name="status"/>: "active" | "unsubscribed" | empty (everyone); anything else is a 400.</summary>
     Task<ContactsPageDto> SearchAsync(
-        string slug, int ownerUserId, string? search, Guid? landingPageId, string? afterEmail, int limit,
+        string slug, int ownerUserId, string? search, Guid? landingPageId, string? status, string? afterEmail, int limit,
         CancellationToken ct);
 
     Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct);
@@ -22,7 +23,7 @@ public interface IContactsService
     /// output), and returns the matching contacts as a lazy, keyset-batched stream — never the whole directory in
     /// memory.</summary>
     Task<ContactExport> StartExportAsync(
-        string slug, int ownerUserId, string? search, Guid? landingPageId, CancellationToken ct);
+        string slug, int ownerUserId, string? search, Guid? landingPageId, string? status, CancellationToken ct);
 
     /// <summary>Removes one contact from the creator's directory: its summary and its captures on the
     /// creator's landing pages, atomically. Opt-outs and send history are kept. 404 if the creator has no

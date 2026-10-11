@@ -35,7 +35,7 @@ public sealed class ContactSearchTests
     private Task<List<string>> SearchAsync(
         TestData.SeededCreator creator, string? search, Guid? source = null, string? afterEmail = null, int limit = 50) =>
         WithServiceAsync(async service =>
-            (await service.SearchAsync(creator.Slug, creator.OwnerUserId, search, source, afterEmail, limit, CancellationToken.None))
+            (await service.SearchAsync(creator.Slug, creator.OwnerUserId, search, source, null, afterEmail, limit, CancellationToken.None))
             .Contacts.Select(c => c.Email).ToList());
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class ContactSearchTests
 
         var exported = await WithServiceAsync(async service =>
         {
-            var export = await service.StartExportAsync(creator.Slug, creator.OwnerUserId, "saric", null, CancellationToken.None);
+            var export = await service.StartExportAsync(creator.Slug, creator.OwnerUserId, "saric", null, null, CancellationToken.None);
             var emails = new List<string>();
             await foreach (var contact in export.Contacts)
                 emails.Add(contact.Email);

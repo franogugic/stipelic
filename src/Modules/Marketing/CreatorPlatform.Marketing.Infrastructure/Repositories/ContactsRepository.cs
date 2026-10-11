@@ -22,8 +22,12 @@ public sealed class ContactsRepository : IContactsRepository
     }
 
     public async Task<List<ContactRow>> SearchAsync(
-        int creatorId, string? search, int? landingPageId, string? afterEmail, int limit, CancellationToken ct)
+        int creatorId, string? search, int? landingPageId, ContactStatusFilter? status, string? afterEmail, int limit,
+        CancellationToken ct)
     {
+        // "Unsubscribed" = an opt-out exists for this creator and email (unique on (CreatorId, Email), so the EXISTS
+        // probe is one index lookup); a null filter folds away at plan time.
+        var unsubscribed = status is null ? (bool?)null : status == ContactStatusFilter.Unsubscribed;
         // Emails are stored lower-case, so a lower-cased term makes the match case-insensitive.
         var searchPattern = string.IsNullOrWhiteSpace(search) ? null : LikePatterns.Contains(search.Trim().ToLowerInvariant());
         var after = afterEmail?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -45,6 +49,9 @@ public sealed class ContactsRepository : IContactsRepository
               AND "Email" > {after}
               AND ({searchPattern}::text IS NULL OR "Email" LIKE {searchPattern}::text ESCAPE '\')
               AND ({landingPageId}::int IS NULL OR "SourceLandingPageIds" @> ARRAY[{landingPageId}::int])
+              AND ({unsubscribed}::boolean IS NULL OR {unsubscribed}::boolean = EXISTS (
+                    SELECT 1 FROM marketing.unsubscribes u
+                    WHERE u."CreatorId" = {creatorId} AND u."Email" = contact_summaries."Email"))
             ORDER BY "Email"
             LIMIT {fetchLimit}
             """)
@@ -208,6 +215,42 @@ public sealed class ContactsRepository : IContactsRepository
                 ON lp."Id" = s."LandingPageId"
                AND lp."CreatorId" = {creatorId}
             ORDER BY s."Count" DESC, lp."Title", lp."Id"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct)
+    {
+        // Month starts are local `timestamp` values (now() AT TIME ZONE tz); each event is converted the same way,
+        // so a capture at 23:30 UTC on the 31st lands on the 1st when the creator's zone is ahead of UTC.
+        return await _context.Database.SqlQuery<ContactMonthRow>($"""
+            WITH months AS (
+                SELECT m AS "MonthStart"
+                FROM generate_series(
+                    date_trunc('month', now() AT TIME ZONE {timezone}) - interval '11 months',
+                    date_trunc('month', now() AT TIME ZONE {timezone}),
+                    interval '1 month') AS m
+            ),
+            joined AS (
+                SELECT date_trunc('month', cs."FirstCapturedAt" AT TIME ZONE {timezone}) AS "Month", COUNT(*) AS "Count"
+                FROM marketing.contact_summaries cs
+                WHERE cs."CreatorId" = {creatorId}
+                GROUP BY 1
+            ),
+            left_list AS (
+                SELECT date_trunc('month', u."UnsubscribedAt" AT TIME ZONE {timezone}) AS "Month", COUNT(*) AS "Count"
+                FROM marketing.unsubscribes u
+                WHERE u."CreatorId" = {creatorId}
+                GROUP BY 1
+            )
+            SELECT to_char(m."MonthStart", 'YYYY-MM') AS "Month",
+                   COALESCE(j."Count", 0)::int AS "Joined",
+                   COALESCE(l."Count", 0)::int AS "Unsubscribed"
+            FROM months m
+            LEFT JOIN joined j ON j."Month" = m."MonthStart"
+            LEFT JOIN left_list l ON l."Month" = m."MonthStart"
+            ORDER BY m."MonthStart"
             """)
             .AsNoTracking()
             .ToListAsync(ct);

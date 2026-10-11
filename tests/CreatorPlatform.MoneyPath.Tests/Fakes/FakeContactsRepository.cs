@@ -9,7 +9,8 @@ public sealed class FakeContactsRepository : IContactsRepository
     public int SearchCallCount { get; private set; }
 
     public Task<List<ContactRow>> SearchAsync(
-        int creatorId, string? search, int? landingPageId, string? afterEmail, int limit, CancellationToken ct)
+        int creatorId, string? search, int? landingPageId, ContactStatusFilter? status, string? afterEmail, int limit,
+        CancellationToken ct)
     {
         LastCall = (creatorId, search, landingPageId, afterEmail, limit);
         SearchCallCount++;
@@ -40,4 +41,7 @@ public sealed class FakeContactsRepository : IContactsRepository
 
     public Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(new List<ContactSourceCountRow>());
+
+    public Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct)
+        => Task.FromResult(new List<ContactMonthRow>());
 }

@@ -63,7 +63,7 @@ public class ContactsExportTests
             .Reverse()
             .ToList();
 
-        var export = await service.StartExportAsync(Slug, OwnerUserId, null, null, CancellationToken.None);
+        var export = await service.StartExportAsync(Slug, OwnerUserId, null, null, null, CancellationToken.None);
         var emails = new List<string>();
         await foreach (var contact in export.Contacts)
             emails.Add(contact.Email);
@@ -81,7 +81,7 @@ public class ContactsExportTests
         contextProvider.LandingPageId = null;
 
         await Assert.ThrowsAsync<NotFoundException>(
-            () => service.StartExportAsync(Slug, OwnerUserId, null, Guid.NewGuid(), CancellationToken.None));
+            () => service.StartExportAsync(Slug, OwnerUserId, null, Guid.NewGuid(), null, CancellationToken.None));
 
         Assert.Equal(0, repository.SearchCallCount);
     }

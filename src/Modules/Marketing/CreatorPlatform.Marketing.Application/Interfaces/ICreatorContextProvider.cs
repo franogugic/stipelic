@@ -9,7 +9,9 @@ public sealed record MarketingCreatorContext(
     string BrandName,
     string? LogoUrl,
     string PrimaryColor,
-    string OwnerEmail);
+    string OwnerEmail,
+    /// <summary>The creator's analytics timezone (IANA), resolved by CreatorTimeZone — UTC when unset or unknown.</summary>
+    string Timezone = "UTC");
 
 public interface ICreatorContextProvider
 {

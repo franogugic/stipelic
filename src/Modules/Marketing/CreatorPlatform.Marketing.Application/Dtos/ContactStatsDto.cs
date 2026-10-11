@@ -17,7 +17,13 @@ public sealed record ContactStatsDto(
     int NewThisMonth,
     int Unsubscribed,
     List<ContactGrowthPointDto> Growth,
-    List<ContactSourceCountDto> Sources);
+    List<ContactSourceCountDto> Sources,
+    List<ContactMonthDto> Monthly);
+
+/// <param name="Month">"yyyy-MM" in the creator's timezone; the last 12 months, oldest first, current month last.</param>
+/// <param name="Joined">Contacts first captured in the month (deleted contacts are no longer counted).</param>
+/// <param name="Unsubscribed">Opt-outs recorded in the month (kept even when the contact was deleted).</param>
+public sealed record ContactMonthDto(string Month, int Joined, int Unsubscribed);
 
 /// <param name="Month">"yyyy-MM".</param>
 /// <param name="Total">Cumulative contacts first captured before the end of that month — includes everyone

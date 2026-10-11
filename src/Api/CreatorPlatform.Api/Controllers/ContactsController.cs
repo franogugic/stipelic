@@ -39,6 +39,7 @@ public sealed class ContactsController : ControllerBase
         string slug,
         [FromQuery] string? search,
         [FromQuery] Guid? landingPageId,
+        [FromQuery] string? status,
         [FromQuery] string? afterEmail,
         [FromQuery] int limit,
         CancellationToken ct)
@@ -46,7 +47,7 @@ public sealed class ContactsController : ControllerBase
         var currentUser = GetVerifiedUser();
 
         var page = await _contactsService.SearchAsync(
-            slug, currentUser.Id, search, landingPageId, afterEmail, limit, ct);
+            slug, currentUser.Id, search, landingPageId, status, afterEmail, limit, ct);
 
         return Ok(ApiResponse<ContactsPageDto>.Success(
             StatusCodes.Status200OK,
@@ -69,20 +70,21 @@ public sealed class ContactsController : ControllerBase
             stats));
     }
 
-    /// <summary>CSV download of the directory (same <paramref name="search"/> / <paramref name="landingPageId"/>
-    /// filters as the list), streamed batch by batch.</summary>
+    /// <summary>CSV download of the directory (same <paramref name="search"/> / <paramref name="landingPageId"/> /
+    /// <paramref name="status"/> filters as the list), streamed batch by batch.</summary>
     [HttpGet("export")]
     [EnableRateLimiting("ExportContacts")]
     public async Task Export(
         string slug,
         [FromQuery] string? search,
         [FromQuery] Guid? landingPageId,
+        [FromQuery] string? status,
         CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
         // Ownership and the page filter are checked here, so a 401/403/404 still answers as JSON before any CSV.
-        var export = await _contactsService.StartExportAsync(slug, currentUser.Id, search, landingPageId, ct);
+        var export = await _contactsService.StartExportAsync(slug, currentUser.Id, search, landingPageId, status, ct);
 
         await CsvResponseWriter.WriteAsync(
             Response,
