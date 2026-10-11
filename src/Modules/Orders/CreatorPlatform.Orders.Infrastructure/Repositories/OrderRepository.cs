@@ -438,7 +438,9 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(ct);
 
         if (creator is null)
-            return new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, ZeroTrend(), 0, 0, 0, 0, ZeroTrend(), ZeroMonthlyTrend(), 0);
+            return new HomeSummaryDto(
+                0, 0, null, 0, 0, [], 0, null, ZeroTrend(), 0, 0, 0, 0, ZeroTrend(), ZeroMonthlyTrend(), 0,
+                [.. new int[BoardMonths]], 0, 0, 0);
 
         var now = DateTimeOffset.UtcNow;
         var todayMidnight = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
@@ -599,6 +601,8 @@ public sealed class OrderRepository : IOrderRepository
                 monthlyRevenueTrend[index] += row.AmountCents;
         }
 
+        var board = await GetBoardFiguresAsync(creator.Id, ct);
+
         return new HomeSummaryDto(
             orderStats?.TotalPaidAmountCents ?? 0,
             orderStats?.PaidOrderCount ?? 0,
@@ -615,8 +619,53 @@ public sealed class OrderRepository : IOrderRepository
             counts.SubscriberCount,
             [.. viewsTrend],
             [.. monthlyRevenueTrend],
-            orderStats?.TotalPlatformFeeCents ?? 0);
+            orderStats?.TotalPlatformFeeCents ?? 0,
+            board.MonthlyPaidOrderCounts,
+            board.CustomerCount,
+            board.RefundedOrderCount,
+            board.RefundedAmountCents);
     }
+
+    private const int BoardMonths = 12;
+
+    private sealed record BoardFigures(List<int> MonthlyPaidOrderCounts, int CustomerCount, int RefundedOrderCount, int RefundedAmountCents);
+
+    /// <summary>The dashboard's "sales at a glance" board: customers and refunds over all time, and paid orders per
+    /// month in the creator's timezone (for the average order this month vs last month).</summary>
+    private async Task<BoardFigures> GetBoardFiguresAsync(int creatorId, CancellationToken ct)
+    {
+        var timezone = CreatorTimeZone.Resolve((await _context.Database.SqlQuery<string?>($"""
+            SELECT s."Timezone" AS "Value" FROM creators.creator_settings s WHERE s."CreatorId" = {creatorId}
+            """).AsNoTracking().ToListAsync(ct)).SingleOrDefault());
+
+        var totals = (await _context.Database.SqlQuery<BoardTotalsRow>($"""
+            SELECT
+                (COUNT(DISTINCT lower(o."Email")) FILTER (WHERE o."Status" = 'Paid'))::int AS "CustomerCount",
+                (COUNT(*) FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Refunded'), 0)::int AS "RefundedAmountCents"
+            FROM orders.orders o
+            WHERE o."CreatorId" = {creatorId}
+            """).AsNoTracking().ToListAsync(ct)).Single();
+
+        var months = await _context.Database.SqlQuery<int>($"""
+            SELECT COALESCE(p."Count", 0)::int AS "Value"
+            FROM generate_series(
+                date_trunc('month', now() AT TIME ZONE {timezone}) - interval '11 months',
+                date_trunc('month', now() AT TIME ZONE {timezone}),
+                interval '1 month') AS m("MonthStart")
+            LEFT JOIN (
+                SELECT date_trunc('month', COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}) AS "Month", COUNT(*) AS "Count"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId} AND o."Status" = 'Paid'
+                GROUP BY 1
+            ) p ON p."Month" = m."MonthStart"
+            ORDER BY m."MonthStart"
+            """).ToListAsync(ct);
+
+        return new BoardFigures(months, totals.CustomerCount, totals.RefundedOrderCount, totals.RefundedAmountCents);
+    }
+
+    private sealed record BoardTotalsRow(int CustomerCount, int RefundedOrderCount, int RefundedAmountCents);
 
     private const int TrendDays = 7;
     private const int MonthlyTrendMonths = 7;

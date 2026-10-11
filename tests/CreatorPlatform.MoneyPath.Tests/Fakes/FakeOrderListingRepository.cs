@@ -99,7 +99,7 @@ public sealed class FakeOrderListingRepository : IOrderRepository
         => Task.FromResult(new List<PurchasesBucketRow>());
 
     public Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
-        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0));
+        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0, [], 0, 0, 0));
 }
 
 public sealed class FakeOrderListingHomeSummaryCache : IHomeSummaryCache

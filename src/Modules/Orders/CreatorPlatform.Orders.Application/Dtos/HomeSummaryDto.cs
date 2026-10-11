@@ -1,5 +1,10 @@
 namespace CreatorPlatform.Orders.Application.Dtos;
 
+/// <param name="MonthlyPaidOrderCounts">Paid orders per calendar month for the last 12 months in the creator's
+/// timezone (by PaidAt, else CreatedAt), oldest first, the current month last.</param>
+/// <param name="CustomerCount">Distinct buyer emails over Paid orders, all time.</param>
+/// <param name="RefundedOrderCount">Refunded orders, all time.</param>
+/// <param name="RefundedAmountCents">Sum of AmountCents over Refunded orders.</param>
 public sealed record HomeSummaryDto(
     int TotalPaidAmountCents,
     int PaidOrderCount,
@@ -16,6 +21,10 @@ public sealed record HomeSummaryDto(
     int SubscriberCount,
     List<int> ViewsTrend,
     List<int> MonthlyRevenueTrend,
-    int TotalPlatformFeeCents);
+    int TotalPlatformFeeCents,
+    List<int> MonthlyPaidOrderCounts,
+    int CustomerCount,
+    int RefundedOrderCount,
+    int RefundedAmountCents);
 
 public sealed record TopProductDto(string Name, int TotalCents);
