@@ -57,14 +57,20 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             .ToDictionaryAsync(row => row.LandingPageId, row => row.Count, ct);
     }
 
-    public async Task<List<EmailCapture>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct)
+    public async Task<List<NewestCaptureRow>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct)
     {
-        return await _context.Set<EmailCapture>()
+        // The (LandingPageId, CapturedAt) index serves the newest-first scan; the opt-out is one probe per row on the
+        // unique (CreatorId, Email) index of the page creator's unsubscribes.
+        return await _context.Database.SqlQuery<NewestCaptureRow>($"""
+            SELECT ec."Email" AS "Email", ec."CapturedAt" AS "CapturedAt", (u."Id" IS NOT NULL) AS "Unsubscribed"
+            FROM analytics.email_captures ec
+            JOIN landing_pages.landing_pages lp ON lp."Id" = ec."LandingPageId"
+            LEFT JOIN marketing.unsubscribes u ON u."CreatorId" = lp."CreatorId" AND u."Email" = ec."Email"
+            WHERE ec."LandingPageId" = {landingPageId}
+            ORDER BY ec."CapturedAt" DESC, ec."Id" DESC
+            LIMIT {limit}
+            """)
             .AsNoTracking()
-            .Where(ec => ec.LandingPageId == landingPageId)
-            .OrderByDescending(ec => ec.CapturedAt)
-            .ThenByDescending(ec => ec.Id)
-            .Take(limit)
             .ToListAsync(ct);
     }
 

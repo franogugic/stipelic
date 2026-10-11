@@ -16,7 +16,8 @@ public interface IEmailCaptureRepository
     Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct);
     /// <summary>The newest <paramref name="limit"/> captures of the page (CapturedAt DESC, served by the
     /// (LandingPageId, CapturedAt) index).</summary>
-    Task<List<EmailCapture>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct);
+    /// <summary>The page's newest captures, each with whether that email has unsubscribed from the page's creator.</summary>
+    Task<List<NewestCaptureRow>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct);
     Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
 
     /// <summary>Upserts the (creatorId, email) row in <c>marketing.contact_summaries</c> — call only when
@@ -27,6 +28,8 @@ public interface IEmailCaptureRepository
     /// contact was updated.</summary>
     Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct);
 }
+
+public sealed record NewestCaptureRow(string Email, DateTimeOffset CapturedAt, bool Unsubscribed);
 
 public sealed record CapturesByPeriodRow(long Today, long Last7Days, long Last30Days, long AllTime);
 
