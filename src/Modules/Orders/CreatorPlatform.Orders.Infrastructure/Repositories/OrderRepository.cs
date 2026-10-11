@@ -9,6 +9,7 @@ using CreatorPlatform.Orders.Domain.Orders;
 using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
+using CreatorPlatform.Shared.Application.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace CreatorPlatform.Orders.Infrastructure.Repositories;
@@ -220,28 +221,72 @@ public sealed class OrderRepository : IOrderRepository
 
     public async Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
-        // One pass over the creator's orders via the (CreatorId, CreatedAt) index. The aggregate has no GROUP BY,
-        // so it always yields exactly one row — zeros (and a null currency) when the creator has no orders or the
-        // slug isn't this owner's. Disabled workspaces are excluded: their slug can be reused by a new workspace.
-        var rows = await _context.Database.SqlQuery<OrderSummaryRow>($"""
+        // Disabled workspaces are excluded: their slug can be reused by a new workspace. An unknown slug (or another
+        // owner's) answers zeros, as before.
+        var creator = (await _context.Database.SqlQuery<SummaryCreatorRow>($"""
+            SELECT c."Id" AS "Id", s."Timezone" AS "Timezone"
+            FROM creators.creators c
+            LEFT JOIN creators.creator_settings s ON s."CreatorId" = c."Id"
+            WHERE c."Slug" = {creatorSlug} AND c."OwnerUserId" = {ownerUserId} AND c."Status" <> 'Disabled'
+            """).AsNoTracking().ToListAsync(ct)).SingleOrDefault();
+        if (creator is null)
+            return ToSummaryDto(new OrderSummaryRow(0, 0, 0, 0, 0, 0, 0, 0, null), []);
+
+        // One pass over the creator's orders via the (CreatorId, CreatedAt) index; no GROUP BY, so always one row.
+        var totals = (await _context.Database.SqlQuery<OrderSummaryRow>($"""
             SELECT
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "PaidOrderCount",
                 COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPaidAmountCents",
                 COALESCE(SUM(o."PlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
                 COUNT(o."Id")::int AS "TotalOrderCount",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Pending'))::int AS "PendingOrderCount",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Failed'))::int AS "FailedOrderCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Refunded'), 0)::int AS "RefundedAmountCents",
                 MAX(c."DefaultCurrency") FILTER (WHERE o."Id" IS NOT NULL) AS "Currency"
             FROM creators.creators c
             LEFT JOIN orders.orders o ON o."CreatorId" = c."Id"
-            WHERE c."Slug" = {creatorSlug}
-              AND c."OwnerUserId" = {ownerUserId}
-              AND c."Status" <> 'Disabled'
-            """)
-            .AsNoTracking()
-            .ToListAsync(ct);
+            WHERE c."Id" = {creator.Id}
+            """).AsNoTracking().ToListAsync(ct)).Single();
 
-        return ToSummaryDto(rows.Single());
+        return ToSummaryDto(totals, await GetMonthlyTrendAsync(creator.Id, CreatorTimeZone.Resolve(creator.Timezone), ct));
     }
+
+    /// <summary>Gross / fees / net of Paid orders by the month they were paid, and refunds by the month they were
+    /// refunded — 12 local months in <paramref name="timezone"/>, zero-filled by generate_series.</summary>
+    private async Task<List<OrderMonthDto>> GetMonthlyTrendAsync(int creatorId, string timezone, CancellationToken ct)
+    {
+        var rows = await _context.Database.SqlQuery<OrderMonthRow>($"""
+            WITH months AS (
+                SELECT m AS "MonthStart"
+                FROM generate_series(
+                    date_trunc('month', now() AT TIME ZONE {timezone}) - interval '11 months',
+                    date_trunc('month', now() AT TIME ZONE {timezone}),
+                    interval '1 month') AS m
+            ),
+            local_orders AS (
+                SELECT o."Status", o."AmountCents", o."PlatformFeeCents",
+                       date_trunc('month', COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}) AS "PaidMonth",
+                       date_trunc('month', o."UpdatedAt" AT TIME ZONE {timezone}) AS "UpdatedMonth"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId} AND o."Status" IN ('Paid', 'Refunded')
+            )
+            SELECT to_char(m."MonthStart", 'YYYY-MM') AS "Month",
+                   COALESCE(SUM(lo."AmountCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "GrossCents",
+                   COALESCE(SUM(lo."PlatformFeeCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "FeeCents",
+                   (COUNT(*) FILTER (WHERE lo."Status" = 'Refunded' AND lo."UpdatedMonth" = m."MonthStart"))::int AS "RefundedCount"
+            FROM months m
+            LEFT JOIN local_orders lo ON lo."PaidMonth" = m."MonthStart" OR lo."UpdatedMonth" = m."MonthStart"
+            GROUP BY m."MonthStart"
+            ORDER BY m."MonthStart"
+            """).AsNoTracking().ToListAsync(ct);
+
+        return rows.Select(r => new OrderMonthDto(r.Month, r.GrossCents, r.FeeCents, r.GrossCents - r.FeeCents, r.RefundedCount)).ToList();
+    }
+
+    private sealed record SummaryCreatorRow(int Id, string? Timezone);
+
+    private sealed record OrderMonthRow(string Month, long GrossCents, long FeeCents, int RefundedCount);
 
     public async Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
     {
@@ -252,6 +297,9 @@ public sealed class OrderRepository : IOrderRepository
                 COALESCE(SUM(o."PlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
                 COUNT(o."Id")::int AS "TotalOrderCount",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Pending'))::int AS "PendingOrderCount",
+                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Failed'))::int AS "FailedOrderCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Refunded'), 0)::int AS "RefundedAmountCents",
                 MAX(c."DefaultCurrency") AS "Currency"
             FROM orders.orders o
             JOIN creators.creators c ON c."Id" = o."CreatorId"
@@ -260,7 +308,7 @@ public sealed class OrderRepository : IOrderRepository
             .AsNoTracking()
             .ToListAsync(ct);
 
-        return ToSummaryDto(rows.Single());
+        return ToSummaryDto(rows.Single(), []);
     }
 
     public async Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(
@@ -309,16 +357,23 @@ public sealed class OrderRepository : IOrderRepository
         int TotalPlatformFeeCents,
         int RefundedOrderCount,
         int TotalOrderCount,
+        int PendingOrderCount,
+        int FailedOrderCount,
+        int RefundedAmountCents,
         string? Currency);
 
-    private static OrderSummaryDto ToSummaryDto(OrderSummaryRow row) => new(
+    private static OrderSummaryDto ToSummaryDto(OrderSummaryRow row, List<OrderMonthDto> monthlyTrend) => new(
         row.PaidOrderCount,
         row.TotalPaidAmountCents,
         row.Currency,
         row.TotalPlatformFeeCents,
         row.TotalPaidAmountCents - row.TotalPlatformFeeCents,
         row.RefundedOrderCount,
-        row.TotalOrderCount);
+        row.TotalOrderCount,
+        row.PendingOrderCount,
+        row.FailedOrderCount,
+        row.RefundedAmountCents,
+        monthlyTrend);
 
     public async Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(
         string creatorSlug, int ownerUserId, CancellationToken ct)

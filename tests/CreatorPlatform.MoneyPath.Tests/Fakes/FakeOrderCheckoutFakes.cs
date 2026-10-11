@@ -91,10 +91,10 @@ public sealed class FakeOrderRepository : IOrderRepository
         => Task.FromResult(true);
 
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
-        => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0));
+        => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0, 0, 0, 0, []));
 
     public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
-        => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0));
+        => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0, 0, 0, 0, []));
 
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
