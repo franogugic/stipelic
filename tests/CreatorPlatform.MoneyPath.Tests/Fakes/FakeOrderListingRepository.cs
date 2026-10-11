@@ -132,4 +132,8 @@ public sealed class FakeDashboardTrendsCache : IDashboardTrendsCache
     public void Set(int creatorId, string range, DashboardTrendsDto value)
     {
     }
+
+    public void Remove(int creatorId)
+    {
+    }
 }

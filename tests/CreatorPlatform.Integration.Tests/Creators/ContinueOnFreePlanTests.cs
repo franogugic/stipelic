@@ -42,6 +42,7 @@ public sealed class ContinueOnFreePlanTests
         new UnexpectedBillingPortalService(),
         new CreatorOpenBalanceCheck(db),
         new UnexpectedBillingCustomerService(),
+        new RecordingCreatorCacheInvalidator(),
         logger);
 
     /// <summary>The production service over the real repositories, on its own context (a request scope).</summary>
