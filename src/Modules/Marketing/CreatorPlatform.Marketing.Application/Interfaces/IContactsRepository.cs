@@ -49,12 +49,14 @@ public interface IContactsRepository
     /// <paramref name="monthStart"/> is the inclusive lower bound for <c>NewThisMonth</c>.</summary>
     Task<ContactStatsCountsRow> GetStatsCountsAsync(int creatorId, DateTimeOffset monthStart, CancellationToken ct);
 
-    /// <summary>One row per calendar month (UTC) from <paramref name="windowStart"/> through
+    /// <summary>One row per calendar month (creator timezone) from <paramref name="windowStart"/> through
     /// <paramref name="lastMonthStart"/>, oldest first, each with the cumulative number of contacts first
     /// captured before that month ended — contacts from before the window are folded into the first month,
-    /// so the running total starts from the creator's real base. Both bounds must be UTC month starts.</summary>
+    /// so the running total starts from the creator's real base. The bounds are the instants the creator's local months
+    /// start (<paramref name="windowEnd"/> = the month after the last) in <paramref name="timezone"/>.</summary>
     Task<List<ContactGrowthRow>> GetGrowthAsync(
-        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, CancellationToken ct);
+        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, DateTimeOffset windowEnd, string timezone,
+        CancellationToken ct);
 
     /// <summary>Contact count per landing page (archived pages included) for every page with at least one
     /// contact, ordered by count descending, then title.</summary>

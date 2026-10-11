@@ -26,7 +26,8 @@ public sealed class FakeContactsRepository : IContactsRepository
         => Task.FromResult(new ContactStatsCountsRow(0, 0, 0, 0));
 
     public Task<List<ContactGrowthRow>> GetGrowthAsync(
-        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, CancellationToken ct)
+        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, DateTimeOffset windowEnd, string timezone,
+        CancellationToken ct)
         => Task.FromResult(new List<ContactGrowthRow>());
 
     /// <summary>What <see cref="DeleteAsync"/> returns — null models "no such contact".</summary>

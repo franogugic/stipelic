@@ -32,15 +32,18 @@ public interface IOrderRepository
     /// <summary>The internal id of the user's active (not Disabled) workspace with this slug; null if none.</summary>
     Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 
+    /// <summary>The creator's analytics timezone, resolved (an IANA name, UTC when unset or unknown).</summary>
+    Task<string> GetCreatorTimezoneAsync(int creatorId, CancellationToken ct);
+
     /// <summary>Paid revenue per bucket, one row per bucket from <paramref name="firstBucket"/> to
     /// <paramref name="lastBucket"/> (UTC bucket starts; <paramref name="unit"/> is "day" or "month"), 0 when empty.</summary>
     Task<List<TrendBucketRow>> GetRevenueTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct);
+        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct);
 
     /// <summary>Page views on the creator's landing pages per bucket, same shape as
     /// <see cref="GetRevenueTrendAsync"/>.</summary>
     Task<List<TrendBucketRow>> GetViewsTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct);
+        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct);
 
     /// <summary>True when the slug is an active (not Disabled) workspace owned by the user.</summary>
     Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct);

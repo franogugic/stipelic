@@ -18,12 +18,26 @@ public static class CreatorTimeZone
             : Fallback;
     }
 
+    /// <summary>The creator's wall-clock time for <paramref name="now"/>.</summary>
+    public static DateTime LocalNow(DateTimeOffset now, string timezone) =>
+        TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(timezone)).DateTime;
+
+    /// <summary>The instant a local wall-clock time happens in the zone. A time skipped by a DST jump moves forward to
+    /// the first valid instant after it.</summary>
+    public static DateTimeOffset ToInstant(DateTime local, string timezone)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(timezone);
+        var unspecified = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        while (zone.IsInvalidTime(unspecified))
+            unspecified = unspecified.AddMinutes(30);
+        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(unspecified, zone), TimeSpan.Zero);
+    }
+
     /// <summary>The first instant of the local calendar month that contains <paramref name="now"/>.</summary>
     public static DateTimeOffset LocalMonthStart(DateTimeOffset now, string timezone)
     {
-        var zone = TimeZoneInfo.FindSystemTimeZoneById(timezone);
-        var local = TimeZoneInfo.ConvertTime(now, zone);
-        var start = new DateTime(local.Year, local.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
-        return new DateTimeOffset(start, zone.GetUtcOffset(start));
+        var local = LocalNow(now, timezone);
+        var start = ToInstant(new DateTime(local.Year, local.Month, 1), timezone);
+        return start.ToOffset(TimeZoneInfo.FindSystemTimeZoneById(timezone).GetUtcOffset(start));
     }
 }

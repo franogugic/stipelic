@@ -131,27 +131,26 @@ public sealed class ContactsRepository : IContactsRepository
     }
 
     public async Task<List<ContactGrowthRow>> GetGrowthAsync(
-        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, CancellationToken ct)
+        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, DateTimeOffset windowEnd, string timezone,
+        CancellationToken ct)
     {
-        var windowEnd = lastMonthStart.AddMonths(1);
-
-        // Month arithmetic runs on UTC `timestamp` values (AT TIME ZONE 'UTC'), never on timestamptz, so the
-        // buckets don't depend on the session TimeZone (adding '1 month' to a timestamptz is DST-sensitive).
-        // Contacts from before the window are clamped into the first bucket by GREATEST, so the running
-        // SUM() OVER starts from the creator's whole base instead of zero — one query, no second COUNT.
+        // Month arithmetic runs on local `timestamp` values in the creator's timezone (AT TIME ZONE tz), never on
+        // timestamptz, so the buckets don't depend on the session TimeZone. windowStart / lastMonthStart are the
+        // instants those local months start. Contacts from before the window are clamped into the first bucket by
+        // GREATEST, so the running SUM() OVER starts from the creator's whole base — one query, no second COUNT.
         return await _context.Database.SqlQuery<ContactGrowthRow>($"""
             SELECT
                 to_char(m."MonthStart", 'YYYY-MM') AS "Month",
                 (SUM(COALESCE(b."Count", 0)) OVER (ORDER BY m."MonthStart"))::int AS "Total"
             FROM generate_series(
-                {windowStart}::timestamptz AT TIME ZONE 'UTC',
-                {lastMonthStart}::timestamptz AT TIME ZONE 'UTC',
+                {windowStart}::timestamptz AT TIME ZONE {timezone},
+                {lastMonthStart}::timestamptz AT TIME ZONE {timezone},
                 interval '1 month') AS m("MonthStart")
             LEFT JOIN (
                 SELECT
                     GREATEST(
-                        date_trunc('month', cs."FirstCapturedAt" AT TIME ZONE 'UTC'),
-                        {windowStart}::timestamptz AT TIME ZONE 'UTC') AS "Bucket",
+                        date_trunc('month', cs."FirstCapturedAt" AT TIME ZONE {timezone}),
+                        {windowStart}::timestamptz AT TIME ZONE {timezone}) AS "Bucket",
                     COUNT(*) AS "Count"
                 FROM marketing.contact_summaries cs
                 WHERE cs."CreatorId" = {creatorId}

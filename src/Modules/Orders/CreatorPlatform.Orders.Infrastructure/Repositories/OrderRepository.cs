@@ -142,15 +142,16 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    // Both trend queries bucket on UTC `timestamp` values (AT TIME ZONE 'UTC'), never on timestamptz, so the result
-    // doesn't depend on the session TimeZone (same approach as the contacts growth query). `unit` comes from a fixed
+    // Both trend queries bucket on local `timestamp` values in the creator's timezone (AT TIME ZONE tz), never on
+    // timestamptz, so the result doesn't depend on the session TimeZone; firstBucket / lastBucket are the instants the
+    // first and last local buckets start. `unit` comes from a fixed
     // server-side map ("day" / "month") and is still passed as a parameter. generate_series supplies every bucket;
     // the LEFT JOIN leaves empty ones at 0.
     public async Task<List<TrendBucketRow>> GetRevenueTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
     {
         var step = "1 " + unit;
-        var windowEnd = unit == "month" ? lastBucket.AddMonths(1) : lastBucket.AddDays(1);
+        var windowEnd = NextBucketStart(unit, lastBucket, timezone);
 
         // Revenue is booked when it was paid; orders from before PaidAt was recorded fall back to CreatedAt.
         return await _context.Database.SqlQuery<TrendBucketRow>($"""
@@ -158,12 +159,12 @@ public sealed class OrderRepository : IOrderRepository
                 to_char(b."BucketStart", 'YYYY-MM-DD') AS "BucketStart",
                 COALESCE(r."Total", 0)::bigint AS "Value"
             FROM generate_series(
-                {firstBucket}::timestamptz AT TIME ZONE 'UTC',
-                {lastBucket}::timestamptz AT TIME ZONE 'UTC',
+                {firstBucket}::timestamptz AT TIME ZONE {timezone},
+                {lastBucket}::timestamptz AT TIME ZONE {timezone},
                 {step}::interval) AS b("BucketStart")
             LEFT JOIN (
                 SELECT
-                    date_trunc({unit}, COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE 'UTC') AS "Bucket",
+                    date_trunc({unit}, COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}) AS "Bucket",
                     SUM(o."AmountCents") AS "Total"
                 FROM orders.orders o
                 WHERE o."CreatorId" = {creatorId}
@@ -179,10 +180,10 @@ public sealed class OrderRepository : IOrderRepository
     }
 
     public async Task<List<TrendBucketRow>> GetViewsTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
     {
         var step = "1 " + unit;
-        var windowEnd = unit == "month" ? lastBucket.AddMonths(1) : lastBucket.AddDays(1);
+        var windowEnd = NextBucketStart(unit, lastBucket, timezone);
 
         // (LandingPageId, ViewedAt) index per page of the creator; archived pages count too (their views happened).
         return await _context.Database.SqlQuery<TrendBucketRow>($"""
@@ -190,12 +191,12 @@ public sealed class OrderRepository : IOrderRepository
                 to_char(b."BucketStart", 'YYYY-MM-DD') AS "BucketStart",
                 COALESCE(v."Total", 0)::bigint AS "Value"
             FROM generate_series(
-                {firstBucket}::timestamptz AT TIME ZONE 'UTC',
-                {lastBucket}::timestamptz AT TIME ZONE 'UTC',
+                {firstBucket}::timestamptz AT TIME ZONE {timezone},
+                {lastBucket}::timestamptz AT TIME ZONE {timezone},
                 {step}::interval) AS b("BucketStart")
             LEFT JOIN (
                 SELECT
-                    date_trunc({unit}, pv."ViewedAt" AT TIME ZONE 'UTC') AS "Bucket",
+                    date_trunc({unit}, pv."ViewedAt" AT TIME ZONE {timezone}) AS "Bucket",
                     COUNT(*) AS "Total"
                 FROM analytics.page_views pv
                 JOIN landing_pages.landing_pages lp ON lp."Id" = pv."LandingPageId"
@@ -209,6 +210,17 @@ public sealed class OrderRepository : IOrderRepository
             .AsNoTracking()
             .ToListAsync(ct);
     }
+
+    private static DateTimeOffset NextBucketStart(string unit, DateTimeOffset lastBucket, string timezone)
+    {
+        var local = CreatorTimeZone.LocalNow(lastBucket, timezone);
+        return CreatorTimeZone.ToInstant(unit == "month" ? local.AddMonths(1) : local.AddDays(1), timezone);
+    }
+
+    public async Task<string> GetCreatorTimezoneAsync(int creatorId, CancellationToken ct) =>
+        CreatorTimeZone.Resolve((await _context.Database.SqlQuery<string?>($"""
+            SELECT s."Timezone" AS "Value" FROM creators.creator_settings s WHERE s."CreatorId" = {creatorId}
+            """).ToListAsync(ct)).SingleOrDefault());
 
     public async Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
     {
@@ -443,9 +455,15 @@ public sealed class OrderRepository : IOrderRepository
                 [.. new int[BoardMonths]], 0, 0, 0);
 
         var now = DateTimeOffset.UtcNow;
-        var todayMidnight = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
-        var trendStart = todayMidnight.AddDays(-(TrendDays - 1));
-        var monthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        // Analytics use the creator's own days and months; only the email-sends usage counter below stays on the UTC
+        // calendar month (it is a billing counter).
+        var timezone = await GetCreatorTimezoneAsync(creator.Id, ct);
+        var local = CreatorTimeZone.LocalNow(now, timezone);
+        var firstTrendDay = local.Date.AddDays(-(TrendDays - 1));
+        var trendStart = CreatorTimeZone.ToInstant(firstTrendDay, timezone);
+        var thisLocalMonth = new DateTime(local.Year, local.Month, 1);
+        var monthStart = CreatorTimeZone.ToInstant(thisLocalMonth, timezone);
+        var usageMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
 
         var orderStats = await _context.Set<Order>()
             .AsNoTracking()
@@ -526,11 +544,11 @@ public sealed class OrderRepository : IOrderRepository
             select (int?)limit.LimitValue
         ).FirstOrDefaultAsync(ct) ?? 0;
 
-        // Same calendar-month boundary as UsagePeriodResolver.Resolve(CalendarMonth, now) — matches
-        // monthStart exactly, so this reads the same counter row ICreatorUsageService writes to.
+        // Same calendar-month boundary as UsagePeriodResolver.Resolve(CalendarMonth, now) (UTC) — so this reads the
+        // same counter row ICreatorUsageService writes to.
         var emailsSentThisMonth = await _context.Set<CreatorUsageCounter>()
             .AsNoTracking()
-            .Where(c => c.CreatorId == creator.Id && c.UsageKey == emailSendsLimitKey && c.PeriodStart == monthStart)
+            .Where(c => c.CreatorId == creator.Id && c.UsageKey == emailSendsLimitKey && c.PeriodStart == usageMonthStart)
             .Select(c => (int?)c.UsedValue)
             .FirstOrDefaultAsync(ct) ?? 0;
 
@@ -548,30 +566,23 @@ public sealed class OrderRepository : IOrderRepository
             if (row.PaidAt is not DateTimeOffset paidAt)
                 continue;
 
-            var paidUtc = paidAt.UtcDateTime;
-            var paidMidnight = new DateTimeOffset(paidUtc.Year, paidUtc.Month, paidUtc.Day, 0, 0, 0, TimeSpan.Zero);
-            var diffDays = (int)Math.Round((todayMidnight - paidMidnight).TotalDays);
-            var index = TrendDays - 1 - diffDays;
+            var index = (CreatorTimeZone.LocalNow(paidAt, timezone).Date - firstTrendDay).Days;
             if (index >= 0 && index < TrendDays)
                 revenueTrend[index] += row.AmountCents;
         }
 
-        // Daily page views for the same TrendDays window, bucketed by PageView.ViewedDate (already a UTC
-        // calendar day, see PageView entity doc) — no DateTimeOffset→midnight conversion needed here.
-        var trendStartDate = DateOnly.FromDateTime(trendStart.UtcDateTime);
-        var viewDates = await (
+        // Daily page views for the same TrendDays window, by the creator's local day of ViewedAt.
+        var viewTimes = await (
             from pv in _context.Set<PageView>().AsNoTracking()
             join lp in _context.Set<LandingPage>().AsNoTracking() on pv.LandingPageId equals lp.Id
-            where lp.CreatorId == creator.Id && pv.ViewedDate >= trendStartDate
-            select pv.ViewedDate
+            where lp.CreatorId == creator.Id && pv.ViewedAt >= trendStart
+            select pv.ViewedAt
         ).ToListAsync(ct);
 
-        var todayDate = DateOnly.FromDateTime(todayMidnight.UtcDateTime);
         var viewsTrend = new int[TrendDays];
-        foreach (var viewedDate in viewDates)
+        foreach (var viewedAt in viewTimes)
         {
-            var diffDays = todayDate.DayNumber - viewedDate.DayNumber;
-            var index = TrendDays - 1 - diffDays;
+            var index = (CreatorTimeZone.LocalNow(viewedAt, timezone).Date - firstTrendDay).Days;
             if (index >= 0 && index < TrendDays)
                 viewsTrend[index]++;
         }
@@ -580,8 +591,8 @@ public sealed class OrderRepository : IOrderRepository
         // month included) — same in-memory bucketing approach as the daily revenueTrend above, since
         // month boundaries have variable lengths and aren't a clean SQL date-bucket without a calendar
         // table. Separate query from the 7-day trendRows above (different, much wider window).
-        var monthlyTrendStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero)
-            .AddMonths(-(MonthlyTrendMonths - 1));
+        var firstTrendMonth = thisLocalMonth.AddMonths(-(MonthlyTrendMonths - 1));
+        var monthlyTrendStart = CreatorTimeZone.ToInstant(firstTrendMonth, timezone);
         var monthlyRows = await _context.Set<Order>()
             .AsNoTracking()
             .Where(o => o.CreatorId == creator.Id && o.Status == OrderStatus.Paid && o.PaidAt >= monthlyTrendStart)
@@ -594,14 +605,13 @@ public sealed class OrderRepository : IOrderRepository
             if (row.PaidAt is not DateTimeOffset paidAt)
                 continue;
 
-            var paidUtc = paidAt.UtcDateTime;
-            var monthDiff = (now.Year - paidUtc.Year) * 12 + (now.Month - paidUtc.Month);
-            var index = MonthlyTrendMonths - 1 - monthDiff;
+            var paidLocal = CreatorTimeZone.LocalNow(paidAt, timezone);
+            var index = (paidLocal.Year - firstTrendMonth.Year) * 12 + (paidLocal.Month - firstTrendMonth.Month);
             if (index >= 0 && index < MonthlyTrendMonths)
                 monthlyRevenueTrend[index] += row.AmountCents;
         }
 
-        var board = await GetBoardFiguresAsync(creator.Id, ct);
+        var board = await GetBoardFiguresAsync(creator.Id, timezone, ct);
 
         return new HomeSummaryDto(
             orderStats?.TotalPaidAmountCents ?? 0,
@@ -632,12 +642,8 @@ public sealed class OrderRepository : IOrderRepository
 
     /// <summary>The dashboard's "sales at a glance" board: customers and refunds over all time, and paid orders per
     /// month in the creator's timezone (for the average order this month vs last month).</summary>
-    private async Task<BoardFigures> GetBoardFiguresAsync(int creatorId, CancellationToken ct)
+    private async Task<BoardFigures> GetBoardFiguresAsync(int creatorId, string timezone, CancellationToken ct)
     {
-        var timezone = CreatorTimeZone.Resolve((await _context.Database.SqlQuery<string?>($"""
-            SELECT s."Timezone" AS "Value" FROM creators.creator_settings s WHERE s."CreatorId" = {creatorId}
-            """).AsNoTracking().ToListAsync(ct)).SingleOrDefault());
-
         var totals = (await _context.Database.SqlQuery<BoardTotalsRow>($"""
             SELECT
                 (COUNT(DISTINCT lower(o."Email")) FILTER (WHERE o."Status" = 'Paid'))::int AS "CustomerCount",

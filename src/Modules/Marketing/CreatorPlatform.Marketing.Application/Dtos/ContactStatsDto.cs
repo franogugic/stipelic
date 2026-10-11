@@ -4,10 +4,10 @@ namespace CreatorPlatform.Marketing.Application.Dtos;
 /// breakdown. All-time and unfiltered.</summary>
 /// <param name="Total">Every contact in the creator's directory.</param>
 /// <param name="Active">Contacts that have not unsubscribed from this creator.</param>
-/// <param name="NewThisMonth">Contacts first captured since the start of the current UTC month.</param>
+/// <param name="NewThisMonth">Contacts first captured since the start of the current month in the creator's timezone.</param>
 /// <param name="Unsubscribed">Opt-outs recorded for this creator (kept even when the contact itself was
 /// deleted, so this can exceed <c>Total - Active</c>).</param>
-/// <param name="Growth">One point per calendar month (UTC) of the last 12, oldest first, current month
+/// <param name="Growth">One point per calendar month (creator timezone) of the last 12, oldest first, current month
 /// last.</param>
 /// <param name="Sources">Every landing page (archived included) with at least one contact, most contacts
 /// first.</param>

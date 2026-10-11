@@ -3,6 +3,7 @@ using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
+using CreatorPlatform.Shared.Application.Time;
 
 namespace CreatorPlatform.Marketing.Application.Services;
 
@@ -123,13 +124,17 @@ public sealed class ContactsService : IContactsService
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
-        var now = DateTimeOffset.UtcNow;
-        var currentMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
-        var windowStart = currentMonthStart.AddMonths(-(GrowthMonths - 1));
+        // Months are the creator's own (their timezone); the bounds are the instants those local months start.
+        var local = CreatorTimeZone.LocalNow(DateTimeOffset.UtcNow, context.Timezone);
+        var thisMonth = new DateTime(local.Year, local.Month, 1);
+        var currentMonthStart = CreatorTimeZone.ToInstant(thisMonth, context.Timezone);
+        var windowStart = CreatorTimeZone.ToInstant(thisMonth.AddMonths(-(GrowthMonths - 1)), context.Timezone);
+        var windowEnd = CreatorTimeZone.ToInstant(thisMonth.AddMonths(1), context.Timezone);
 
         // Sequential on purpose: the queries share one scoped DbContext, which allows no concurrent use.
         var counts = await _contactsRepository.GetStatsCountsAsync(context.CreatorId, currentMonthStart, ct);
-        var growth = await _contactsRepository.GetGrowthAsync(context.CreatorId, windowStart, currentMonthStart, ct);
+        var growth = await _contactsRepository.GetGrowthAsync(
+            context.CreatorId, windowStart, currentMonthStart, windowEnd, context.Timezone, ct);
         var sources = await _contactsRepository.GetSourceCountsAsync(context.CreatorId, ct);
         var monthly = await _contactsRepository.GetMonthlyAsync(context.CreatorId, context.Timezone, ct);
 
