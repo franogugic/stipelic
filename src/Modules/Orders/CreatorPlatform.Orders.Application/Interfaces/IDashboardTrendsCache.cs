@@ -8,4 +8,7 @@ public interface IDashboardTrendsCache
 {
     bool TryGet(int creatorId, string range, out DashboardTrendsDto? value);
     void Set(int creatorId, string range, DashboardTrendsDto value);
+
+    /// <summary>Drops every cached range of the creator (e.g. after their timezone changed).</summary>
+    void Remove(int creatorId);
 }

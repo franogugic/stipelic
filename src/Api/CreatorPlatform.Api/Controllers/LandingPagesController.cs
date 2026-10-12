@@ -22,8 +22,6 @@ public sealed class LandingPagesController : ControllerBase
     private readonly IPageViewService _pageViewService;
     private readonly IEmailCaptureService _emailCaptureService;
     private readonly IOrderService _orderService;
-    private readonly ILandingPageInsightsService _landingPageInsightsService;
-    private readonly ILandingPageTimeSeriesCache _timeSeriesCache;
     private readonly ICurrentUserContext _currentUserContext;
 
     public LandingPagesController(
@@ -31,16 +29,12 @@ public sealed class LandingPagesController : ControllerBase
         IPageViewService pageViewService,
         IEmailCaptureService emailCaptureService,
         IOrderService orderService,
-        ILandingPageInsightsService landingPageInsightsService,
-        ILandingPageTimeSeriesCache timeSeriesCache,
         ICurrentUserContext currentUserContext)
     {
         _landingPageService = landingPageService;
         _pageViewService = pageViewService;
         _emailCaptureService = emailCaptureService;
         _orderService = orderService;
-        _landingPageInsightsService = landingPageInsightsService;
-        _timeSeriesCache = timeSeriesCache;
         _currentUserContext = currentUserContext;
     }
 
@@ -196,25 +190,6 @@ public sealed class LandingPagesController : ControllerBase
             Currency = sales.Currency
         };
         return Ok(ApiResponse<LandingPageAnalyticsResponseDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", analytics));
-    }
-
-    [HttpGet("{pageId:guid}/timeseries")]
-    public async Task<ActionResult<ApiResponse<TimeSeriesResponseDto>>> GetTimeSeries(
-        string slug,
-        Guid pageId,
-        [FromQuery] TimeSeriesPeriod period,
-        CancellationToken ct)
-    {
-        var user = GetAuthenticatedUser();
-        var page = await _landingPageService.GetSummaryAsync(slug, pageId, user.Id, ct);
-
-        if (_timeSeriesCache.TryGet(page.Id, period, out var cached) && cached is not null)
-            return Ok(ApiResponse<TimeSeriesResponseDto>.Success(StatusCodes.Status200OK, "Time series loaded.", cached));
-
-        var result = await _landingPageInsightsService.GetTimeSeriesAsync(page.Id, page.CreatedAt, period, ct);
-        _timeSeriesCache.Set(page.Id, period, result);
-
-        return Ok(ApiResponse<TimeSeriesResponseDto>.Success(StatusCodes.Status200OK, "Time series loaded.", result));
     }
 
     [HttpGet("{pageId:guid}/captures")]

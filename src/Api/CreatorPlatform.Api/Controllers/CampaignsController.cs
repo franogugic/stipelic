@@ -82,22 +82,6 @@ public sealed class CampaignsController : ControllerBase
             audiences));
     }
 
-    /// <summary>Monthly open rate for the last <paramref name="months"/> months (1–12, default 6).</summary>
-    [HttpGet("open-rate-trend")]
-    [EnableRateLimiting("CampaignInsights")]
-    public async Task<ActionResult<ApiResponse<OpenRateTrendDto>>> GetOpenRateTrend(
-        string slug, [FromQuery] int months = 6, CancellationToken ct = default)
-    {
-        var currentUser = GetVerifiedUser();
-
-        var trend = await _campaignService.GetOpenRateTrendAsync(slug, currentUser.Id, months, ct);
-
-        return Ok(ApiResponse<OpenRateTrendDto>.Success(
-            StatusCodes.Status200OK,
-            "Open rate trend loaded.",
-            trend));
-    }
-
     /// <summary>Send history — last 50 sends with progress.</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<CampaignListItemDto>>>> List(string slug, CancellationToken ct)
@@ -156,9 +140,8 @@ public sealed class CampaignsController : ControllerBase
             campaign));
     }
 
-    /// <summary>Manually requeues every currently-Failed recipient of this send — see
-    /// <see cref="ICampaignSendService.ResendFailedAsync"/> for why this never touches the monthly usage
-    /// counter.</summary>
+    /// <summary>Manually requeues every currently-Failed recipient of this send; they count against the
+    /// monthly sends again — see <see cref="ICampaignSendService.ResendFailedAsync"/>.</summary>
     [HttpPost("{campaignPublicId:guid}/resend-failed")]
     [EnableRateLimiting("ResendFailedCampaign")]
     public async Task<ActionResult<ApiResponse<ResendFailedResultDto>>> ResendFailed(

@@ -85,7 +85,8 @@ public sealed class EmailCaptureService : IEmailCaptureService
             .Select(c => new EmailCaptureResponseDto
             {
                 Email = c.Email,
-                CapturedAt = c.CapturedAt
+                CapturedAt = c.CapturedAt,
+                Unsubscribed = c.Unsubscribed
             })
             .ToList();
     }

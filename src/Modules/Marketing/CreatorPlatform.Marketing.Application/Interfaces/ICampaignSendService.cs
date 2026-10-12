@@ -26,12 +26,11 @@ public interface ICampaignSendService
     Task<CampaignDetailDto> CancelScheduledAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct);
 
     /// <summary>Manually requeues every currently-Failed recipient of one already-sent campaign back to
-    /// Pending, so the outbox worker retries them. Deliberately does NOT call
-    /// <c>ICreatorUsageService.TryConsumeAsync</c> — the monthly send limit was already consumed once at
-    /// the original send and refunded only on each message's permanent failure (see
-    /// <c>CampaignBroadcastFailureHandler</c>); a manual resend is "try the same send again", not a new
-    /// campaign, so it must not charge the limit a second time. This is an intentional asymmetry with the
-    /// refund-on-fail behavior, not a bug — do not "fix" it by adding a TryConsumeAsync call here.
+    /// Pending, so the outbox worker retries them. Each permanently failed message was refunded to the monthly
+    /// sends (see <c>CampaignBroadcastFailureHandler</c>), so sending it again consumes one send again — in the
+    /// campaign's own period, the one a repeated failure is refunded to — and the counter always equals what
+    /// was delivered. Runs under the creator's campaign lock, so concurrent resends requeue and consume each
+    /// message once. Over the limit → 409 <c>email_limit_reached</c> with the remaining count, nothing requeued.
     /// No-ops (0 requeued) if the campaign currently has no Failed recipients.</summary>
     Task<ResendFailedResultDto> ResendFailedAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct);
 }

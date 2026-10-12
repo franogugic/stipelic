@@ -30,23 +30,22 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
         string creatorSlug, int ownerUserId, Guid? productPublicId, Guid? landingPagePublicId, OrderStatus? status, string? customerSearch, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
         => Task.FromResult(new List<OrderDto>());
 
+    public Task<string> GetCreatorTimezoneAsync(int creatorId, CancellationToken ct) => Task.FromResult("UTC");
+
     public Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult<int?>(null);
 
-    public Task<List<TrendBucketRow>> GetRevenueTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+    public Task<List<TrendBucketRow>> GetRevenueTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
         => Task.FromResult(new List<TrendBucketRow>());
 
-    public Task<List<TrendBucketRow>> GetViewsTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, CancellationToken ct)
+    public Task<List<TrendBucketRow>> GetViewsTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
         => Task.FromResult(new List<TrendBucketRow>());
 
     public Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(true);
 
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
-        => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0));
-
-    public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
-        => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0));
+        => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0, 0, 0, 0, []));
 
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
@@ -57,11 +56,8 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
     public Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(new List<LandingPageOrdersSummaryDto>());
 
-    public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
-        => Task.FromResult(new List<PurchasesBucketRow>());
-
     public Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
-        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0));
+        => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0, [], 0, 0, 0));
 }
 
 public sealed class FakeEmailOutboxService : IEmailOutboxService

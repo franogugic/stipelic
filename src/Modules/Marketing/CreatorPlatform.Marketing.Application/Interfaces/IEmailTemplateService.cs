@@ -16,6 +16,9 @@ public interface IEmailTemplateService
 
     Task<EmailTemplateDto> ArchiveAsync(string slug, int ownerUserId, Guid templatePublicId, CancellationToken ct);
 
+    /// <summary>Archived → Active; idempotent. Templates have no plan limit, so nothing else is checked.</summary>
+    Task<EmailTemplateDto> RestoreAsync(string slug, int ownerUserId, Guid templatePublicId, CancellationToken ct);
+
     /// <summary>Static, platform-provided starter content — not creator-scoped, no DB round trip.</summary>
     List<EmailTemplateStarterDto> GetStarters();
 }

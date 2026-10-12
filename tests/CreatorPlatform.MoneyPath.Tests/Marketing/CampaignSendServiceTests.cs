@@ -1,3 +1,4 @@
+using CreatorPlatform.Email.Domain.Outbox;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Options;
@@ -629,15 +630,82 @@ public class CampaignSendServiceTests
     }
 
     [Fact]
-    public async Task ResendFailedAsync_DoesNotConsumeMonthlyUsageLimit()
+    public async Task ResendFailedAsync_ConsumesOneSendPerRequeuedMessage_InTheCampaignsPeriod_UnderTheCreatorLock()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com", "b@test.com", "c@test.com"];
+        var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+        var campaign = h.CampaignRepository.Campaigns.Single();
+        h.UsageService.ConsumeCalls.Clear();
+        h.UsageService.ConsumeAsOf.Clear();
+        h.ProgressProvider.FailedCountByCampaign[sent.PublicId] = 2;
+
+        var result = await h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None);
+
+        Assert.Equal(2, result.RequeuedCount);
+        var call = Assert.Single(h.UsageService.ConsumeCalls);
+        Assert.Equal((CreatorId, "max_email_sends_per_month", 2, 500), (call.CreatorId, call.UsageKey, call.Amount, call.Limit));
+        Assert.Equal(campaign.QueuedAt, Assert.Single(h.UsageService.ConsumeAsOf));
+        Assert.Equal(CreatorId, h.UnitOfWork.LockedCreatorId);
+        Assert.Equal(5, h.UsageService.Used[(CreatorId, "max_email_sends_per_month")]);
+    }
+
+    [Fact]
+    public async Task ResendFailedAsync_OverTheMonthlyLimit_Is409WithTheRemainingCount_AndSavesNothing()
+    {
+        var h = BuildHarness();
+        h.ContextProvider.PlanLimit = 3;
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com", "b@test.com"];
+        var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+        h.ProgressProvider.FailedCountByCampaign[sent.PublicId] = 2; // 2 used + 2 resent > 3
+        var savesBefore = h.UnitOfWork.SaveChangesCallCount;
+
+        var exception = await Assert.ThrowsAsync<ConflictException>(
+            () => h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None));
+
+        Assert.Equal(CampaignSendService.EmailLimitReachedCode, exception.Code);
+        Assert.Equal(new CampaignSendService.EmailLimitDetails(Remaining: 1), exception.Details);
+        Assert.Equal(savesBefore, h.UnitOfWork.SaveChangesCallCount); // the in-memory requeue is never written
+        Assert.Equal(2, h.UsageService.Used[(CreatorId, "max_email_sends_per_month")]);
+    }
+
+    [Fact]
+    public async Task ResendThenFailAgain_IsRefundedAgain_SoTheCounterEqualsTheDeliveredCount()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com", "b@test.com", "c@test.com"];
+        var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+        var failures = new CampaignBroadcastFailureHandler(
+            h.CampaignRepository, h.UsageService, NullLogger<CampaignBroadcastFailureHandler>.Instance);
+        var failed = EmailOutboxMessage.Create(
+            EmailOutboxMessagePurpose.CampaignBroadcast, $"{sent.PublicId}:1", "a@test.com", "s", "h", "t", DateTimeOffset.UtcNow);
+
+        // 3 sent, 1 failed → refunded: 2 delivered.
+        await failures.HandleAsync(failed, CancellationToken.None);
+        // Resent → consumed again, fails again → refunded again: still 2 delivered.
+        h.ProgressProvider.FailedCountByCampaign[sent.PublicId] = 1;
+        await h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None);
+        Assert.Equal(3, h.UsageService.Used[(CreatorId, "max_email_sends_per_month")]);
+        await failures.HandleAsync(failed, CancellationToken.None);
+
+        Assert.Equal(2, h.UsageService.Used[(CreatorId, "max_email_sends_per_month")]);
+    }
+
+    [Fact]
+    public async Task ResendFailedAsync_NothingFailed_ConsumesNothing()
     {
         var h = BuildHarness();
         var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
         h.TemplateRepository.Templates.Add(template);
         h.AudienceService.Emails = ["a@test.com"];
         var sent = await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
-        h.UsageService.ConsumeCalls.Clear(); // drop the original send's own consumption, isolate the resend call
-        h.ProgressProvider.FailedCountByCampaign[sent.PublicId] = 1;
+        h.UsageService.ConsumeCalls.Clear();
 
         await h.Service.ResendFailedAsync(Slug, OwnerUserId, sent.PublicId, CancellationToken.None);
 

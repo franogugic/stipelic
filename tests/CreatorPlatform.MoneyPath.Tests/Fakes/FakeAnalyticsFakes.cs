@@ -46,15 +46,13 @@ public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
             .GroupBy(c => c.LandingPageId)
             .ToDictionary(g => g.Key, g => g.Count()));
 
-    public Task<List<EmailCapture>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct)
+    public Task<List<NewestCaptureRow>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct)
         => Task.FromResult(Added
             .Where(c => c.LandingPageId == landingPageId)
             .OrderByDescending(c => c.CapturedAt)
             .Take(limit)
+            .Select(c => new NewestCaptureRow(c.Email, c.CapturedAt, false))
             .ToList());
-
-    public Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
-        => Task.FromResult(new List<CapturesBucketRow>());
 
     /// <summary>Reports "new contact" for the first upsert of a (creator, email), like the real RETURNING (xmax = 0).</summary>
     public Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct)

@@ -4,69 +4,55 @@ public sealed class EmailTemplateStarter
 {
     public required string Key { get; init; }
     public required string Name { get; init; }
+    public required string Description { get; init; }
     public required string Subject { get; init; }
     public required string BodyText { get; init; }
+    /// <summary>A suggested button label. The URL is always left for the creator to fill in, so a starter with a
+    /// button can't be saved until it has one (MailContentRules pairs label and URL).</summary>
     public string? CtaLabel { get; init; }
     public string? CtaUrl { get; init; }
 }
 
+/// <summary>The starting points offered when a creator writes a new template, as designed in the prototype. Only
+/// read when a template is created (the content is copied), so nothing stored refers to these keys. {Braces} are
+/// reminders for the creator, not merge tags.</summary>
 public static class EmailTemplateStarters
 {
     public static IReadOnlyList<EmailTemplateStarter> All { get; } =
     [
         new EmailTemplateStarter
         {
-            Key = "product-launch",
-            Name = "Product launch",
-            Subject = "It's here — my new product just launched",
-            BodyText = """
-                Hey there,
-
-                I've been working on something new and it's finally ready — my latest product is live today.
-
-                If you've been waiting for this, now's the time to check it out. I built it to solve a problem I know a lot of you have run into, and I think you're going to like what I put together.
-
-                Take a look and let me know what you think.
-                """
+            Key = "announcement",
+            Name = "Announcement",
+            Description = "Share news or a launch in three short paragraphs.",
+            Subject = "Big news from {Brand}",
+            BodyText = "Hi,\n\n[The news in one sentence.]\n\n[Why it matters to the reader.]\n\n[What to do next.]",
+            CtaLabel = "Learn more"
         },
         new EmailTemplateStarter
         {
-            Key = "welcome-new-subscriber",
-            Name = "Welcome new subscriber",
-            Subject = "Welcome — glad you're here",
-            BodyText = """
-                Hi, and welcome!
-
-                Thanks for signing up. I send emails like this one when I have something worth sharing — new products, useful updates, or the occasional offer for people on this list.
-
-                No spam, no noise — just the good stuff. Glad to have you here.
-                """
+            Key = "newsletter",
+            Name = "Newsletter",
+            Description = "A friendly digest with a few highlights.",
+            Subject = "This month at {Brand}",
+            BodyText = "Hi,\n\nHere is what happened this month:\n\n• \n• \n• "
         },
         new EmailTemplateStarter
         {
-            Key = "limited-time-discount",
-            Name = "Limited-time discount",
-            Subject = "A discount, but only for a few days",
-            BodyText = """
-                Hey,
-
-                For a short time, I'm offering a discount on one of my products. If it's something you've had your eye on, this is a good moment to grab it.
-
-                This offer won't stick around, so don't wait too long if you're interested.
-                """
+            Key = "promotion",
+            Name = "Promotion",
+            Description = "A time-limited offer with a clear call to action.",
+            Subject = "{Discount}% off — this week only",
+            BodyText = "Hi,\n\nFor a few days only, {Product} is {Discount}% off.\n\n[One line on who it is for.]",
+            CtaLabel = "Get the offer"
         },
         new EmailTemplateStarter
         {
-            Key = "win-back-inactive",
-            Name = "Win-back inactive contacts",
-            Subject = "It's been a while",
-            BodyText = """
-                Hey,
-
-                It's been a bit since we last connected, and I wanted to check in. I've added new things since you last looked, and I'd love for you to take another look.
-
-                If you're still interested in what I do, here's a good place to pick back up.
-                """
+            Key = "welcome",
+            Name = "Welcome",
+            Description = "Say hello to new subscribers and set expectations.",
+            Subject = "Welcome to {Brand}",
+            BodyText = "Hi,\n\nThanks for joining! Here is what you can expect from me:\n\n[How often you write and what about.]"
         }
     ];
 }

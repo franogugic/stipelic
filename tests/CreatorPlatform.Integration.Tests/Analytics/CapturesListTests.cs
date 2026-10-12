@@ -76,4 +76,26 @@ public sealed class CapturesListTests
         Assert.Equal(100, capped.Count);
         Assert.Equal("105@many.test", capped[0].Email);
     }
+
+    [Fact]
+    public async Task EachCapture_SaysWhetherThatEmailUnsubscribedFromThisCreator()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        var other = await _data.CreateCreatorAsync();
+        var page = await _data.CreateLandingPageAsync(creator.CreatorId);
+        await SeedCapturesAsync(page, 3, "opt.test");
+        await using (var db = _fixture.CreateDbContext())
+        {
+            var now = DateTimeOffset.UtcNow;
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO marketing.unsubscribes ("CreatorId", "Email", "Source", "UnsubscribedAt")
+                VALUES ({creator.CreatorId}, '2@opt.test', 'Link', {now}), ({other.CreatorId}, '3@opt.test', 'Link', {now})
+                """);
+        }
+
+        var captures = (await ListAsync(page, 0)).ToDictionary(c => c.Email, c => c.Unsubscribed);
+
+        // 3@ opted out of another creator only, which doesn't concern this page.
+        Assert.Equal(new Dictionary<string, bool> { ["1@opt.test"] = false, ["2@opt.test"] = true, ["3@opt.test"] = false }, captures);
+    }
 }

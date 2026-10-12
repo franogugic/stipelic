@@ -8,14 +8,8 @@ public interface IPageViewRepository
 {
     Task AddAsync(PageView pageView, CancellationToken ct);
     Task<PageViewStatsRow> GetStatsAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);
-    Task<List<ViewsBucketRow>> GetBucketedViewsAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
     Task<List<LandingPageViewsSummaryDto>> GetViewsSummaryByCreatorIdAsync(int creatorId, CancellationToken ct);
 }
-
-public sealed record ViewsBucketRow(
-    DateTimeOffset BucketStart,
-    long ViewCount,
-    long UniqueVisitors);
 
 public sealed record PageViewStatsRow(
     long TotalViews,

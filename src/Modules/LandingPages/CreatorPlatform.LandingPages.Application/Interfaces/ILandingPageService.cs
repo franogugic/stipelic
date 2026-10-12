@@ -23,7 +23,7 @@ public interface ILandingPageService
         CancellationToken ct);
 
     // Lightweight lookup (no sections, no section repository round trip) for callers that only need the
-    // page's metadata/internal id — e.g. analytics, timeseries and captures endpoints.
+    // page's metadata/internal id — e.g. the analytics and captures endpoints.
     Task<LandingPageResponseDto> GetSummaryAsync(
         string creatorSlug,
         Guid landingPagePublicId,

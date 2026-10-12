@@ -271,6 +271,7 @@ public sealed class UpgradeFromFreeTests
             new UnexpectedBillingPortalService(),
             new CreatorOpenBalanceCheck(db),
             customers ?? _customers,
+            new RecordingCreatorCacheInvalidator(),
             NullLogger<CreatorService>.Instance));
     }
 

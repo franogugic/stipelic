@@ -22,8 +22,12 @@ public sealed class ContactsRepository : IContactsRepository
     }
 
     public async Task<List<ContactRow>> SearchAsync(
-        int creatorId, string? search, int? landingPageId, string? afterEmail, int limit, CancellationToken ct)
+        int creatorId, string? search, int? landingPageId, ContactStatusFilter? status, string? afterEmail, int limit,
+        CancellationToken ct)
     {
+        // "Unsubscribed" = an opt-out exists for this creator and email (unique on (CreatorId, Email), so the EXISTS
+        // probe is one index lookup); a null filter folds away at plan time.
+        var unsubscribed = status is null ? (bool?)null : status == ContactStatusFilter.Unsubscribed;
         // Emails are stored lower-case, so a lower-cased term makes the match case-insensitive.
         var searchPattern = string.IsNullOrWhiteSpace(search) ? null : LikePatterns.Contains(search.Trim().ToLowerInvariant());
         var after = afterEmail?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -45,6 +49,9 @@ public sealed class ContactsRepository : IContactsRepository
               AND "Email" > {after}
               AND ({searchPattern}::text IS NULL OR "Email" LIKE {searchPattern}::text ESCAPE '\')
               AND ({landingPageId}::int IS NULL OR "SourceLandingPageIds" @> ARRAY[{landingPageId}::int])
+              AND ({unsubscribed}::boolean IS NULL OR {unsubscribed}::boolean = EXISTS (
+                    SELECT 1 FROM marketing.unsubscribes u
+                    WHERE u."CreatorId" = {creatorId} AND u."Email" = contact_summaries."Email"))
             ORDER BY "Email"
             LIMIT {fetchLimit}
             """)
@@ -103,14 +110,16 @@ public sealed class ContactsRepository : IContactsRepository
     {
         // One pass over the creator's summaries. Active is an anti-join written as LEFT JOIN … IS NULL so the
         // planner can hash the (small) unsubscribe set once; a NOT EXISTS inside the aggregate FILTER runs as
-        // a per-row SubPlan instead (~150 ms vs ~14 ms at 100k contacts). No row multiplication: unsubscribes
-        // is unique on (CreatorId, Email). An aggregate without GROUP BY always yields exactly one row.
+        // a per-row SubPlan instead (~150 ms vs ~14 ms at 100k contacts). Unsubscribed is the matching semi-join
+        // over the same rows, so it counts existing subscribers only (an opt-out of a deleted contact or of an
+        // address that never subscribed is not counted) and Total = Active + Unsubscribed. No row multiplication:
+        // unsubscribes is unique on (CreatorId, Email). An aggregate without GROUP BY always yields exactly one row.
         var rows = await _context.Database.SqlQuery<ContactStatsCountsRow>($"""
             SELECT
                 COUNT(*)::int AS "Total",
                 (COUNT(*) FILTER (WHERE u."Id" IS NULL))::int AS "Active",
                 (COUNT(*) FILTER (WHERE cs."FirstCapturedAt" >= {monthStart}))::int AS "NewThisMonth",
-                (SELECT COUNT(*) FROM marketing.unsubscribes u2 WHERE u2."CreatorId" = {creatorId})::int AS "Unsubscribed"
+                (COUNT(*) FILTER (WHERE u."Id" IS NOT NULL))::int AS "Unsubscribed"
             FROM marketing.contact_summaries cs
             LEFT JOIN marketing.unsubscribes u
                 ON u."CreatorId" = {creatorId}
@@ -124,27 +133,26 @@ public sealed class ContactsRepository : IContactsRepository
     }
 
     public async Task<List<ContactGrowthRow>> GetGrowthAsync(
-        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, CancellationToken ct)
+        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, DateTimeOffset windowEnd, string timezone,
+        CancellationToken ct)
     {
-        var windowEnd = lastMonthStart.AddMonths(1);
-
-        // Month arithmetic runs on UTC `timestamp` values (AT TIME ZONE 'UTC'), never on timestamptz, so the
-        // buckets don't depend on the session TimeZone (adding '1 month' to a timestamptz is DST-sensitive).
-        // Contacts from before the window are clamped into the first bucket by GREATEST, so the running
-        // SUM() OVER starts from the creator's whole base instead of zero — one query, no second COUNT.
+        // Month arithmetic runs on local `timestamp` values in the creator's timezone (AT TIME ZONE tz), never on
+        // timestamptz, so the buckets don't depend on the session TimeZone. windowStart / lastMonthStart are the
+        // instants those local months start. Contacts from before the window are clamped into the first bucket by
+        // GREATEST, so the running SUM() OVER starts from the creator's whole base — one query, no second COUNT.
         return await _context.Database.SqlQuery<ContactGrowthRow>($"""
             SELECT
                 to_char(m."MonthStart", 'YYYY-MM') AS "Month",
                 (SUM(COALESCE(b."Count", 0)) OVER (ORDER BY m."MonthStart"))::int AS "Total"
             FROM generate_series(
-                {windowStart}::timestamptz AT TIME ZONE 'UTC',
-                {lastMonthStart}::timestamptz AT TIME ZONE 'UTC',
+                {windowStart}::timestamptz AT TIME ZONE {timezone},
+                {lastMonthStart}::timestamptz AT TIME ZONE {timezone},
                 interval '1 month') AS m("MonthStart")
             LEFT JOIN (
                 SELECT
                     GREATEST(
-                        date_trunc('month', cs."FirstCapturedAt" AT TIME ZONE 'UTC'),
-                        {windowStart}::timestamptz AT TIME ZONE 'UTC') AS "Bucket",
+                        date_trunc('month', cs."FirstCapturedAt" AT TIME ZONE {timezone}),
+                        {windowStart}::timestamptz AT TIME ZONE {timezone}) AS "Bucket",
                     COUNT(*) AS "Count"
                 FROM marketing.contact_summaries cs
                 WHERE cs."CreatorId" = {creatorId}
@@ -157,7 +165,7 @@ public sealed class ContactsRepository : IContactsRepository
             .ToListAsync(ct);
     }
 
-    public async Task<ContactDeletionRow?> DeleteAsync(int creatorId, string email, CancellationToken ct)
+    public async Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct)
     {
         // Summary first: its RETURNING doubles as the existence check, so an unknown contact deletes nothing.
         var deletedSummaryIds = await _context.Database.SqlQuery<int>($"""
@@ -168,23 +176,21 @@ public sealed class ContactsRepository : IContactsRepository
             .ToListAsync(ct);
 
         if (deletedSummaryIds.Count == 0)
-            return null;
+            return false;
 
         // Only captures on this creator's landing pages — the same address captured by another creator stays
         // theirs. Probes the (LandingPageId, Email) unique index once per page of the creator.
         // marketing.unsubscribes (an opt-out must outlive the contact) and marketing.campaign_recipients (send
         // history) are deliberately left alone.
-        var captureLandingPageIds = await _context.Database.SqlQuery<int>($"""
+        await _context.Database.ExecuteSqlAsync($"""
             DELETE FROM analytics.email_captures ec
             USING landing_pages.landing_pages lp
             WHERE lp."Id" = ec."LandingPageId"
               AND lp."CreatorId" = {creatorId}
               AND ec."Email" = {email}
-            RETURNING ec."LandingPageId" AS "Value"
-            """)
-            .ToListAsync(ct);
+            """, ct);
 
-        return new ContactDeletionRow(captureLandingPageIds);
+        return true;
     }
 
     public async Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct)
@@ -208,6 +214,42 @@ public sealed class ContactsRepository : IContactsRepository
                 ON lp."Id" = s."LandingPageId"
                AND lp."CreatorId" = {creatorId}
             ORDER BY s."Count" DESC, lp."Title", lp."Id"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct)
+    {
+        // Month starts are local `timestamp` values (now() AT TIME ZONE tz); each event is converted the same way,
+        // so a capture at 23:30 UTC on the 31st lands on the 1st when the creator's zone is ahead of UTC.
+        return await _context.Database.SqlQuery<ContactMonthRow>($"""
+            WITH months AS (
+                SELECT m AS "MonthStart"
+                FROM generate_series(
+                    date_trunc('month', now() AT TIME ZONE {timezone}) - interval '11 months',
+                    date_trunc('month', now() AT TIME ZONE {timezone}),
+                    interval '1 month') AS m
+            ),
+            joined AS (
+                SELECT date_trunc('month', cs."FirstCapturedAt" AT TIME ZONE {timezone}) AS "Month", COUNT(*) AS "Count"
+                FROM marketing.contact_summaries cs
+                WHERE cs."CreatorId" = {creatorId}
+                GROUP BY 1
+            ),
+            left_list AS (
+                SELECT date_trunc('month', u."UnsubscribedAt" AT TIME ZONE {timezone}) AS "Month", COUNT(*) AS "Count"
+                FROM marketing.unsubscribes u
+                WHERE u."CreatorId" = {creatorId}
+                GROUP BY 1
+            )
+            SELECT to_char(m."MonthStart", 'YYYY-MM') AS "Month",
+                   COALESCE(j."Count", 0)::int AS "Joined",
+                   COALESCE(l."Count", 0)::int AS "Unsubscribed"
+            FROM months m
+            LEFT JOIN joined j ON j."Month" = m."MonthStart"
+            LEFT JOIN left_list l ON l."Month" = m."MonthStart"
+            ORDER BY m."MonthStart"
             """)
             .AsNoTracking()
             .ToListAsync(ct);

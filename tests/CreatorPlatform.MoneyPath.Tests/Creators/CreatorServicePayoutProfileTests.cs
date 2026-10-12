@@ -31,6 +31,7 @@ public class CreatorServicePayoutProfileTests
             new FakeBillingPortalService(),
             new FakeCreatorOpenBalanceCheck(),
             new FakeBillingCustomerService(),
+            new FakeCreatorCacheInvalidator(),
             NullLogger<CreatorService>.Instance);
 
         return (service, profileRepository);

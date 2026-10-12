@@ -123,4 +123,18 @@ public class EmailTemplateTests
 
         Assert.Throws<InvalidOperationException>(() => template.Archive(Now));
     }
+
+    [Fact]
+    public void Restore_FromArchived_IsActiveAgain_AndRestoringAnActiveTemplateChangesNothing()
+    {
+        var template = CreateValidTemplate();
+        template.Archive(Now);
+
+        template.Restore(Now.AddMinutes(1));
+        Assert.Equal(EmailTemplateStatus.Active, template.Status);
+        Assert.Equal(Now.AddMinutes(1), template.UpdatedAt);
+
+        template.Restore(Now.AddMinutes(2));
+        Assert.Equal(Now.AddMinutes(1), template.UpdatedAt);
+    }
 }

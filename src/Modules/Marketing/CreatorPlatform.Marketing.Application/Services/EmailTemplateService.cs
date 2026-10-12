@@ -112,10 +112,21 @@ public sealed class EmailTemplateService : IEmailTemplateService
         return ToDto(template);
     }
 
+    public async Task<EmailTemplateDto> RestoreAsync(string slug, int ownerUserId, Guid templatePublicId, CancellationToken ct)
+    {
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+        var template = await GetOwnedTemplateForUpdateAsync(context.CreatorId, templatePublicId, ct);
+
+        template.Restore(DateTimeOffset.UtcNow);
+        await _unitOfWork.SaveChangesAsync(ct);
+
+        return ToDto(template);
+    }
+
     public List<EmailTemplateStarterDto> GetStarters()
     {
         return EmailTemplateStarters.All
-            .Select(t => new EmailTemplateStarterDto(t.Key, t.Name, t.Subject, t.BodyText, t.CtaLabel, t.CtaUrl))
+            .Select(t => new EmailTemplateStarterDto(t.Key, t.Name, t.Description, t.Subject, t.BodyText, t.CtaLabel, t.CtaUrl))
             .ToList();
     }
 

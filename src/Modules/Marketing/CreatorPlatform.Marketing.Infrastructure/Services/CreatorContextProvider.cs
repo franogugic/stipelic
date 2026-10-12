@@ -4,6 +4,7 @@ using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
+using CreatorPlatform.Shared.Application.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace CreatorPlatform.Marketing.Infrastructure.Services;
@@ -22,7 +23,9 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return await ProjectContext(_context.Set<Creator>()
                 .AsNoTracking()
                 .Where(c => c.Slug == slug && c.OwnerUserId == ownerUserId && c.Status != CreatorStatus.Disabled))
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefaultAsync(ct) is { } context
+            ? context with { Timezone = CreatorTimeZone.Resolve(context.Timezone) }
+            : null;
     }
 
     public async Task<MarketingCreatorContext?> GetByCreatorIdAsync(int creatorId, CancellationToken ct)
@@ -30,7 +33,9 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return await ProjectContext(_context.Set<Creator>()
                 .AsNoTracking()
                 .Where(c => c.Id == creatorId && c.Status != CreatorStatus.Disabled))
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefaultAsync(ct) is { } context
+            ? context with { Timezone = CreatorTimeZone.Resolve(context.Timezone) }
+            : null;
     }
 
     private IQueryable<MarketingCreatorContext> ProjectContext(IQueryable<Creator> creators)
@@ -59,7 +64,12 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             _context.Set<User>()
                 .Where(u => u.Id == c.OwnerUserId)
                 .Select(u => u.Email)
-                .First()));
+                .First(),
+            // Raw here; the callers resolve it (CreatorTimeZone can't run inside the SQL projection).
+            _context.Set<CreatorSettings>()
+                .Where(s => s.CreatorId == c.Id)
+                .Select(s => s.Timezone)
+                .FirstOrDefault() ?? CreatorTimeZone.Fallback));
     }
 
     public async Task<Dictionary<int, Guid>> GetLandingPagePublicIdsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)

@@ -17,6 +17,11 @@ public sealed class CampaignSendService : ICampaignSendService
     private const int MaxScheduleDays = 365;
     private const int MaxNoteLength = 500;
 
+    public const string EmailLimitReachedCode = "email_limit_reached";
+
+    /// <summary>The <c>details</c> of an email_limit_reached conflict.</summary>
+    public sealed record EmailLimitDetails(int Remaining);
+
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IEmailTemplateRepository _templateRepository;
     private readonly ICampaignRepository _campaignRepository;
@@ -254,7 +259,35 @@ public sealed class CampaignSendService : ICampaignSendService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
+            // Same lock as the send paths: two resends of one campaign can't both requeue (the second finds no
+            // Failed rows left) and can't race past the limit.
+            await _unitOfWork.AcquireCreatorCampaignLockAsync(context.CreatorId, ct);
+
+            // Requeued in memory first, so N is exactly the rows that will go out; nothing is written unless
+            // the limit allows them (an exception below leaves the changes unsaved and rolls back).
             requeuedCount = await _progressProvider.RequeueFailedAsync(campaignPublicId, DateTimeOffset.UtcNow, ct);
+            if (requeuedCount == 0)
+                return;
+
+            // Each failed message was refunded (CampaignBroadcastFailureHandler), so sending it again uses the
+            // monthly sends again — in the campaign's own period, the one a repeated failure is refunded to.
+            var period = campaign.QueuedAt ?? campaign.CreatedAt;
+            var monthlyLimit = await _creatorContextProvider.GetActivePlanLimitAsync(context.CreatorId, MonthlyEmailSendsLimitKey, ct);
+            if (monthlyLimit is null)
+                throw new ConflictException("Sending is temporarily unavailable.");
+
+            var consumed = await _usageService.TryConsumeAsync(
+                context.CreatorId, MonthlyEmailSendsLimitKey, requeuedCount, monthlyLimit.Value, UsagePeriod.CalendarMonth, ct, period);
+            if (!consumed)
+            {
+                var used = await _usageService.GetUsedAsync(context.CreatorId, MonthlyEmailSendsLimitKey, UsagePeriod.CalendarMonth, ct, period);
+                var remaining = Math.Max(0, monthlyLimit.Value - used);
+                throw new ConflictException(
+                    $"Resending {requeuedCount} email(s) would exceed your monthly email limit. {remaining} send(s) remaining this month.",
+                    EmailLimitReachedCode,
+                    new EmailLimitDetails(remaining));
+            }
+
             await _unitOfWork.SaveChangesAsync(ct);
         }, ct);
 

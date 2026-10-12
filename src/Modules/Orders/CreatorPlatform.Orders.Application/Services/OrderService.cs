@@ -4,6 +4,7 @@ using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
 using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
+using CreatorPlatform.Shared.Application.Time;
 
 namespace CreatorPlatform.Orders.Application.Services;
 
@@ -156,22 +157,26 @@ public sealed class OrderService : IOrderService
         if (_dashboardTrendsCache.TryGet(creatorId, rangeKey, out var cached) && cached is not null)
             return cached;
 
-        var now = DateTimeOffset.UtcNow;
-        DateTimeOffset lastBucket, firstBucket;
+        // Days and months are the creator's own (creator timezone); the bounds are the instants they start.
+        var timezone = await _orderRepository.GetCreatorTimezoneAsync(creatorId, ct);
+        var local = CreatorTimeZone.LocalNow(DateTimeOffset.UtcNow, timezone);
+        DateTime lastLocal, firstLocal;
         if (trendRange.Unit == "day")
         {
-            lastBucket = new DateTimeOffset(now.Year, now.Month, now.Day, 0, 0, 0, TimeSpan.Zero);
-            firstBucket = lastBucket.AddDays(-(trendRange.Buckets - 1));
+            lastLocal = local.Date;
+            firstLocal = lastLocal.AddDays(-(trendRange.Buckets - 1));
         }
         else
         {
-            lastBucket = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
-            firstBucket = lastBucket.AddMonths(-(trendRange.Buckets - 1));
+            lastLocal = new DateTime(local.Year, local.Month, 1);
+            firstLocal = lastLocal.AddMonths(-(trendRange.Buckets - 1));
         }
+        var firstBucket = CreatorTimeZone.ToInstant(firstLocal, timezone);
+        var lastBucket = CreatorTimeZone.ToInstant(lastLocal, timezone);
 
         // Sequential: both use the request's single DbContext.
-        var revenue = await _orderRepository.GetRevenueTrendAsync(creatorId, trendRange.Unit, firstBucket, lastBucket, ct);
-        var views = await _orderRepository.GetViewsTrendAsync(creatorId, trendRange.Unit, firstBucket, lastBucket, ct);
+        var revenue = await _orderRepository.GetRevenueTrendAsync(creatorId, trendRange.Unit, firstBucket, lastBucket, timezone, ct);
+        var views = await _orderRepository.GetViewsTrendAsync(creatorId, trendRange.Unit, firstBucket, lastBucket, timezone, ct);
         var viewsByBucket = views.ToDictionary(v => v.BucketStart, v => v.Value);
 
         var result = new DashboardTrendsDto(
@@ -190,11 +195,6 @@ public sealed class OrderService : IOrderService
         return _orderRepository.GetSummaryByCreatorSlugAsync(creatorSlug, ownerUserId, ct);
     }
 
-    public Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
-    {
-        return _orderRepository.GetSummaryByLandingPageIdAsync(landingPageId, ct);
-    }
-
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(
         int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
@@ -205,11 +205,6 @@ public sealed class OrderService : IOrderService
         string creatorSlug, int ownerUserId, CancellationToken ct)
     {
         return _orderRepository.GetOrdersSummaryByCreatorGroupedByLandingPageAsync(creatorSlug, ownerUserId, ct);
-    }
-
-    public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
-    {
-        return _orderRepository.GetBucketedPurchasesAsync(landingPageId, cutoff, bucketUnit, ct);
     }
 
     public async Task InvalidateHomeSummaryAsync(string creatorSlug, int ownerUserId)

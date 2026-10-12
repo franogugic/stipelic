@@ -9,7 +9,8 @@ public sealed class FakeContactsRepository : IContactsRepository
     public int SearchCallCount { get; private set; }
 
     public Task<List<ContactRow>> SearchAsync(
-        int creatorId, string? search, int? landingPageId, string? afterEmail, int limit, CancellationToken ct)
+        int creatorId, string? search, int? landingPageId, ContactStatusFilter? status, string? afterEmail, int limit,
+        CancellationToken ct)
     {
         LastCall = (creatorId, search, landingPageId, afterEmail, limit);
         SearchCallCount++;
@@ -25,19 +26,23 @@ public sealed class FakeContactsRepository : IContactsRepository
         => Task.FromResult(new ContactStatsCountsRow(0, 0, 0, 0));
 
     public Task<List<ContactGrowthRow>> GetGrowthAsync(
-        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, CancellationToken ct)
+        int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, DateTimeOffset windowEnd, string timezone,
+        CancellationToken ct)
         => Task.FromResult(new List<ContactGrowthRow>());
 
-    /// <summary>What <see cref="DeleteAsync"/> returns — null models "no such contact".</summary>
-    public ContactDeletionRow? DeletionResult { get; set; }
+    /// <summary>What <see cref="DeleteAsync"/> returns — false (the default) models "no such contact".</summary>
+    public bool ContactExists { get; set; }
     public (int CreatorId, string Email)? LastDeleteCall { get; private set; }
 
-    public Task<ContactDeletionRow?> DeleteAsync(int creatorId, string email, CancellationToken ct)
+    public Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct)
     {
         LastDeleteCall = (creatorId, email);
-        return Task.FromResult(DeletionResult);
+        return Task.FromResult(ContactExists);
     }
 
     public Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(new List<ContactSourceCountRow>());
+
+    public Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct)
+        => Task.FromResult(new List<ContactMonthRow>());
 }

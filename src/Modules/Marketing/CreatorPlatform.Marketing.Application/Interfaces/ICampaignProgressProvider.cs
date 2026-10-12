@@ -17,8 +17,8 @@ public interface ICampaignProgressProvider
     Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(Guid campaignPublicId, CancellationToken ct);
 
     /// <summary>Requeues every currently-Failed outbox message for one campaign back to Pending (tracked
-    /// query — caller must still call SaveChangesAsync). Returns how many were requeued. Deliberately does
-    /// NOT touch the monthly send usage counter — see <see cref="ICampaignSendService.ResendFailedAsync"/>
-    /// for why.</summary>
+    /// query — caller must still call SaveChangesAsync, and doesn't when the monthly limit refuses them).
+    /// Returns how many were requeued. The usage counter is the caller's job — see
+    /// <see cref="ICampaignSendService.ResendFailedAsync"/>.</summary>
     Task<int> RequeueFailedAsync(Guid campaignPublicId, DateTimeOffset nextAttemptAt, CancellationToken ct);
 }

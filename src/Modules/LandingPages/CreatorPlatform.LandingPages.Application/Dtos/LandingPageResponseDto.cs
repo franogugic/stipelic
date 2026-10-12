@@ -7,7 +7,7 @@ namespace CreatorPlatform.LandingPages.Application.Dtos;
 public sealed record LandingPageResponseDto
 {
     // Internal id, not exposed over the wire — carried so callers that only need to resolve the page
-    // (analytics, timeseries, captures) can use this lightweight DTO instead of the full with-sections one.
+    // (analytics, captures) can use this lightweight DTO instead of the full with-sections one.
     [JsonIgnore]
     public int Id { get; init; }
 

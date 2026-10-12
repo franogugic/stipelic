@@ -21,7 +21,7 @@ public sealed class DeleteContactTests
     }
 
     /// <summary>The production service over the real repositories, on its own context (a request scope).</summary>
-    private async Task<IReadOnlyList<int>> DeleteAsync(TestData.SeededCreator creator, string email)
+    private async Task DeleteAsync(TestData.SeededCreator creator, string email)
     {
         await using var db = _fixture.CreateDbContext();
         var service = new ContactsService(
@@ -30,8 +30,7 @@ public sealed class DeleteContactTests
             new MarketingUnitOfWork(db),
             new CreatorUsageService(db));
 
-        var result = await service.DeleteAsync(creator.Slug, creator.OwnerUserId, email, CancellationToken.None);
-        return result.AffectedLandingPageIds;
+        await service.DeleteAsync(creator.Slug, creator.OwnerUserId, email, CancellationToken.None);
     }
 
     [Fact]
@@ -46,11 +45,10 @@ public sealed class DeleteContactTests
         await _data.CaptureAsync(creator.CreatorId, pageB, email);
         await _data.CaptureAsync(creator.CreatorId, pageA, otherContact);
 
-        var affectedPages = await DeleteAsync(creator, email);
+        await DeleteAsync(creator, email);
 
         Assert.Equal(0, await _data.CountCapturesAsync(creator.CreatorId, email));
         Assert.False(await _data.SummaryExistsAsync(creator.CreatorId, email));
-        Assert.Equal([pageA, pageB], affectedPages.OrderBy(id => id));
         // The creator's other contacts are untouched.
         Assert.Equal(1, await _data.CountCapturesAsync(creator.CreatorId, otherContact));
         Assert.True(await _data.SummaryExistsAsync(creator.CreatorId, otherContact));

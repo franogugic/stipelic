@@ -108,8 +108,12 @@ public sealed class FakeCreatorUsageService : ICreatorUsageService
     public List<(int CreatorId, string UsageKey, int Amount, int Limit, UsagePeriod Period)> ConsumeCalls { get; } = [];
     public List<(int CreatorId, string UsageKey, int Amount, UsagePeriod Period, DateTimeOffset AsOf)> RefundCalls { get; } = [];
 
-    public Task<bool> TryConsumeAsync(int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct)
+    public List<DateTimeOffset?> ConsumeAsOf { get; } = [];
+
+    public Task<bool> TryConsumeAsync(
+        int creatorId, string usageKey, int amount, int limit, UsagePeriod period, CancellationToken ct, DateTimeOffset? asOf = null)
     {
+        ConsumeAsOf.Add(asOf);
         ConsumeCalls.Add((creatorId, usageKey, amount, limit, period));
         var key = (creatorId, usageKey);
         var current = Used.GetValueOrDefault(key);
@@ -121,7 +125,7 @@ public sealed class FakeCreatorUsageService : ICreatorUsageService
         return Task.FromResult(true);
     }
 
-    public Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct)
+    public Task<int> GetUsedAsync(int creatorId, string usageKey, UsagePeriod period, CancellationToken ct, DateTimeOffset? asOf = null)
         => Task.FromResult(Used.GetValueOrDefault((creatorId, usageKey)));
 
     public Task RefundAsync(int creatorId, string usageKey, int amount, UsagePeriod period, DateTimeOffset asOf, CancellationToken ct)
@@ -167,12 +171,6 @@ public sealed class FakeCampaignRepository : ICampaignRepository
             .Where(c => c.CreatorId == creatorId)
             .OrderByDescending(c => c.CreatedAt)
             .Take(take)
-            .ToList());
-
-    public Task<List<QueuedCampaignOpenStats>> GetQueuedSinceAsync(int creatorId, DateTimeOffset since, CancellationToken ct)
-        => Task.FromResult(Campaigns
-            .Where(c => c.CreatorId == creatorId && c.QueuedAt >= since)
-            .Select(c => new QueuedCampaignOpenStats(c.PublicId, c.QueuedAt!.Value, c.UniqueOpenCount))
             .ToList());
 
     public Task<List<Guid>> GetDueScheduledPublicIdsAsync(int limit, CancellationToken ct)

@@ -3,6 +3,7 @@ using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Shared.Application.Exceptions;
+using CreatorPlatform.Shared.Application.Time;
 
 namespace CreatorPlatform.Marketing.Application.Services;
 
@@ -33,9 +34,10 @@ public sealed class ContactsService : IContactsService
     }
 
     public async Task<ContactsPageDto> SearchAsync(
-        string slug, int ownerUserId, string? search, Guid? landingPageId, string? afterEmail, int limit,
+        string slug, int ownerUserId, string? search, Guid? landingPageId, string? status, string? afterEmail, int limit,
         CancellationToken ct)
     {
+        var statusFilter = ParseStatus(status);
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
         var sourceLandingPageId = await ResolveSourceFilterAsync(context.CreatorId, landingPageId, ct);
 
@@ -43,7 +45,7 @@ public sealed class ContactsService : IContactsService
 
         // Fetch one extra row to detect a next page without a separate COUNT query, then trim it.
         var rows = await _contactsRepository.SearchAsync(
-            context.CreatorId, search, sourceLandingPageId, afterEmail, clampedLimit, ct);
+            context.CreatorId, search, sourceLandingPageId, statusFilter, afterEmail, clampedLimit, ct);
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.Take(clampedLimit).ToList() : rows;
 
@@ -51,27 +53,29 @@ public sealed class ContactsService : IContactsService
     }
 
     public async Task<ContactExport> StartExportAsync(
-        string slug, int ownerUserId, string? search, Guid? landingPageId, CancellationToken ct)
+        string slug, int ownerUserId, string? search, Guid? landingPageId, string? status, CancellationToken ct)
     {
+        var statusFilter = ParseStatus(status);
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
         var sourceLandingPageId = await ResolveSourceFilterAsync(context.CreatorId, landingPageId, ct);
 
         return new ContactExport(
             context.Slug,
-            StreamContactsAsync(context.CreatorId, search, sourceLandingPageId, ct));
+            StreamContactsAsync(context.CreatorId, search, sourceLandingPageId, statusFilter, ct));
     }
 
     // The same keyset query as the directory page, batch after batch: each batch costs one summary scan plus one
     // titles and one unsubscribe query (no N+1), and only one batch is held in memory at a time.
     private async IAsyncEnumerable<ContactDto> StreamContactsAsync(
-        int creatorId, string? search, int? sourceLandingPageId, [EnumeratorCancellation] CancellationToken ct)
+        int creatorId, string? search, int? sourceLandingPageId, ContactStatusFilter? status,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         string? afterEmail = null;
 
         while (true)
         {
             var rows = await _contactsRepository.SearchAsync(
-                creatorId, search, sourceLandingPageId, afterEmail, ExportBatchSize, ct);
+                creatorId, search, sourceLandingPageId, status, afterEmail, ExportBatchSize, ct);
             var hasMore = rows.Count > ExportBatchSize;
 
             foreach (var row in hasMore ? rows.Take(ExportBatchSize) : rows)
@@ -83,6 +87,19 @@ public sealed class ContactsService : IContactsService
             if (!hasMore)
                 yield break;
         }
+    }
+
+    /// <summary>"active" | "unsubscribed" (any case); empty means everyone.</summary>
+    private static ContactStatusFilter? ParseStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return null;
+        return status.Trim().ToLowerInvariant() switch
+        {
+            "active" => ContactStatusFilter.Active,
+            "unsubscribed" => ContactStatusFilter.Unsubscribed,
+            _ => throw new BadRequestException("Invalid status. Valid values: active, unsubscribed.")
+        };
     }
 
     private async Task<int?> ResolveSourceFilterAsync(int creatorId, Guid? landingPageId, CancellationToken ct)
@@ -107,14 +124,19 @@ public sealed class ContactsService : IContactsService
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
-        var now = DateTimeOffset.UtcNow;
-        var currentMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
-        var windowStart = currentMonthStart.AddMonths(-(GrowthMonths - 1));
+        // Months are the creator's own (their timezone); the bounds are the instants those local months start.
+        var local = CreatorTimeZone.LocalNow(DateTimeOffset.UtcNow, context.Timezone);
+        var thisMonth = new DateTime(local.Year, local.Month, 1);
+        var currentMonthStart = CreatorTimeZone.ToInstant(thisMonth, context.Timezone);
+        var windowStart = CreatorTimeZone.ToInstant(thisMonth.AddMonths(-(GrowthMonths - 1)), context.Timezone);
+        var windowEnd = CreatorTimeZone.ToInstant(thisMonth.AddMonths(1), context.Timezone);
 
         // Sequential on purpose: the queries share one scoped DbContext, which allows no concurrent use.
         var counts = await _contactsRepository.GetStatsCountsAsync(context.CreatorId, currentMonthStart, ct);
-        var growth = await _contactsRepository.GetGrowthAsync(context.CreatorId, windowStart, currentMonthStart, ct);
+        var growth = await _contactsRepository.GetGrowthAsync(
+            context.CreatorId, windowStart, currentMonthStart, windowEnd, context.Timezone, ct);
         var sources = await _contactsRepository.GetSourceCountsAsync(context.CreatorId, ct);
+        var monthly = await _contactsRepository.GetMonthlyAsync(context.CreatorId, context.Timezone, ct);
 
         return new ContactStatsDto(
             counts.Total,
@@ -122,10 +144,11 @@ public sealed class ContactsService : IContactsService
             counts.NewThisMonth,
             counts.Unsubscribed,
             growth.Select(g => new ContactGrowthPointDto(g.Month, g.Total)).ToList(),
-            sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList());
+            sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList(),
+            monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList());
     }
 
-    public async Task<ContactDeletionResult> DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
+    public async Task DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
@@ -134,13 +157,12 @@ public sealed class ContactsService : IContactsService
         if (normalizedEmail.Length == 0)
             throw new NotFoundException(ContactNotFoundMessage);
 
-        ContactDeletionRow? deleted = null;
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            deleted = await _contactsRepository.DeleteAsync(context.CreatorId, normalizedEmail, ct);
+            var deleted = await _contactsRepository.DeleteAsync(context.CreatorId, normalizedEmail, ct);
 
             // Nothing was deleted, so throwing here (rolling back an empty transaction) is safe.
-            if (deleted is null)
+            if (!deleted)
                 throw new NotFoundException(ContactNotFoundMessage);
 
             // Give the contact's plan slot back in the same transaction: max_contacts counts unique contacts
@@ -150,8 +172,6 @@ public sealed class ContactsService : IContactsService
             await _usageService.RefundAsync(
                 context.CreatorId, MaxContactsLimitKey, 1, UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
         }, ct);
-
-        return new ContactDeletionResult(deleted!.CaptureLandingPageIds.Distinct().ToList());
     }
 
     private async Task<MarketingCreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)

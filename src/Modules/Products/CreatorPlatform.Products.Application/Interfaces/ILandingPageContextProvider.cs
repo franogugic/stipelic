@@ -8,5 +8,4 @@ public interface ILandingPageContextProvider
     Task<bool> IsUsedByPublishedPageAsync(int productId, CancellationToken ct);
 
     /// <summary>The product's draft and published pages (archived pages sell nothing), published first.</summary>
-    Task<List<ProductSellingPageDto>> GetSellingPagesAsync(int productId, CancellationToken ct);
 }

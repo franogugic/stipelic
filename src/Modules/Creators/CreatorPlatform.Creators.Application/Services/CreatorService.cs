@@ -40,6 +40,7 @@ public sealed partial class CreatorService : ICreatorService
     private readonly IBillingPortalService _billingPortalService;
     private readonly ICreatorOpenBalanceCheck _creatorOpenBalanceCheck;
     private readonly IBillingCustomerService _billingCustomerService;
+    private readonly ICreatorCacheInvalidator _cacheInvalidator;
     private readonly ILogger<CreatorService> _logger;
 
     public CreatorService(
@@ -55,6 +56,7 @@ public sealed partial class CreatorService : ICreatorService
         IBillingPortalService billingPortalService,
         ICreatorOpenBalanceCheck creatorOpenBalanceCheck,
         IBillingCustomerService billingCustomerService,
+        ICreatorCacheInvalidator cacheInvalidator,
         ILogger<CreatorService> logger)
     {
         _creatorRepository = creatorRepository;
@@ -69,6 +71,7 @@ public sealed partial class CreatorService : ICreatorService
         _billingPortalService = billingPortalService;
         _creatorOpenBalanceCheck = creatorOpenBalanceCheck;
         _billingCustomerService = billingCustomerService;
+        _cacheInvalidator = cacheInvalidator;
         _logger = logger;
     }
 
@@ -202,6 +205,7 @@ public sealed partial class CreatorService : ICreatorService
 
         var update = CreatorSettingsUpdateValidator.Validate(request, settings.Creator.Name);
         var updatedAt = DateTimeOffset.UtcNow;
+        var timezoneChanged = !string.Equals(settings.Timezone, update.Timezone, StringComparison.Ordinal);
 
         settings.Update(
             update.SupportEmail,
@@ -213,6 +217,10 @@ public sealed partial class CreatorService : ICreatorService
             updatedAt);
 
         await _unitOfWork.SaveChangesAsync(ct);
+
+        // Cached analytics (home summary, dashboard trends) are bucketed in the old zone: rebuild them on next read.
+        if (timezoneChanged)
+            _cacheInvalidator.Invalidate(settings.CreatorId);
 
         return ToSettingsResponse(settings);
     }
