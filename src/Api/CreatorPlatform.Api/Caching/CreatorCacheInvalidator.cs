@@ -5,7 +5,7 @@ using CreatorPlatform.Orders.Application.Interfaces;
 namespace CreatorPlatform.Api.Caching;
 
 /// <summary>The per-creator caches that hold plan-dependent, workspace-wide or timezone-bucketed numbers. The other
-/// short-lived ones (time series, payout schedule: 60 s) expire on their own.</summary>
+/// short-lived one (payout schedule: 60 s) expires on its own.</summary>
 public sealed class CreatorCacheInvalidator : ICreatorCacheInvalidator
 {
     private readonly IHomeSummaryCache _homeSummaryCache;

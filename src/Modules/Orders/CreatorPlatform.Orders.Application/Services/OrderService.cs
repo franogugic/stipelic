@@ -212,11 +212,6 @@ public sealed class OrderService : IOrderService
         return _orderRepository.GetOrdersSummaryByCreatorGroupedByLandingPageAsync(creatorSlug, ownerUserId, ct);
     }
 
-    public Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct)
-    {
-        return _orderRepository.GetBucketedPurchasesAsync(landingPageId, cutoff, bucketUnit, ct);
-    }
-
     public async Task InvalidateHomeSummaryAsync(string creatorSlug, int ownerUserId)
     {
         // CancellationToken.None: the caller's change is already committed, so an aborted request must not leave

@@ -34,11 +34,4 @@ public interface IProductService
         Guid productPublicId,
         int ownerUserId,
         CancellationToken ct);
-
-    Task<ProductAnalyticsDto> GetAnalyticsAsync(
-        string slug,
-        Guid productPublicId,
-        int ownerUserId,
-        string? range,
-        CancellationToken ct);
 }

@@ -47,8 +47,6 @@ public interface IOrderService
     Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(
         string creatorSlug, int ownerUserId, CancellationToken ct);
 
-    Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
-
     /// <summary>404 when the slug isn't the user's workspace — checked before the cache is read.</summary>
     Task<HomeSummaryDto> GetHomeSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 

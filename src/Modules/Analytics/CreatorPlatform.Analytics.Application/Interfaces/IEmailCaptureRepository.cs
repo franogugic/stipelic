@@ -18,7 +18,6 @@ public interface IEmailCaptureRepository
     /// (LandingPageId, CapturedAt) index).</summary>
     /// <summary>The page's newest captures, each with whether that email has unsubscribed from the page's creator.</summary>
     Task<List<NewestCaptureRow>> ListNewestByLandingPageIdAsync(int landingPageId, int limit, CancellationToken ct);
-    Task<List<CapturesBucketRow>> GetBucketedCapturesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
 
     /// <summary>Upserts the (creatorId, email) row in <c>marketing.contact_summaries</c> — call only when
     /// <see cref="AddAsync"/> actually inserted a new capture row. Idempotent: a second capture of the
@@ -32,7 +31,3 @@ public interface IEmailCaptureRepository
 public sealed record NewestCaptureRow(string Email, DateTimeOffset CapturedAt, bool Unsubscribed);
 
 public sealed record CapturesByPeriodRow(long Today, long Last7Days, long Last30Days, long AllTime);
-
-public sealed record CapturesBucketRow(
-    DateTimeOffset BucketStart,
-    long CaptureCount);

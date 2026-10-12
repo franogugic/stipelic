@@ -15,8 +15,6 @@ public static class AnalyticsInfrastructureServiceCollectionExtensions
         services.AddScoped<IPageViewRepository, PageViewRepository>();
         services.AddScoped<IEmailCaptureService, EmailCaptureService>();
         services.AddScoped<IEmailCaptureRepository, EmailCaptureRepository>();
-        services.AddScoped<ILandingPageInsightsService, LandingPageInsightsService>();
-        services.AddSingleton<ILandingPageTimeSeriesCache, LandingPageTimeSeriesCache>();
         services.AddSingleton<IViewsSummaryCache, ViewsSummaryCache>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<IAnalyticsUnitOfWork, AnalyticsUnitOfWork>();

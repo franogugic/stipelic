@@ -58,8 +58,6 @@ public interface IOrderRepository
     Task<List<LandingPageOrdersSummaryDto>> GetOrdersSummaryByCreatorGroupedByLandingPageAsync(
         string creatorSlug, int ownerUserId, CancellationToken ct);
 
-    Task<List<PurchasesBucketRow>> GetBucketedPurchasesAsync(int landingPageId, DateTimeOffset cutoff, string bucketUnit, CancellationToken ct);
-
     /// <summary>Home summary for a creator whose ownership the caller has already checked.</summary>
     Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct);
 }

@@ -60,8 +60,6 @@ public sealed class FakeOrderContextProvider : IOrderContextProvider
 {
     public Dictionary<int, ProductRevenueDto> RevenueByProductId { get; set; } = [];
 
-    public ProductOrderStatsDto OrderStats { get; set; } = new(0, 0, 0, []);
-
     public Task<Dictionary<int, ProductRevenueDto>> GetProductRevenueByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(RevenueByProductId);
 
@@ -69,11 +67,6 @@ public sealed class FakeOrderContextProvider : IOrderContextProvider
 
     public Task<Dictionary<int, int[]>> GetProductSalesTrendsAsync(int creatorId, DateTimeOffset firstMonth, CancellationToken ct)
         => Task.FromResult(TrendByProductId);
-
-    public Task<ProductOrderStatsDto> GetProductOrderStatsAsync(
-        int creatorId, int productId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket,
-        DateTimeOffset monthStart, CancellationToken ct)
-        => Task.FromResult(OrderStats);
 }
 
 /// <summary>Products' local landing-page read-through — a single switch for "a published page sells this product".</summary>
@@ -81,18 +74,6 @@ public sealed class FakeLandingPageContextProvider : ILandingPageContextProvider
 {
     public bool UsedByPublishedPage { get; set; }
 
-    public List<ProductSellingPageDto> SellingPages { get; set; } = [];
-
     public Task<bool> IsUsedByPublishedPageAsync(int productId, CancellationToken ct)
         => Task.FromResult(UsedByPublishedPage);
-
-    public Task<List<ProductSellingPageDto>> GetSellingPagesAsync(int productId, CancellationToken ct)
-        => Task.FromResult(SellingPages);
-}
-
-public sealed class FakeAnalyticsContextProvider : IAnalyticsContextProvider
-{
-    public int ContactCount { get; set; }
-
-    public Task<int> CountContactsAsync(int productId, CancellationToken ct) => Task.FromResult(ContactCount);
 }
