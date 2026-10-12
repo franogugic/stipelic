@@ -50,8 +50,6 @@ public interface IOrderRepository
 
     Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 
-    Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct);
-
     /// <summary>One aggregate over the page's orders with a FILTER per period.</summary>
     Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);
 

@@ -148,7 +148,7 @@ public sealed class ContactsService : IContactsService
             monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList());
     }
 
-    public async Task<ContactDeletionResult> DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
+    public async Task DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
@@ -157,13 +157,12 @@ public sealed class ContactsService : IContactsService
         if (normalizedEmail.Length == 0)
             throw new NotFoundException(ContactNotFoundMessage);
 
-        ContactDeletionRow? deleted = null;
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            deleted = await _contactsRepository.DeleteAsync(context.CreatorId, normalizedEmail, ct);
+            var deleted = await _contactsRepository.DeleteAsync(context.CreatorId, normalizedEmail, ct);
 
             // Nothing was deleted, so throwing here (rolling back an empty transaction) is safe.
-            if (deleted is null)
+            if (!deleted)
                 throw new NotFoundException(ContactNotFoundMessage);
 
             // Give the contact's plan slot back in the same transaction: max_contacts counts unique contacts
@@ -173,8 +172,6 @@ public sealed class ContactsService : IContactsService
             await _usageService.RefundAsync(
                 context.CreatorId, MaxContactsLimitKey, 1, UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
         }, ct);
-
-        return new ContactDeletionResult(deleted!.CaptureLandingPageIds.Distinct().ToList());
     }
 
     private async Task<MarketingCreatorContext> GetCreatorContextAsync(string slug, int ownerUserId, CancellationToken ct)

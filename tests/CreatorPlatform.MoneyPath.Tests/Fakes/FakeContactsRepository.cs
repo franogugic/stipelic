@@ -30,14 +30,14 @@ public sealed class FakeContactsRepository : IContactsRepository
         CancellationToken ct)
         => Task.FromResult(new List<ContactGrowthRow>());
 
-    /// <summary>What <see cref="DeleteAsync"/> returns — null models "no such contact".</summary>
-    public ContactDeletionRow? DeletionResult { get; set; }
+    /// <summary>What <see cref="DeleteAsync"/> returns — false (the default) models "no such contact".</summary>
+    public bool ContactExists { get; set; }
     public (int CreatorId, string Email)? LastDeleteCall { get; private set; }
 
-    public Task<ContactDeletionRow?> DeleteAsync(int creatorId, string email, CancellationToken ct)
+    public Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct)
     {
         LastDeleteCall = (creatorId, email);
-        return Task.FromResult(DeletionResult);
+        return Task.FromResult(ContactExists);
     }
 
     public Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct)

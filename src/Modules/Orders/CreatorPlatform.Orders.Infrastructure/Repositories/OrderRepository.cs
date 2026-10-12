@@ -300,29 +300,6 @@ public sealed class OrderRepository : IOrderRepository
 
     private sealed record OrderMonthRow(string Month, long GrossCents, long FeeCents, int RefundedCount);
 
-    public async Task<OrderSummaryDto> GetSummaryByLandingPageIdAsync(int landingPageId, CancellationToken ct)
-    {
-        var rows = await _context.Database.SqlQuery<OrderSummaryRow>($"""
-            SELECT
-                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "PaidOrderCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPaidAmountCents",
-                COALESCE(SUM(o."PlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
-                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
-                COUNT(o."Id")::int AS "TotalOrderCount",
-                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Pending'))::int AS "PendingOrderCount",
-                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Failed'))::int AS "FailedOrderCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Refunded'), 0)::int AS "RefundedAmountCents",
-                MAX(c."DefaultCurrency") AS "Currency"
-            FROM orders.orders o
-            JOIN creators.creators c ON c."Id" = o."CreatorId"
-            WHERE o."LandingPageId" = {landingPageId}
-            """)
-            .AsNoTracking()
-            .ToListAsync(ct);
-
-        return ToSummaryDto(rows.Single(), []);
-    }
-
     public async Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(
         int landingPageId, StatsPeriods periods, CancellationToken ct)
     {

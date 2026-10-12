@@ -165,7 +165,7 @@ public sealed class ContactsRepository : IContactsRepository
             .ToListAsync(ct);
     }
 
-    public async Task<ContactDeletionRow?> DeleteAsync(int creatorId, string email, CancellationToken ct)
+    public async Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct)
     {
         // Summary first: its RETURNING doubles as the existence check, so an unknown contact deletes nothing.
         var deletedSummaryIds = await _context.Database.SqlQuery<int>($"""
@@ -176,23 +176,21 @@ public sealed class ContactsRepository : IContactsRepository
             .ToListAsync(ct);
 
         if (deletedSummaryIds.Count == 0)
-            return null;
+            return false;
 
         // Only captures on this creator's landing pages — the same address captured by another creator stays
         // theirs. Probes the (LandingPageId, Email) unique index once per page of the creator.
         // marketing.unsubscribes (an opt-out must outlive the contact) and marketing.campaign_recipients (send
         // history) are deliberately left alone.
-        var captureLandingPageIds = await _context.Database.SqlQuery<int>($"""
+        await _context.Database.ExecuteSqlAsync($"""
             DELETE FROM analytics.email_captures ec
             USING landing_pages.landing_pages lp
             WHERE lp."Id" = ec."LandingPageId"
               AND lp."CreatorId" = {creatorId}
               AND ec."Email" = {email}
-            RETURNING ec."LandingPageId" AS "Value"
-            """)
-            .ToListAsync(ct);
+            """, ct);
 
-        return new ContactDeletionRow(captureLandingPageIds);
+        return true;
     }
 
     public async Task<List<ContactSourceCountRow>> GetSourceCountsAsync(int creatorId, CancellationToken ct)

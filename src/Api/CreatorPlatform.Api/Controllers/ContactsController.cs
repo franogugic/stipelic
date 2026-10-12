@@ -99,7 +99,7 @@ public sealed class ContactsController : ControllerBase
     {
         var currentUser = GetVerifiedUser();
 
-        var result = await _contactsService.DeleteAsync(slug, currentUser.Id, email, ct);
+        await _contactsService.DeleteAsync(slug, currentUser.Id, email, ct);
 
         // The one cache that counts contacts is the home summary's SubscriberCount. The views summary holds only
         // views and unique visitors, so it is unaffected, and the analytics series are not cached.
