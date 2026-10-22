@@ -264,6 +264,84 @@ public sealed class OrderRepository : IOrderRepository
         return ToSummaryDto(totals, await GetMonthlyTrendAsync(creator.Id, CreatorTimeZone.Resolve(creator.Timezone), ct));
     }
 
+    public async Task<OrderPeriodContext?> GetPeriodContextAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        var row = (await _context.Database.SqlQuery<PeriodContextRow>($"""
+            SELECT c."Id" AS "Id", s."Timezone" AS "Timezone", c."DefaultCurrency" AS "Currency", c."CreatedAt" AS "CreatedAt"
+            FROM creators.creators c
+            LEFT JOIN creators.creator_settings s ON s."CreatorId" = c."Id"
+            WHERE c."Slug" = {creatorSlug} AND c."OwnerUserId" = {ownerUserId} AND c."Status" <> 'Disabled'
+            """).AsNoTracking().ToListAsync(ct)).SingleOrDefault();
+
+        return row is null ? null : new OrderPeriodContext(row.Id, CreatorTimeZone.Resolve(row.Timezone), row.Currency, row.CreatedAt);
+    }
+
+    public async Task<OrderPeriodRead> GetPeriodSummaryAsync(
+        int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct)
+    {
+        var from = plan.TotalsFrom;
+        var to = plan.TotalsTo;
+
+        // One pass over the creator's orders (the (CreatorId, CreatedAt) index), a FILTER per figure.
+        var totals = (await _context.Database.SqlQuery<OrderPeriodTotalsRow>($"""
+            SELECT
+                (COUNT(*) FILTER (WHERE o."Status" = 'Paid' AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from}) AND COALESCE(o."PaidAt", o."CreatedAt") < {to}))::int AS "PaidOrderCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid' AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from}) AND COALESCE(o."PaidAt", o."CreatedAt") < {to}), 0)::bigint AS "TotalPaidAmountCents",
+                COALESCE(SUM(o."PlatformFeeCents") FILTER (WHERE o."Status" = 'Paid' AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from}) AND COALESCE(o."PaidAt", o."CreatedAt") < {to}), 0)::bigint AS "TotalPlatformFeeCents",
+                (COUNT(*) FILTER (WHERE o."Status" = 'Refunded' AND ({from}::timestamptz IS NULL OR o."UpdatedAt" >= {from}) AND o."UpdatedAt" < {to}))::int AS "RefundedOrderCount",
+                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Refunded' AND ({from}::timestamptz IS NULL OR o."UpdatedAt" >= {from}) AND o."UpdatedAt" < {to}), 0)::bigint AS "RefundedAmountCents",
+                (COUNT(*) FILTER (WHERE o."Status" = 'Pending' AND ({from}::timestamptz IS NULL OR o."CreatedAt" >= {from}) AND o."CreatedAt" < {to}))::int AS "PendingOrderCount",
+                (COUNT(*) FILTER (WHERE o."Status" = 'Failed' AND ({from}::timestamptz IS NULL OR o."CreatedAt" >= {from}) AND o."CreatedAt" < {to}))::int AS "FailedOrderCount"
+            FROM orders.orders o
+            WHERE o."CreatorId" = {creatorId}
+            """).AsNoTracking().ToListAsync(ct)).Single();
+
+        // The buckets: one grouped pass for paid orders (by when they were paid) and one for refunds (by the refund's
+        // time), each binned with width_bucket over the plan's local bucket starts (see AnalyticsSeriesReader).
+        var starts = plan.Buckets;
+        var edges = AnalyticsPeriodPlan.ToEdges(starts);
+        var bucketsFrom = plan.TotalsFrom ?? plan.BucketsFrom;
+        var rows = await _context.Database.SqlQuery<PeriodBucketRow>($"""
+            SELECT 'paid' AS "Kind",
+                   width_bucket(extract(epoch FROM (COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   COALESCE(SUM(o."AmountCents"), 0)::bigint AS "GrossCents",
+                   COALESCE(SUM(o."PlatformFeeCents"), 0)::bigint AS "FeeCents",
+                   0::int AS "RefundedCount"
+            FROM orders.orders o
+            WHERE o."CreatorId" = {creatorId} AND o."Status" = 'Paid'
+              AND COALESCE(o."PaidAt", o."CreatedAt") >= {bucketsFrom} AND COALESCE(o."PaidAt", o."CreatedAt") < {to}
+            GROUP BY 2
+            UNION ALL
+            SELECT 'refunded' AS "Kind",
+                   width_bucket(extract(epoch FROM (o."UpdatedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   0::bigint, 0::bigint,
+                   COUNT(*)::int
+            FROM orders.orders o
+            WHERE o."CreatorId" = {creatorId} AND o."Status" = 'Refunded'
+              AND o."UpdatedAt" >= {bucketsFrom} AND o."UpdatedAt" < {to}
+            GROUP BY 2
+            """).AsNoTracking().ToListAsync(ct);
+
+        var buckets = new Dictionary<DateTime, OrderBucketValues>();
+        foreach (var row in rows)
+        {
+            // width_bucket numbers the bins from 1; 0 is an event before the first start, excluded by the range above.
+            if (row.Bucket < 1 || row.Bucket > starts.Count)
+                continue;
+            var key = starts[row.Bucket - 1];
+            var current = buckets.GetValueOrDefault(key) ?? new OrderBucketValues(0, 0, 0);
+            buckets[key] = row.Kind == "paid"
+                ? current with { GrossCents = row.GrossCents, FeeCents = row.FeeCents }
+                : current with { RefundedCount = row.RefundedCount };
+        }
+
+        return new OrderPeriodRead(totals, buckets);
+    }
+
+    private sealed record PeriodContextRow(int Id, string? Timezone, string Currency, DateTimeOffset CreatedAt);
+
+    private sealed record PeriodBucketRow(string Kind, int Bucket, long GrossCents, long FeeCents, int RefundedCount);
+
     /// <summary>Gross / fees / net of Paid orders by the month they were paid, and refunds by the month they were
     /// refunded — 12 local months in <paramref name="timezone"/>, zero-filled by generate_series.</summary>
     private async Task<List<OrderMonthDto>> GetMonthlyTrendAsync(int creatorId, string timezone, CancellationToken ct)

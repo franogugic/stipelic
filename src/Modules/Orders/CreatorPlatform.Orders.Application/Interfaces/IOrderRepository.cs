@@ -7,6 +7,17 @@ namespace CreatorPlatform.Orders.Application.Interfaces;
 /// <param name="BucketStart">"yyyy-MM-dd" (UTC).</param>
 public sealed record TrendBucketRow(string BucketStart, long Value);
 
+public sealed record OrderPeriodContext(int CreatorId, string Timezone, string Currency, DateTimeOffset CreatedAt);
+
+public sealed record OrderPeriodTotalsRow(
+    int PaidOrderCount, long TotalPaidAmountCents, long TotalPlatformFeeCents, int RefundedOrderCount,
+    long RefundedAmountCents, int PendingOrderCount, int FailedOrderCount);
+
+/// <param name="Buckets">Keyed by the local bucket start.</param>
+public sealed record OrderPeriodRead(OrderPeriodTotalsRow Totals, Dictionary<DateTime, OrderBucketValues> Buckets);
+
+public sealed record OrderBucketValues(long GrossCents, long FeeCents, int RefundedCount);
+
 public interface IOrderRepository
 {
     Task AddAsync(Order order, CancellationToken ct);
@@ -49,6 +60,13 @@ public interface IOrderRepository
     Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 
     Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
+
+    /// <summary>The user's active workspace with the settings the period summary needs; null when it isn't theirs.</summary>
+    Task<OrderPeriodContext?> GetPeriodContextAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
+
+    /// <summary>The totals and chart buckets of <paramref name="plan"/> for a creator whose ownership the caller has
+    /// already checked: one aggregate over the creator's orders plus one grouped pass for the buckets.</summary>
+    Task<OrderPeriodRead> GetPeriodSummaryAsync(int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct);
 
     /// <summary>One aggregate over the page's orders with a FILTER per period.</summary>
     Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);

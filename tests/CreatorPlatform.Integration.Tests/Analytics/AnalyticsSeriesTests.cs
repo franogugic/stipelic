@@ -39,6 +39,14 @@ public sealed class AnalyticsSeriesTests
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, Zone), TimeSpan.Zero);
     }
 
+    /// <summary>Noon, <paramref name="days"/> local days from today (negative = past). Noon keeps a DST change inside the
+    /// range from moving the event to another local day.</summary>
+    private static DateTimeOffset LocalNoon(int days)
+    {
+        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date.AddDays(days).AddHours(12);
+        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, Zone), TimeSpan.Zero);
+    }
+
     private static string LocalDay(DateTimeOffset at) => TimeZoneInfo.ConvertTime(at, Zone).ToString("yyyy-MM-dd'T'00:00");
 
     [Fact]
@@ -142,6 +150,186 @@ public sealed class AnalyticsSeriesTests
         await Assert.ThrowsAsync<BadRequestException>(() => SeriesAsync(other, "page", page.PublicId, "90d"));
     }
 
+    [Fact]
+    public async Task FifteenDays_AreFifteenLocalDays_WithTheFifteenBeforeAsThePreviousPeriod()
+    {
+        var (creator, productId, page) = await SeedCreatorWithPageAsync();
+        var noon = LocalNoon(0);
+
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 1000, noon);
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 2000, LocalNoon(-14)); // the first day of the window
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 4000, LocalNoon(-15)); // the previous period's last day
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 8000, LocalNoon(-29)); // the previous period's first day
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 16000, LocalNoon(-30)); // before both
+
+        var series = await SeriesAsync(creator, "page", page.PublicId, "15d");
+
+        Assert.Equal(("day", 15, 15), (series.Step, series.Buckets.Count, series.PreviousBuckets!.Count));
+        Assert.Equal((2L, 3000L), (series.Totals.Sales, series.Totals.RevenueCents));
+        Assert.Equal((2L, 12000L), (series.PreviousTotals!.Sales, series.PreviousTotals.RevenueCents));
+        Assert.Equal(2000L, series.Buckets[0].RevenueCents);
+        Assert.Equal(1000L, series.Buckets[^1].RevenueCents);
+        Assert.Equal(4000L, series.PreviousBuckets[^1].RevenueCents);
+        Assert.Equal(8000L, series.PreviousBuckets[0].RevenueCents);
+    }
+
+    [Theory]
+    [InlineData("2m", 60, 9)]
+    [InlineData("3m", 90, 13)]
+    [InlineData("6m", 182, 26)]
+    public async Task LongPeriods_AreWeeksAnchoredAtTheWindowsFirstDay_AndEveryEventLandsInItsOwnWeek(string period, int days, int weeks)
+    {
+        var (creator, productId, page) = await SeedCreatorWithPageAsync();
+
+        // Day offsets from today: 0 = today (the last, partial bucket for 60 and 90 days), the first day of the window,
+        // a day in the middle, and the previous window's first and last days (offsets -days and -(2 * days) + 1).
+        var inWindow = new[] { 0, -(days - 1), -(days / 2) };
+        var inPrevious = new[] { -days, -(2 * days - 1) };
+        foreach (var offset in inWindow.Concat(inPrevious))
+            await AddOrderAsync(creator.CreatorId, productId, page.Id, 1000, LocalNoon(offset));
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 99000, LocalNoon(-2 * days)); // before both windows
+
+        var series = await SeriesAsync(creator, "page", page.PublicId, period);
+
+        Assert.Equal(("week", weeks, weeks), (series.Step, series.Buckets.Count, series.PreviousBuckets!.Count));
+        Assert.Equal((3L, 3000L), (series.Totals.Sales, series.Totals.RevenueCents));
+        Assert.Equal((2L, 2000L), (series.PreviousTotals!.Sales, series.PreviousTotals.RevenueCents));
+
+        // Each bucket starts exactly a week after the one before; the sums per bucket add up to the totals.
+        Assert.Equal(3L, series.Buckets.Sum(b => b.Sales));
+        Assert.Equal(2L, series.PreviousBuckets.Sum(b => b.Sales));
+        var first = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date.AddDays(-(days - 1));
+        Assert.Equal(first.ToString("yyyy-MM-dd'T'00:00"), series.Buckets[0].Start);
+        Assert.Equal(first.AddDays(7).ToString("yyyy-MM-dd'T'00:00"), series.Buckets[1].Start);
+        foreach (var offset in inWindow)
+            Assert.Equal(1L, series.Buckets[(offset + days - 1) / 7].Sales);
+
+        Assert.Equal(1L, series.Buckets[0].Sales);                  // the window's first day opens the first week
+        Assert.Equal(1L, series.Buckets[^1].Sales);                 // today closes the last (partial) week
+        Assert.Equal(1L, series.PreviousBuckets[0].Sales);          // the previous window's first day
+        Assert.Equal(1L, series.PreviousBuckets[^1].Sales);         // its last day
+    }
+
+    [Fact]
+    public async Task TheWorkspace_SumsAllItsPages_CountsNewContacts_AndAllPaidOrders()
+    {
+        var (creator, productId, page) = await SeedCreatorWithPageAsync();
+        var second = await AddPageAsync(creator.CreatorId, productId, DateTimeOffset.UtcNow.AddMonths(-1));
+        var otherProductId = await AddProductAsync(creator.CreatorId);
+        var otherCreator = await _data.CreateCreatorAsync();
+        var (foreign, foreignProductId, foreignPage) = await SeedCreatorWithPageAsync();
+        var at = LocalNoon(0);
+
+        await AddViewAsync(page.Id, at);
+        await AddViewAsync(second.Id, at);
+        await AddViewAsync(second.Id, at.AddDays(-20));
+        await AddViewAsync(foreignPage.Id, at);                                          // another workspace
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 3000, at);
+        await AddOrderAsync(creator.CreatorId, otherProductId, second.Id, 1000, at.AddDays(-1));
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 500, at.AddDays(-20));
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 700, at, status: "Refunded"); // not a sale
+        await AddOrderAsync(foreign.CreatorId, foreignProductId, foreignPage.Id, 9999, at);
+        // Emails are new contacts here: a person captured on two pages is one contact, counted when first captured.
+        await AddCaptureAsync(page.Id, productId, "ana@example.test", at);
+        await AddCaptureAsync(second.Id, productId, "ana@example.test", at.AddMinutes(5));
+        await AddContactAsync(creator.CreatorId, "ana@example.test", at);
+        await AddContactAsync(creator.CreatorId, "iva@example.test", at.AddDays(-3));
+        await AddContactAsync(creator.CreatorId, "old@example.test", at.AddDays(-40));
+        await AddContactAsync(otherCreator.CreatorId, "x@example.test", at);
+
+        var series = await SeriesAsync(creator, "workspace", Guid.Empty, "30d");
+
+        Assert.Equal(("workspace", "day", 30), (series.Scope, series.Step, series.Buckets.Count));
+        Assert.Equal(new AnalyticsTotalsDto(3, 2, 3, 4500), series.Totals);
+        Assert.Equal(new AnalyticsTotalsDto(0, 1, 0, 0), series.PreviousTotals);        // old@ joined 40 days ago
+        Assert.Equal((2L, 1L, 1L, 3000L), (series.Buckets[^1].Views, series.Buckets[^1].Emails, series.Buckets[^1].Sales, series.Buckets[^1].RevenueCents));
+        Assert.Equal(1L, series.Buckets[^4].Emails);                                     // iva@, three days ago
+        Assert.Null(series.Product);
+
+        var all = await SeriesAsync(creator, "workspace", Guid.Empty, "all");
+        Assert.Equal((3L, 3L, 3L, 4500L), (all.Totals.Views, all.Totals.Emails, all.Totals.Sales, all.Totals.RevenueCents));
+    }
+
+    [Fact]
+    public async Task TheWorkspace_IsAlwaysTheCallersOwn()
+    {
+        var (creator, _, _) = await SeedCreatorWithPageAsync();
+        var other = await _data.CreateCreatorAsync();
+
+        await Assert.ThrowsAsync<NotFoundException>(() => SeriesAsync(other with { Slug = creator.Slug }, "workspace", Guid.Empty, "7d"));
+    }
+
+    // ---- revenue by product (F6) -----------------------------------------------------------------------------
+
+    private async Task<AnalyticsProductBreakdownDto> BreakdownAsync(TestData.SeededCreator creator, string? period)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return await new AnalyticsSeriesService(new AnalyticsSeriesReader(db))
+            .GetProductBreakdownAsync(creator.Slug, creator.OwnerUserId, period, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ProductRevenue_IsRankedAndCappedAtTwenty_WithTheRestAsOther()
+    {
+        var (creator, productId, page) = await SeedCreatorWithPageAsync();
+        var products = new List<int> { productId };
+        for (var i = 1; i < 22; i++)
+            products.Add(await AddProductAsync(creator.CreatorId, $"Product {i:00}"));
+        var freeProductId = await AddProductAsync(creator.CreatorId, "Free guide");
+        var at = LocalNoon(0);
+
+        for (var i = 0; i < products.Count; i++)
+            await AddOrderAsync(creator.CreatorId, products[i], page.Id, 1000 + i * 100, at);      // 1000 … 3100, all different
+        await AddOrderAsync(creator.CreatorId, products[^1], page.Id, 500, at.AddDays(-1));         // a second sale of the best one
+        await AddOrderAsync(creator.CreatorId, freeProductId, page.Id, 0, at);                      // a free sale: no revenue, left out
+        await AddOrderAsync(creator.CreatorId, products[0], page.Id, 7777, at, status: "Refunded"); // refunded: not revenue
+        await AddOrderAsync(creator.CreatorId, products[0], page.Id, 5555, at.AddDays(-45));         // outside the 30 days
+
+        var breakdown = await BreakdownAsync(creator, "30d");
+
+        Assert.Equal("30d", breakdown.Period);
+        Assert.Equal(20, breakdown.Products.Count);
+        Assert.Equal(Enumerable.Range(0, 22).Sum(i => 1000L + i * 100) + 500, breakdown.TotalRevenueCents);
+        Assert.Equal(breakdown.Products.OrderByDescending(p => p.RevenueCents).Select(p => p.RevenueCents), breakdown.Products.Select(p => p.RevenueCents));
+        Assert.Equal((3600L, 2L), (breakdown.Products[0].RevenueCents, breakdown.Products[0].Sales)); // 3100 + 500
+        Assert.Equal(1000L + 1100L, breakdown.OtherRevenueCents);                                      // the two weakest products
+        Assert.DoesNotContain(breakdown.Products, p => p.RevenueCents == 0);
+        Assert.Equal(breakdown.TotalRevenueCents, breakdown.Products.Sum(p => p.RevenueCents) + breakdown.OtherRevenueCents);
+
+        var all = await BreakdownAsync(creator, "all");
+        Assert.Equal(breakdown.TotalRevenueCents + 5555, all.TotalRevenueCents);
+    }
+
+    [Fact]
+    public async Task ProductRevenue_OfAFewProducts_HasNoOther_AndOnlyTheCallersOwn()
+    {
+        var (creator, productId, page) = await SeedCreatorWithPageAsync();
+        var (foreign, foreignProductId, foreignPage) = await SeedCreatorWithPageAsync();
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 2500, LocalNoon(0));
+        await AddOrderAsync(foreign.CreatorId, foreignProductId, foreignPage.Id, 9999, LocalNoon(0));
+
+        var breakdown = await BreakdownAsync(creator, null); // default: 30d
+
+        Assert.Equal("30d", breakdown.Period);
+        Assert.Equal((2500L, 0L), (breakdown.TotalRevenueCents, breakdown.OtherRevenueCents));
+        Assert.Equal([2500L], breakdown.Products.Select(p => p.RevenueCents));
+        Assert.Equal("Eur", breakdown.Currency);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => BreakdownAsync(foreign with { Slug = creator.Slug }, "30d"));
+        await Assert.ThrowsAsync<BadRequestException>(() => BreakdownAsync(creator, "90d"));
+    }
+
+    [Fact]
+    public async Task ProductRevenue_OfAWorkspaceWithoutSales_IsEmpty()
+    {
+        var (creator, _, _) = await SeedCreatorWithPageAsync();
+
+        var breakdown = await BreakdownAsync(creator, "7d");
+
+        Assert.Equal((0L, 0L), (breakdown.TotalRevenueCents, breakdown.OtherRevenueCents));
+        Assert.Empty(breakdown.Products);
+    }
+
     // ---- seeding ---------------------------------------------------------------------------------------------
 
     private sealed record Page(int Id, Guid PublicId);
@@ -162,16 +350,26 @@ public sealed class AnalyticsSeriesTests
         return (creator, productId, page);
     }
 
-    private async Task<int> AddProductAsync(int creatorId)
+    private async Task<int> AddProductAsync(int creatorId, string name = "Product")
     {
         await using var db = _fixture.CreateDbContext();
         var now = DateTimeOffset.UtcNow.AddYears(-3);
         return (await db.Database.SqlQuery<int>($"""
             INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', 1000, 'Digital', 'Active', {now}, {now})
+            VALUES ({Guid.NewGuid()}, {creatorId}, {name}, 1000, 'Digital', 'Active', {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }
+
+    private async Task AddContactAsync(int creatorId, string email, DateTimeOffset firstCapturedAt)
+    {
+        await using var db = _fixture.CreateDbContext();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO marketing.contact_summaries ("CreatorId", "Email", "FirstCapturedAt", "LastCapturedAt", "SourceLandingPageIds")
+            VALUES ({creatorId}, {email}, {firstCapturedAt}, {firstCapturedAt}, ARRAY[]::int[])
+            """);
+    }
+
 
     private async Task<Page> AddPageAsync(int creatorId, int productId, DateTimeOffset createdAt)
     {

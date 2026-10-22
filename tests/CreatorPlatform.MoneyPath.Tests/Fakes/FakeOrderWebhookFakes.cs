@@ -47,6 +47,12 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0, 0, 0, 0, []));
 
+    public Task<OrderPeriodContext?> GetPeriodContextAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult<OrderPeriodContext?>(null);
+
+    public Task<OrderPeriodRead> GetPeriodSummaryAsync(int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct)
+        => Task.FromResult(new OrderPeriodRead(new OrderPeriodTotalsRow(0, 0, 0, 0, 0, 0, 0), []));
+
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
         var none = new PeriodSalesDto(0, 0);

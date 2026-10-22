@@ -195,6 +195,47 @@ public sealed class OrderService : IOrderService
         return _orderRepository.GetSummaryByCreatorSlugAsync(creatorSlug, ownerUserId, ct);
     }
 
+    public async Task<OrderPeriodSummaryDto> GetPeriodSummaryAsync(
+        string creatorSlug, int ownerUserId, string period, CancellationToken ct)
+    {
+        var periodKey = period.Trim().ToLowerInvariant();
+        if (!AnalyticsPeriodPlan.Periods.Contains(periodKey))
+            throw new BadRequestException($"Invalid period. Valid values: {string.Join(", ", AnalyticsPeriodPlan.Periods)}.");
+
+        var context = await _orderRepository.GetPeriodContextAsync(creatorSlug, ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
+
+        var plan = AnalyticsPeriodPlan.Create(periodKey, DateTimeOffset.UtcNow, context.Timezone, context.CreatedAt);
+        var read = await _orderRepository.GetPeriodSummaryAsync(context.CreatorId, context.Timezone, plan, ct);
+
+        var totals = read.Totals;
+        var buckets = plan.Buckets
+            .Select(start =>
+            {
+                var values = read.Buckets.GetValueOrDefault(start) ?? new OrderBucketValues(0, 0, 0);
+                return new OrderBucketDto(
+                    start.ToString("yyyy-MM-dd'T'HH:mm"), values.GrossCents, values.GrossCents - values.FeeCents, values.RefundedCount);
+            })
+            .ToList();
+
+        return new OrderPeriodSummaryDto(
+            periodKey,
+            plan.Step,
+            context.Timezone,
+            context.Currency,
+            new OrderPeriodRangeDto(plan.RangeFrom, plan.RangeTo),
+            totals.PaidOrderCount,
+            totals.TotalPaidAmountCents,
+            totals.TotalPlatformFeeCents,
+            totals.TotalPaidAmountCents - totals.TotalPlatformFeeCents,
+            totals.RefundedOrderCount,
+            totals.RefundedAmountCents,
+            totals.PendingOrderCount,
+            totals.FailedOrderCount,
+            totals.PaidOrderCount + totals.RefundedOrderCount + totals.PendingOrderCount + totals.FailedOrderCount,
+            buckets);
+    }
+
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(
         int landingPageId, StatsPeriods periods, CancellationToken ct)
     {

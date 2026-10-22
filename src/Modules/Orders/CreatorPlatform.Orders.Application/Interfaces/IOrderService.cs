@@ -39,6 +39,10 @@ public interface IOrderService
 
     Task<OrderSummaryDto> GetSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
 
+    /// <summary>The totals and chart buckets of one period (today | 7d | 15d | 30d | 2m | 3m | 6m | all). 400 for any
+    /// other period; 404 when the workspace isn't the caller's.</summary>
+    Task<OrderPeriodSummaryDto> GetPeriodSummaryAsync(string creatorSlug, int ownerUserId, string period, CancellationToken ct);
+
     /// <summary>Sales and revenue of a landing page per analytics period. The caller has already checked ownership.</summary>
     Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);
 

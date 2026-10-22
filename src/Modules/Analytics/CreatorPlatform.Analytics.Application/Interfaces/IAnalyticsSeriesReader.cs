@@ -4,7 +4,8 @@ namespace CreatorPlatform.Analytics.Application.Interfaces;
 /// (raw SQL across those schemas, as the other analytics reads do).</summary>
 public interface IAnalyticsSeriesReader
 {
-    /// <summary>The creator owned by this user (not Disabled), with the raw settings timezone and the currency.</summary>
+    /// <summary>The creator owned by this user (not Disabled), with the raw settings timezone, the currency and when
+    /// the workspace was created.</summary>
     Task<SeriesCreatorRow?> GetCreatorAsync(string slug, int ownerUserId, CancellationToken ct);
 
     /// <summary>One of the creator's landing pages (any status). Null when it isn't theirs.</summary>
@@ -16,23 +17,34 @@ public interface IAnalyticsSeriesReader
     /// <summary>Every landing page that sells or promotes the product, archived included.</summary>
     Task<int[]> GetProductPageIdsAsync(int productId, CancellationToken ct);
 
+    /// <summary>Every landing page of the creator, archived included — the views of a whole workspace.</summary>
+    Task<int[]> GetCreatorPageIdsAsync(int creatorId, CancellationToken ct);
+
     /// <summary>Per-bucket values (keyed by the local bucket start) between <paramref name="from"/> and
-    /// <paramref name="to"/>, and the totals of up to two ranges (From null = all time).</summary>
+    /// <paramref name="to"/>, and the totals of up to two ranges (From null = all time). <paramref name="bucketStarts"/>
+    /// are the local bucket starts, oldest first (previous period, then current): every event falls in the last start
+    /// at or before its local time.</summary>
     Task<SeriesReadResult> ReadAsync(
-        SeriesTarget target, string timezone, string step, DateTimeOffset from, DateTimeOffset to,
+        SeriesTarget target, string timezone, IReadOnlyList<DateTime> bucketStarts, DateTimeOffset from, DateTimeOffset to,
         SeriesRange current, SeriesRange? previous, CancellationToken ct);
+
+    /// <summary>Paid revenue and sales per product in the range, best first: at most <paramref name="limit"/> products
+    /// with revenue, the period's total revenue and the part of it beyond the listed products. One query.</summary>
+    Task<SeriesProductBreakdownRow> GetProductBreakdownAsync(int creatorId, SeriesRange range, int limit, CancellationToken ct);
 
     Task<SeriesProductExtrasRow> GetProductExtrasAsync(int creatorId, int productId, SeriesRange range, CancellationToken ct);
 }
 
-public sealed record SeriesCreatorRow(int Id, string? Timezone, string Currency);
+public sealed record SeriesCreatorRow(int Id, string? Timezone, string Currency, DateTimeOffset CreatedAt);
 
 public sealed record SeriesItemRow(int Id, DateTimeOffset CreatedAt);
 
 /// <summary>What to count. Views and emails come from <paramref name="LandingPageIds"/> (plus captures made for
 /// <paramref name="CaptureProductId"/>); sales from orders of <paramref name="OrderLandingPageId"/> or
-/// <paramref name="OrderProductId"/>.</summary>
-public sealed record SeriesTarget(int[] LandingPageIds, int? CaptureProductId, int? OrderLandingPageId, int? OrderProductId);
+/// <paramref name="OrderProductId"/>. For a whole workspace (<paramref name="WorkspaceCreatorId"/>): views of all the
+/// pages, emails = new contacts (first captured in the bucket) and every paid order of the creator.</summary>
+public sealed record SeriesTarget(
+    int[] LandingPageIds, int? CaptureProductId, int? OrderLandingPageId, int? OrderProductId, int? WorkspaceCreatorId = null);
 
 public sealed record SeriesRange(DateTimeOffset? From, DateTimeOffset To);
 
@@ -44,3 +56,9 @@ public sealed record SeriesReadResult(
     SeriesValues? Previous);
 
 public sealed record SeriesProductExtrasRow(int RefundCount, long RefundedCents, long CreatorRevenueCents);
+
+public sealed record SeriesProductRow(Guid PublicId, string Name, long Sales, long RevenueCents);
+
+/// <param name="TotalRevenueCents">All the creator's product revenue in the range.</param>
+/// <param name="OtherRevenueCents">What the listed <paramref name="Products"/> leave out.</param>
+public sealed record SeriesProductBreakdownRow(long TotalRevenueCents, List<SeriesProductRow> Products, long OtherRevenueCents);

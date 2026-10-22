@@ -53,12 +53,23 @@ public sealed class ContactsController : ControllerBase
             page));
     }
 
-    /// <summary>Headline counts, 12-month cumulative growth and per-landing-page counts for the
-    /// subscribers overview.</summary>
+    /// <summary>Headline counts, 12-month cumulative growth and per-landing-page counts for the subscribers overview.
+    /// With <paramref name="period"/> (today | 7d | 15d | 30d | 2m | 3m | 6m | all) the growth and the joined / unsubscribed
+    /// figures come as that period's buckets instead (<see cref="ContactPeriodStatsDto"/>).</summary>
     [HttpGet("stats")]
-    public async Task<ActionResult<ApiResponse<ContactStatsDto>>> GetStats(string slug, CancellationToken ct)
+    public async Task<IActionResult> GetStats(string slug, [FromQuery] string? period, CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
+
+        if (!string.IsNullOrWhiteSpace(period))
+        {
+            var periodStats = await _contactsService.GetPeriodStatsAsync(slug, currentUser.Id, period, ct);
+
+            return Ok(ApiResponse<ContactPeriodStatsDto>.Success(
+                StatusCodes.Status200OK,
+                "Contact stats loaded.",
+                periodStats));
+        }
 
         var stats = await _contactsService.GetStatsAsync(slug, currentUser.Id, ct);
 

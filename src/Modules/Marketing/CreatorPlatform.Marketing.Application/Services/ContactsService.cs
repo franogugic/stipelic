@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
 using CreatorPlatform.Shared.Application.Time;
 
@@ -146,6 +147,48 @@ public sealed class ContactsService : IContactsService
             growth.Select(g => new ContactGrowthPointDto(g.Month, g.Total)).ToList(),
             sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList(),
             monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList());
+    }
+
+    public async Task<ContactPeriodStatsDto> GetPeriodStatsAsync(string slug, int ownerUserId, string period, CancellationToken ct)
+    {
+        var periodKey = period.Trim().ToLowerInvariant();
+        if (!AnalyticsPeriodPlan.Periods.Contains(periodKey))
+            throw new BadRequestException($"Invalid period. Valid values: {string.Join(", ", AnalyticsPeriodPlan.Periods)}.");
+
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var plan = AnalyticsPeriodPlan.Create(periodKey, DateTimeOffset.UtcNow, context.Timezone, context.CreatedAt);
+        var local = CreatorTimeZone.LocalNow(DateTimeOffset.UtcNow, context.Timezone);
+        var currentMonthStart = CreatorTimeZone.ToInstant(new DateTime(local.Year, local.Month, 1), context.Timezone);
+        var bucketsFrom = plan.TotalsFrom ?? plan.BucketsFrom;
+
+        // Sequential on purpose: the queries share one scoped DbContext, which allows no concurrent use.
+        var counts = await _contactsRepository.GetStatsCountsAsync(context.CreatorId, currentMonthStart, ct);
+        var sources = await _contactsRepository.GetSourceCountsAsync(context.CreatorId, ct);
+        var read = await _contactsRepository.GetBucketsAsync(
+            context.CreatorId, context.Timezone, plan.Buckets, bucketsFrom, plan.TotalsTo, ct);
+        var before = await _contactsRepository.CountCapturedBeforeAsync(context.CreatorId, bucketsFrom, ct);
+
+        var running = before;
+        var buckets = new List<ContactBucketDto>(plan.Buckets.Count);
+        foreach (var start in plan.Buckets)
+        {
+            var values = read.GetValueOrDefault(start) ?? new ContactBucketRow(0, 0);
+            running += values.Joined;
+            buckets.Add(new ContactBucketDto(start.ToString("yyyy-MM-dd'T'HH:mm"), values.Joined, values.Unsubscribed, running));
+        }
+
+        return new ContactPeriodStatsDto(
+            counts.Total,
+            counts.Active,
+            counts.NewThisMonth,
+            counts.Unsubscribed,
+            sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList(),
+            periodKey,
+            plan.Step,
+            context.Timezone,
+            new ContactPeriodRangeDto(plan.RangeFrom, plan.RangeTo),
+            buckets);
     }
 
     public async Task DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)

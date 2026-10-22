@@ -1,6 +1,7 @@
 using CreatorPlatform.MoneyPath.Tests.Fakes;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Services;
+using CreatorPlatform.Shared.Application.Exceptions;
 using CreatorPlatform.Shared.Domain.Enums;
 
 namespace CreatorPlatform.MoneyPath.Tests.Orders;
@@ -23,6 +24,29 @@ public class OrderServiceTests
         100,
         900,
         null);
+
+    [Theory]
+    [InlineData("90d")]
+    [InlineData("12m")]
+    [InlineData("nope")]
+    public async Task APeriodSummary_RejectsAPeriodOutsideTheMenu(string period)
+    {
+        var (service, _) = BuildService();
+
+        var error = await Assert.ThrowsAsync<BadRequestException>(
+            () => service.GetPeriodSummaryAsync("acme", 1, period, CancellationToken.None));
+
+        Assert.Contains("today, 7d, 15d, 30d, 2m, 3m, 6m, all", error.Message);
+    }
+
+    [Fact]
+    public async Task APeriodSummary_OfAWorkspaceThatIsNotTheCallers_Is404()
+    {
+        var (service, _) = BuildService(); // the fake repository knows no workspace
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => service.GetPeriodSummaryAsync("acme", 1, "30d", CancellationToken.None));
+    }
 
     private static (OrderService Service, FakeOrderListingRepository Repository) BuildService()
     {

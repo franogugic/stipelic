@@ -25,6 +25,8 @@ public enum ContactStatusFilter
     Unsubscribed
 }
 
+public sealed record ContactBucketRow(int Joined, int Unsubscribed);
+
 public sealed record ContactSourceCountRow(Guid LandingPagePublicId, string Title, int Count);
 
 /// <summary>Cross-landing-page contact directory for one creator — reads the materialized
@@ -61,6 +63,14 @@ public interface IContactsRepository
     /// <summary>Joined and unsubscribed per month: the last 12 calendar months in <paramref name="timezone"/>
     /// (a resolved IANA name), oldest first, zero-filled.</summary>
     Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct);
+
+    /// <summary>Joined and unsubscribed per bucket, keyed by the local bucket start, for the events from
+    /// <paramref name="from"/> up to <paramref name="to"/> (<paramref name="bucketStarts"/>: local starts, oldest first).</summary>
+    Task<Dictionary<DateTime, ContactBucketRow>> GetBucketsAsync(
+        int creatorId, string timezone, IReadOnlyList<DateTime> bucketStarts, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+
+    /// <summary>Contacts first captured before <paramref name="before"/> (and still in the directory).</summary>
+    Task<int> CountCapturedBeforeAsync(int creatorId, DateTimeOffset before, CancellationToken ct);
 
     /// <summary>Deletes the contact's summary row and every capture of <paramref name="email"/> (already
     /// normalised) on this creator's landing pages. Never touches unsubscribes or campaign recipients. False —

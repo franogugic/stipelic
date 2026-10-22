@@ -83,6 +83,57 @@ public sealed class ContactStatusAndMonthlyTests
         Assert.Equal((3, 2), (monthly.Sum(m => m.Joined), monthly.Sum(m => m.Unsubscribed)));
     }
 
+    private static DateTimeOffset LocalNoon(int days)
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(Zagreb);
+        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).Date.AddDays(days).AddHours(12);
+        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task APeriod_GivesJoinedUnsubscribedAndTheRunningTotalPerBucket()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        var other = await _data.CreateCreatorAsync();
+        await SetTimezoneAsync(creator.CreatorId, Zagreb);
+        await AddContactAsync(creator.CreatorId, "base1@example.test", LocalNoon(-100));
+        await AddContactAsync(creator.CreatorId, "base2@example.test", LocalNoon(-40));
+        await AddContactAsync(creator.CreatorId, "a@example.test", LocalNoon(-5));
+        await AddContactAsync(creator.CreatorId, "b@example.test", LocalNoon(-5));
+        await AddContactAsync(creator.CreatorId, "c@example.test", LocalNoon(0));
+        await AddUnsubscribeAsync(creator.CreatorId, "a@example.test", LocalNoon(-1));
+        await AddContactAsync(other.CreatorId, "z@example.test", LocalNoon(0));
+
+        var stats = await WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, creator.OwnerUserId, "30d", CancellationToken.None));
+
+        Assert.Equal(("30d", "day", 30), (stats.Period, stats.Step, stats.Buckets.Count));
+        Assert.Equal((5, 4, 1), (stats.Total, stats.Active, stats.Unsubscribed)); // the all-time headline is unchanged
+        Assert.Equal((3, 1), (stats.Buckets.Sum(b => b.Joined), stats.Buckets.Sum(b => b.Unsubscribed)));
+        Assert.Equal((2, 0, 4), (stats.Buckets[^6].Joined, stats.Buckets[^6].Unsubscribed, stats.Buckets[^6].Total));
+        Assert.Equal((0, 1), (stats.Buckets[^2].Joined, stats.Buckets[^2].Unsubscribed));
+        Assert.Equal((1, 0, 5), (stats.Buckets[^1].Joined, stats.Buckets[^1].Unsubscribed, stats.Buckets[^1].Total));
+        Assert.Equal(2, stats.Buckets[0].Total); // base1 and base2 were already there when the window opened
+    }
+
+    [Fact]
+    public async Task ALongPeriod_IsWeeks_AndPeriodsAreValidated()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        await SetTimezoneAsync(creator.CreatorId, Zagreb);
+        await AddContactAsync(creator.CreatorId, "a@example.test", LocalNoon(-30));
+
+        var stats = await WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, creator.OwnerUserId, "3m", CancellationToken.None));
+
+        Assert.Equal(("week", 13), (stats.Step, stats.Buckets.Count));
+        Assert.Equal(1, stats.Buckets.Sum(b => b.Joined));
+        Assert.Equal(1, stats.Buckets[^1].Total);
+        await Assert.ThrowsAsync<BadRequestException>(() =>
+            WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, creator.OwnerUserId, "90d", CancellationToken.None)));
+        var other = await _data.CreateCreatorAsync();
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, other.OwnerUserId, "7d", CancellationToken.None)));
+    }
+
     [Fact]
     public async Task Stats_CountUnsubscribedAmongExistingContactsOnly()
     {

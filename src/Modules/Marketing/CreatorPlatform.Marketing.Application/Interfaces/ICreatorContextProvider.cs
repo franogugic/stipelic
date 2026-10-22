@@ -11,7 +11,9 @@ public sealed record MarketingCreatorContext(
     string PrimaryColor,
     string OwnerEmail,
     /// <summary>The creator's analytics timezone (IANA), resolved by CreatorTimeZone — UTC when unset or unknown.</summary>
-    string Timezone = "UTC");
+    string Timezone = "UTC",
+    /// <summary>When the workspace was created — the start of the "all" analytics period.</summary>
+    DateTimeOffset CreatedAt = default);
 
 public interface ICreatorContextProvider
 {

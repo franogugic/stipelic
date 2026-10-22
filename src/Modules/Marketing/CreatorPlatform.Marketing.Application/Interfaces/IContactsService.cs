@@ -15,6 +15,10 @@ public interface IContactsService
 
     Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct);
 
+    /// <summary>The overview with the growth cut to <paramref name="period"/> (today | 7d | 15d | 30d | 2m | 3m | 6m | all).
+    /// 400 for any other period.</summary>
+    Task<ContactPeriodStatsDto> GetPeriodStatsAsync(string slug, int ownerUserId, string period, CancellationToken ct);
+
     /// <summary>Resolves the creator and the optional landing page filter (404s are thrown here, before any
     /// output), and returns the matching contacts as a lazy, keyset-batched stream — never the whole directory in
     /// memory.</summary>

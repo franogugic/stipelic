@@ -1,6 +1,7 @@
 using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Domain.Unsubscribes;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -218,6 +219,52 @@ public sealed class ContactsRepository : IContactsRepository
             .AsNoTracking()
             .ToListAsync(ct);
     }
+
+    public async Task<Dictionary<DateTime, ContactBucketRow>> GetBucketsAsync(
+        int creatorId, string timezone, IReadOnlyList<DateTime> bucketStarts, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        // Each event is turned into the creator's wall-clock time and binned with width_bucket over the plan's local
+        // bucket starts (the same scale as AnalyticsPeriodPlan.Edges), so a DST change never moves an event.
+        var edges = AnalyticsPeriodPlan.ToEdges(bucketStarts);
+        var rows = await _context.Database.SqlQuery<BucketEventRow>($"""
+            SELECT 'joined' AS "Kind",
+                   width_bucket(extract(epoch FROM (cs."FirstCapturedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   COUNT(*)::int AS "Count"
+            FROM marketing.contact_summaries cs
+            WHERE cs."CreatorId" = {creatorId} AND cs."FirstCapturedAt" >= {from} AND cs."FirstCapturedAt" < {to}
+            GROUP BY 2
+            UNION ALL
+            SELECT 'left' AS "Kind",
+                   width_bucket(extract(epoch FROM (u."UnsubscribedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   COUNT(*)::int AS "Count"
+            FROM marketing.unsubscribes u
+            WHERE u."CreatorId" = {creatorId} AND u."UnsubscribedAt" >= {from} AND u."UnsubscribedAt" < {to}
+            GROUP BY 2
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        var buckets = new Dictionary<DateTime, ContactBucketRow>();
+        foreach (var row in rows)
+        {
+            // width_bucket numbers the bins from 1; 0 would be an event before the first start, excluded above.
+            if (row.Bucket < 1 || row.Bucket > bucketStarts.Count)
+                continue;
+            var key = bucketStarts[row.Bucket - 1];
+            var current = buckets.GetValueOrDefault(key) ?? new ContactBucketRow(0, 0);
+            buckets[key] = row.Kind == "joined" ? current with { Joined = row.Count } : current with { Unsubscribed = row.Count };
+        }
+
+        return buckets;
+    }
+
+    public async Task<int> CountCapturedBeforeAsync(int creatorId, DateTimeOffset before, CancellationToken ct) =>
+        (await _context.Database.SqlQuery<int>($"""
+            SELECT COUNT(*)::int AS "Value" FROM marketing.contact_summaries cs
+            WHERE cs."CreatorId" = {creatorId} AND cs."FirstCapturedAt" < {before}
+            """).ToListAsync(ct)).Single();
+
+    private sealed record BucketEventRow(string Kind, int Bucket, int Count);
 
     public async Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct)
     {

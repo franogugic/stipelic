@@ -75,13 +75,27 @@ public sealed class OrdersController : ControllerBase
             ct);
     }
 
+    /// <summary>Without <paramref name="period"/>: the all-time totals and 12-month trend (<see cref="OrderSummaryDto"/>).
+    /// With <paramref name="period"/> (today | 7d | 15d | 30d | 2m | 3m | 6m | all): the totals of that period and its
+    /// chart buckets (<see cref="OrderPeriodSummaryDto"/>).</summary>
     [HttpGet("summary")]
-    public async Task<ActionResult<ApiResponse<OrderSummaryDto>>> Summary(
+    public async Task<IActionResult> Summary(
         string slug,
+        [FromQuery] string? period,
         CancellationToken ct)
     {
         var user = _currentUserContext.User
             ?? throw new UnauthorizedException("Authentication is required.");
+
+        if (!string.IsNullOrWhiteSpace(period))
+        {
+            var periodSummary = await _orderService.GetPeriodSummaryAsync(slug, user.Id, period, ct);
+
+            return Ok(ApiResponse<OrderPeriodSummaryDto>.Success(
+                StatusCodes.Status200OK,
+                "Order summary loaded.",
+                periodSummary));
+        }
 
         var summary = await _orderService.GetSummaryAsync(slug, user.Id, ct);
 

@@ -21,9 +21,9 @@ public sealed class AnalyticsController : ControllerBase
         _currentUserContext = currentUserContext;
     }
 
-    /// <summary>A page's or a product's views, emails, sales and revenue for one period, in the creator's timezone,
-    /// with the period before. <paramref name="scope"/>: page | product; <paramref name="period"/>: today | 7d | 30d |
-    /// all (default 7d).</summary>
+    /// <summary>A page's, a product's or the whole workspace's views, emails, sales and revenue for one period, in the
+    /// creator's timezone, with the period before. <paramref name="scope"/>: page | product | workspace (no
+    /// <paramref name="id"/>); <paramref name="period"/>: today | 7d | 15d | 30d | 2m | 3m | 6m | all (default 7d).</summary>
     [HttpGet("series")]
     public async Task<ActionResult<ApiResponse<AnalyticsSeriesDto>>> Series(
         string slug,
@@ -37,6 +37,21 @@ public sealed class AnalyticsController : ControllerBase
         var series = await _seriesService.GetAsync(slug, user.Id, scope, id, period, ct);
 
         return Ok(ApiResponse<AnalyticsSeriesDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", series));
+    }
+
+    /// <summary>Paid revenue and sales per product for one period (default 30d): the best 20 products with revenue and
+    /// the revenue of the rest.</summary>
+    [HttpGet("products")]
+    public async Task<ActionResult<ApiResponse<AnalyticsProductBreakdownDto>>> Products(
+        string slug,
+        [FromQuery] string? period,
+        CancellationToken ct)
+    {
+        var user = GetVerifiedUser();
+
+        var breakdown = await _seriesService.GetProductBreakdownAsync(slug, user.Id, period, ct);
+
+        return Ok(ApiResponse<AnalyticsProductBreakdownDto>.Success(StatusCodes.Status200OK, "Product revenue loaded.", breakdown));
     }
 
     private Auth.Application.Dtos.CurrentUserDto GetVerifiedUser()
