@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using CreatorPlatform.Api.Health;
 
 namespace CreatorPlatform.Api.RateLimiting;
 
@@ -105,10 +106,19 @@ public static class RateLimitPolicies
     private const string OpenPixelPath = "/api/public/o";
 
     /// <summary>The global limiter's partition: per client IP, or no limit for the exempt paths.</summary>
-    public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext) =>
-        httpContext.Request.Path.StartsWithSegments(OpenPixelPath, StringComparison.OrdinalIgnoreCase)
-            ? RateLimitPartition.GetNoLimiter("open-pixel")
-            : Partition(httpContext, Global);
+    public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext)
+    {
+        var path = httpContext.Request.Path;
+
+        if (path.StartsWithSegments(OpenPixelPath, StringComparison.OrdinalIgnoreCase))
+            return RateLimitPartition.GetNoLimiter("open-pixel");
+
+        // Probes (container platform, uptime monitors) must never be throttled into reporting the API as down.
+        if (path.StartsWithSegments(HealthEndpoint.Path, StringComparison.OrdinalIgnoreCase))
+            return RateLimitPartition.GetNoLimiter("health");
+
+        return Partition(httpContext, Global);
+    }
 
     /// <summary>A fixed-window partition of <paramref name="policy"/> for the request's client IP.</summary>
     public static RateLimitPartition<string> Partition(HttpContext httpContext, RateLimitPolicyDefinition policy) =>

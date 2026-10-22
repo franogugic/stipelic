@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.Health;
 using CreatorPlatform.Api.Middlewares;
 using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
@@ -20,6 +21,7 @@ using CreatorPlatform.Products.Infrastructure;
 using CreatorPlatform.Media.Application.Options;
 using CreatorPlatform.Media.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
+using CreatorPlatform.Shared.Infrastructure.Redis;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
@@ -96,6 +98,8 @@ builder.Services.AddSingleton<CreatorPlatform.Creators.Application.Interfaces.IC
 builder.Services.AddOrdersInfrastructure();
 builder.Services.AddAccessInfrastructure();
 builder.Services.AddSingleton<LoginAttemptLimiter>();
+builder.Services.AddRedis(builder.Configuration, builder.Environment);
+builder.Services.AddPlatformHealthChecks();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 {
@@ -126,5 +130,6 @@ app.UseMiddleware<SessionAuthenticationMiddleware>();
 app.UseRateLimiter();
 
 app.MapControllers();
+app.MapPlatformHealthChecks();
 
 app.Run();
