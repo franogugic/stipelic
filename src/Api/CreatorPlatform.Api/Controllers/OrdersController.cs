@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Dtos;
@@ -51,7 +52,7 @@ public sealed class OrdersController : ControllerBase
     /// <summary>CSV download of the orders (same filters as the list, incl. <paramref name="search"/>),
     /// streamed batch by batch.</summary>
     [HttpGet("export")]
-    [EnableRateLimiting("ExportOrders")]
+    [EnableRateLimiting(RateLimitPolicies.ExportOrders)]
     public async Task Export(
         string slug,
         [FromQuery] Guid? productId,

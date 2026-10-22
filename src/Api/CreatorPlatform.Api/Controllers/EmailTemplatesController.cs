@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
@@ -63,7 +64,7 @@ public sealed class EmailTemplatesController : ControllerBase
     }
 
     [HttpPost]
-    [EnableRateLimiting("MutateTemplate")]
+    [EnableRateLimiting(RateLimitPolicies.MutateTemplate)]
     public async Task<ActionResult<ApiResponse<EmailTemplateDto>>> Create(
         string slug, [FromBody] SaveEmailTemplateRequestDto request, CancellationToken ct)
     {
@@ -78,7 +79,7 @@ public sealed class EmailTemplatesController : ControllerBase
     }
 
     [HttpPut("{templatePublicId:guid}")]
-    [EnableRateLimiting("MutateTemplate")]
+    [EnableRateLimiting(RateLimitPolicies.MutateTemplate)]
     public async Task<ActionResult<ApiResponse<EmailTemplateDto>>> Update(
         string slug, Guid templatePublicId, [FromBody] SaveEmailTemplateRequestDto request, CancellationToken ct)
     {
@@ -93,7 +94,7 @@ public sealed class EmailTemplatesController : ControllerBase
     }
 
     [HttpPost("{templatePublicId:guid}/archive")]
-    [EnableRateLimiting("MutateTemplate")]
+    [EnableRateLimiting(RateLimitPolicies.MutateTemplate)]
     public async Task<ActionResult<ApiResponse<EmailTemplateDto>>> Archive(string slug, Guid templatePublicId, CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
@@ -107,7 +108,7 @@ public sealed class EmailTemplatesController : ControllerBase
     }
 
     [HttpPost("{templatePublicId:guid}/restore")]
-    [EnableRateLimiting("MutateTemplate")]
+    [EnableRateLimiting(RateLimitPolicies.MutateTemplate)]
     public async Task<ActionResult<ApiResponse<EmailTemplateDto>>> Restore(string slug, Guid templatePublicId, CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();

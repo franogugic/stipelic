@@ -29,7 +29,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    [EnableRateLimiting("Register")]
+    [EnableRateLimiting(RateLimitPolicies.Register)]
     public async Task<ActionResult<RegisterUserResponseDto>> Register(
         RegisterUserRequestDto request,
         CancellationToken ct)
@@ -39,7 +39,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
-    [EnableRateLimiting("Login")]
+    [EnableRateLimiting(RateLimitPolicies.Login)]
     public async Task<ActionResult<LoginUserResponseDto>> Login(
         LoginUserRequestDto request,
         CancellationToken ct)
@@ -86,7 +86,7 @@ public sealed class AuthController : ControllerBase
 
     /// <summary>Settings → Profile: first and last name. Returns the updated current user (same shape as /me).</summary>
     [HttpPut("me/profile")]
-    [EnableRateLimiting("UpdateProfile")]
+    [EnableRateLimiting(RateLimitPolicies.UpdateProfile)]
     public async Task<ActionResult<LoginUserResponseDto>> UpdateProfile(
         [FromServices] ICurrentUserContext currentUserContext,
         UpdateProfileRequestDto request,
@@ -110,7 +110,7 @@ public sealed class AuthController : ControllerBase
     /// <summary>Settings → Profile → change email: needs the current password; a confirmation link goes to the new
     /// address. Always 202 for a valid request, whether or not the address is taken.</summary>
     [HttpPost("me/email-change")]
-    [EnableRateLimiting("RequestEmailChange")]
+    [EnableRateLimiting(RateLimitPolicies.RequestEmailChange)]
     public async Task<ActionResult<RequestEmailChangeResponseDto>> RequestEmailChange(
         [FromServices] ICurrentUserContext currentUserContext,
         [FromServices] IEmailChangeService emailChangeService,
@@ -151,7 +151,7 @@ public sealed class AuthController : ControllerBase
     /// <summary>Sends the pending change's confirmation link again (the password was checked when it was requested).
     /// 202 whether a link was sent or the address has been taken since; 404 without a pending change.</summary>
     [HttpPost("me/email-change/resend")]
-    [EnableRateLimiting("ResendEmailChange")]
+    [EnableRateLimiting(RateLimitPolicies.ResendEmailChange)]
     public async Task<ActionResult<RequestEmailChangeResponseDto>> ResendEmailChange(
         [FromServices] ICurrentUserContext currentUserContext,
         [FromServices] IEmailChangeService emailChangeService,
@@ -190,7 +190,7 @@ public sealed class AuthController : ControllerBase
     /// <summary>The link from the confirmation email. Works signed in or not; when signed in as the same user,
     /// that session stays signed in and every other one is revoked.</summary>
     [HttpPost("email-change/confirm")]
-    [EnableRateLimiting("ConfirmEmailChange")]
+    [EnableRateLimiting(RateLimitPolicies.ConfirmEmailChange)]
     public async Task<ActionResult<ConfirmEmailChangeResponseDto>> ConfirmEmailChange(
         [FromServices] ICurrentUserContext currentUserContext,
         [FromServices] IEmailChangeService emailChangeService,
@@ -227,7 +227,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("verify-email")]
-    [EnableRateLimiting("VerifyEmail")]
+    [EnableRateLimiting(RateLimitPolicies.VerifyEmail)]
     public async Task<ActionResult<VerifyEmailResponseDto>> VerifyEmail(
         VerifyEmailRequestDto request,
         CancellationToken ct)
@@ -237,7 +237,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("resend-verification-email")]
-    [EnableRateLimiting("ResendVerificationEmail")]
+    [EnableRateLimiting(RateLimitPolicies.ResendVerificationEmail)]
     public async Task<ActionResult<ResendEmailVerificationResponseDto>> ResendVerificationEmail(
         ResendEmailVerificationRequestDto request,
         CancellationToken ct)
@@ -247,7 +247,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("request-password-reset")]
-    [EnableRateLimiting("RequestPasswordReset")]
+    [EnableRateLimiting(RateLimitPolicies.RequestPasswordReset)]
     public async Task<ActionResult<RequestPasswordResetResponseDto>> RequestPasswordReset(
         RequestPasswordResetRequestDto request,
         CancellationToken ct)
@@ -257,7 +257,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [HttpPost("reset-password")]
-    [EnableRateLimiting("ResetPassword")]
+    [EnableRateLimiting(RateLimitPolicies.ResetPassword)]
     public async Task<ActionResult<ResetPasswordResponseDto>> ResetPassword(
         ResetPasswordRequestDto request,
         CancellationToken ct)
@@ -268,7 +268,7 @@ public sealed class AuthController : ControllerBase
 
     /// <summary>Read-only check of a reset link. POST so the token never lands in URLs or access logs.</summary>
     [HttpPost("reset-password/inspect")]
-    [EnableRateLimiting("InspectResetToken")]
+    [EnableRateLimiting(RateLimitPolicies.InspectResetToken)]
     public async Task<ActionResult<InspectPasswordResetTokenResponseDto>> InspectResetPasswordToken(
         InspectPasswordResetTokenRequestDto request,
         CancellationToken ct)

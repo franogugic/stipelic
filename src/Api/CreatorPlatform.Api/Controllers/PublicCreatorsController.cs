@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
@@ -19,7 +20,7 @@ public sealed class PublicCreatorsController : ControllerBase
 
     /// <summary>"More from {brand}" on a missing page: the creator's brand and up to six published pages.</summary>
     [HttpGet("{creatorSlug}/pages")]
-    [EnableRateLimiting("PublicCreatorPages")]
+    [EnableRateLimiting(RateLimitPolicies.PublicCreatorPages)]
     public async Task<ActionResult<ApiResponse<PublicCreatorPagesResponseDto>>> GetPages(string creatorSlug, CancellationToken ct)
     {
         var result = await _publicLandingPageService.GetCreatorPagesAsync(creatorSlug, ct);

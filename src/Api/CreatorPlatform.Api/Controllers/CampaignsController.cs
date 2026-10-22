@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
@@ -69,7 +70,7 @@ public sealed class CampaignsController : ControllerBase
     /// <summary>Every targetable audience (All, Published landing pages, Active products) with its
     /// recipient count — feeds the composer's audience picker.</summary>
     [HttpGet("audiences")]
-    [EnableRateLimiting("CampaignInsights")]
+    [EnableRateLimiting(RateLimitPolicies.CampaignInsights)]
     public async Task<ActionResult<ApiResponse<CampaignAudiencesDto>>> GetAudiences(string slug, CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
@@ -126,7 +127,7 @@ public sealed class CampaignsController : ControllerBase
     /// <summary>Sends an Active template and/or inline-composed content to an audience — creates a new
     /// Queued send record directly (no Draft step; see 02R rework).</summary>
     [HttpPost("send")]
-    [EnableRateLimiting("SendCampaign")]
+    [EnableRateLimiting(RateLimitPolicies.SendCampaign)]
     public async Task<ActionResult<ApiResponse<CampaignDetailDto>>> Send(
         string slug, [FromBody] SendCampaignRequestDto request, CancellationToken ct)
     {
@@ -143,7 +144,7 @@ public sealed class CampaignsController : ControllerBase
     /// <summary>Manually requeues every currently-Failed recipient of this send; they count against the
     /// monthly sends again — see <see cref="ICampaignSendService.ResendFailedAsync"/>.</summary>
     [HttpPost("{campaignPublicId:guid}/resend-failed")]
-    [EnableRateLimiting("ResendFailedCampaign")]
+    [EnableRateLimiting(RateLimitPolicies.ResendFailedCampaign)]
     public async Task<ActionResult<ApiResponse<ResendFailedResultDto>>> ResendFailed(
         string slug, Guid campaignPublicId, CancellationToken ct)
     {
