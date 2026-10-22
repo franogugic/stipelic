@@ -25,7 +25,6 @@ using CreatorPlatform.Shared.Infrastructure.Redis;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
-using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,26 +61,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
 });
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(RateLimitPolicies.GlobalPartition);
-    options.OnRejected = async (context, ct) =>
-    {
-        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        context.HttpContext.Response.ContentType = "application/json";
-
-        await context.HttpContext.Response.WriteAsJsonAsync(new ApiErrorResponse
-        {
-            StatusCode = StatusCodes.Status429TooManyRequests,
-            Message = "Too many requests. Please try again later.",
-            Code = "RATE_LIMITED"
-        }, ct);
-    };
-
-    foreach (var policy in RateLimitPolicies.Catalog)
-        options.AddPolicy(policy.Name, httpContext => RateLimitPolicies.Partition(httpContext, policy));
-});
+builder.Services.AddPlatformRateLimiter();
 
 builder.Services.AddAuthInfrastructure();
 builder.Services.AddCreatorsInfrastructure();

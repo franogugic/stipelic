@@ -6,7 +6,8 @@ using Microsoft.AspNetCore.Http;
 
 namespace CreatorPlatform.Integration.Tests.Api;
 
-/// <summary>The global limiter's partitions: per client IP, with the open pixel and the health endpoint exempt.</summary>
+/// <summary>The global limiter's exempt paths get a no-limit partition, decided without Redis (the counted paths are
+/// covered end to end in <see cref="RedisRateLimitingTests"/>).</summary>
 public sealed class GlobalRateLimiterTests
 {
     private static HttpContext Request(string path, string ip = "203.0.113.7")
@@ -39,16 +40,5 @@ public sealed class GlobalRateLimiterTests
         using var limiter = PartitionedRateLimiter.Create<HttpContext, string>(RateLimitPolicies.GlobalPartition);
 
         Assert.Equal(1_000, Leases(limiter, Request(path), 1_000));
-    }
-
-    [Fact]
-    public void OtherPaths_AreLimitedPerClientIp()
-    {
-        using var limiter = PartitionedRateLimiter.Create<HttpContext, string>(RateLimitPolicies.GlobalPartition);
-        var limit = RateLimitPolicies.Global.PermitLimit;
-
-        Assert.Equal(limit, Leases(limiter, Request("/api/auth/me"), limit + 1));
-        Assert.Equal(1, Leases(limiter, Request("/api/auth/me", ip: "198.51.100.9"), 1));
-        Assert.Equal(0, Leases(limiter, Request("/healthz"), 1));
     }
 }

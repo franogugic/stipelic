@@ -106,7 +106,11 @@ public static class RateLimitPolicies
     private const string OpenPixelPath = "/api/public/o";
 
     /// <summary>The global limiter's partition: per client IP, or no limit for the exempt paths.</summary>
-    public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext)
+    public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext) =>
+        GlobalPartition(httpContext, Global);
+
+    /// <summary>As <see cref="GlobalPartition(HttpContext)"/>, with the global numbers given (tests use small ones).</summary>
+    public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext, RateLimitPolicyDefinition global)
     {
         var path = httpContext.Request.Path;
 
@@ -117,18 +121,16 @@ public static class RateLimitPolicies
         if (path.StartsWithSegments(HealthEndpoint.Path, StringComparison.OrdinalIgnoreCase))
             return RateLimitPartition.GetNoLimiter("health");
 
-        return Partition(httpContext, Global);
+        return Partition(httpContext, global);
     }
 
-    /// <summary>A fixed-window partition of <paramref name="policy"/> for the request's client IP.</summary>
-    public static RateLimitPartition<string> Partition(HttpContext httpContext, RateLimitPolicyDefinition policy) =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = policy.PermitLimit,
-                Window = policy.Window,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            });
+    /// <summary>The fixed-window partition of <paramref name="policy"/> for the request's client IP, counted in Redis
+    /// (see <see cref="RedisFixedWindowRateLimiter"/>).</summary>
+    public static RateLimitPartition<string> Partition(HttpContext httpContext, RateLimitPolicyDefinition policy)
+    {
+        var limiters = httpContext.RequestServices.GetRequiredService<RedisRateLimiters>();
+        return RateLimitPartition.Get(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            partition => limiters.Create(policy, partition));
+    }
 }
