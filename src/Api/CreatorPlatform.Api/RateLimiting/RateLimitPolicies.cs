@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using CreatorPlatform.Api.Health;
+using CreatorPlatform.Api.Networking;
 
 namespace CreatorPlatform.Api.RateLimiting;
 
@@ -130,7 +131,7 @@ public static class RateLimitPolicies
     {
         var limiters = httpContext.RequestServices.GetRequiredService<RedisRateLimiters>();
         return RateLimitPartition.Get(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            ClientIp.From(httpContext),
             partition => limiters.Create(policy, partition));
     }
 }

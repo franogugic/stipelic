@@ -1,5 +1,6 @@
 using CreatorPlatform.Api.Health;
 using CreatorPlatform.Api.Middlewares;
+using CreatorPlatform.Api.Networking;
 using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Options;
@@ -61,6 +62,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
 });
+builder.Services.AddTrustedProxies(builder.Configuration);
 builder.Services.AddPlatformRateLimiter();
 
 builder.Services.AddAuthInfrastructure();
@@ -90,6 +92,9 @@ builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 });
 
 var app = builder.Build();
+
+// First: everything below (HTTPS redirection, rate limits, the login limiter) sees the client's address and scheme.
+app.UseTrustedForwardedHeaders();
 
 if (app.Configuration.GetValue<bool>("Database:AutoMigrate"))
 {

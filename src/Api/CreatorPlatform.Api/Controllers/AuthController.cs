@@ -2,6 +2,7 @@ using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
 using CreatorPlatform.Auth.Application.Options;
+using CreatorPlatform.Api.Networking;
 using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using Microsoft.AspNetCore.Mvc;
@@ -44,8 +45,7 @@ public sealed class AuthController : ControllerBase
         LoginUserRequestDto request,
         CancellationToken ct)
     {
-        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        if (!await _loginAttemptLimiter.TryAcquireAsync(ipAddress, request.Email, ct))
+        if (!await _loginAttemptLimiter.TryAcquireAsync(ClientIp.From(HttpContext), request.Email, ct))
             throw new TooManyLoginAttemptsException();
 
         var result = await _authService.LoginAsync(request, ct);
