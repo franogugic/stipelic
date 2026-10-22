@@ -1,4 +1,3 @@
-using CreatorPlatform.Analytics.Infrastructure.Services;
 using CreatorPlatform.Api.Caching;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
@@ -11,14 +10,13 @@ using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Orders.Infrastructure.Repositories;
 using CreatorPlatform.Orders.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CreatorPlatform.Integration.Tests.Analytics;
 
 /// <summary>Saving a new timezone drops the creator's cached analytics, so the next read is bucketed in the new zone.</summary>
 [Collection(PostgresCollection.Name)]
-public sealed class TimezoneChangeRefreshesCachesTests : IDisposable
+public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
 {
     private const string Zagreb = "Europe/Zagreb";
 
@@ -26,19 +24,22 @@ public sealed class TimezoneChangeRefreshesCachesTests : IDisposable
     private readonly TestData _data;
 
     // One process-wide cache, as in production; services are per request.
-    private readonly MemoryCache _memoryCache = new(new MemoryCacheOptions());
+    private readonly TestRedisClient _redis;
     private readonly HomeSummaryCache _homeSummaryCache;
     private readonly DashboardTrendsCache _trendsCache;
 
-    public TimezoneChangeRefreshesCachesTests(PostgresFixture fixture)
+    public TimezoneChangeRefreshesCachesTests(PostgresFixture fixture, RedisFixture redis)
     {
         _fixture = fixture;
         _data = new TestData(fixture);
-        _homeSummaryCache = new HomeSummaryCache(_memoryCache);
-        _trendsCache = new DashboardTrendsCache(_memoryCache);
+        _redis = RedisFixture.CreateClient(redis.CreateOptions());
+        _homeSummaryCache = new HomeSummaryCache(_redis.JsonCache);
+        _trendsCache = new DashboardTrendsCache(_redis.JsonCache);
     }
 
-    public void Dispose() => _memoryCache.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync() => await _redis.DisposeAsync();
 
     private async Task<(int ThisMonth, long TrendThisMonth)> ReadAsync(TestData.SeededCreator creator)
     {
@@ -89,7 +90,7 @@ public sealed class TimezoneChangeRefreshesCachesTests : IDisposable
 
         Assert.Equal((0, 0L), await ReadAsync(creator)); // cached in UTC
 
-        var invalidator = new CreatorCacheInvalidator(_homeSummaryCache, new ViewsSummaryCache(_memoryCache), _trendsCache);
+        var invalidator = new CreatorCacheInvalidator(_redis.JsonCache);
         await SaveTimezoneAsync(creator, Zagreb, invalidator);
 
         Assert.Equal((1500, 1500L), await ReadAsync(creator));

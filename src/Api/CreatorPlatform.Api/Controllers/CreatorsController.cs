@@ -127,9 +127,9 @@ public sealed class CreatorsController : ControllerBase
         var creatorId = await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
 
         // A disabled workspace already fails every ownership check, so nothing can read these entries any more;
-        // drop the longer-lived ones anyway rather than leave the data in memory for minutes.
-        _homeSummaryCache.Remove(creatorId);
-        _viewsSummaryCache.Remove(creatorId);
+        // drop the longer-lived ones anyway rather than leave the data cached for minutes.
+        await _homeSummaryCache.RemoveAsync(creatorId, CancellationToken.None);
+        await _viewsSummaryCache.RemoveAsync(creatorId, CancellationToken.None);
 
         return Ok(ApiResponse<object>.Success(
             StatusCodes.Status200OK,

@@ -188,7 +188,7 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         }, ct);
 
         if (activated)
-            _cacheInvalidator.Invalidate(creatorId);
+            await _cacheInvalidator.InvalidateAsync(creatorId, CancellationToken.None);
     }
 
     public async Task HandleSubscriptionCreatedAsync(
@@ -397,7 +397,7 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         }, ct);
 
         if (plansChanged)
-            _cacheInvalidator.Invalidate(subscription.CreatorId);
+            await _cacheInvalidator.InvalidateAsync(subscription.CreatorId, CancellationToken.None);
     }
 
     /// <summary>
@@ -515,7 +515,7 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
         }, ct);
 
         if (ended)
-            _cacheInvalidator.Invalidate(subscription.CreatorId);
+            await _cacheInvalidator.InvalidateAsync(subscription.CreatorId, CancellationToken.None);
     }
 
     public async Task HandleInvoicePaymentFailedAsync(

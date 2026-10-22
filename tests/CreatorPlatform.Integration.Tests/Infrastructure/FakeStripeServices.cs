@@ -108,7 +108,11 @@ public sealed class RecordingCreatorCacheInvalidator : CreatorPlatform.Creators.
 {
     public List<int> Invalidated { get; } = [];
 
-    public void Invalidate(int creatorId) => Invalidated.Add(creatorId);
+    public Task InvalidateAsync(int creatorId, CancellationToken ct)
+    {
+        Invalidated.Add(creatorId);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Stands in for creating a Stripe customer: records calls and hands out an id.</summary>

@@ -154,7 +154,7 @@ public sealed class OrderService : IOrderService
         var creatorId = await _orderRepository.GetCreatorIdForOwnerAsync(creatorSlug, ownerUserId, ct)
             ?? throw new NotFoundException("Creator workspace not found.");
 
-        if (_dashboardTrendsCache.TryGet(creatorId, rangeKey, out var cached) && cached is not null)
+        if (await _dashboardTrendsCache.GetAsync(creatorId, rangeKey, ct) is { } cached)
             return cached;
 
         // Days and months are the creator's own (creator timezone); the bounds are the instants they start.
@@ -186,7 +186,7 @@ public sealed class OrderService : IOrderService
                 .Select(r => new DashboardTrendPointDto(r.BucketStart, r.Value, viewsByBucket.GetValueOrDefault(r.BucketStart)))
                 .ToList());
 
-        _dashboardTrendsCache.Set(creatorId, rangeKey, result);
+        await _dashboardTrendsCache.SetAsync(creatorId, rangeKey, result, ct);
         return result;
     }
 
@@ -212,7 +212,7 @@ public sealed class OrderService : IOrderService
         // CancellationToken.None: the caller's change is already committed, so an aborted request must not leave
         // a stale summary behind.
         if (await _orderRepository.GetCreatorIdForOwnerAsync(creatorSlug, ownerUserId, CancellationToken.None) is int creatorId)
-            _homeSummaryCache.Remove(creatorId);
+            await _homeSummaryCache.RemoveAsync(creatorId, CancellationToken.None);
     }
 
     public async Task<HomeSummaryDto> GetHomeSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
@@ -221,12 +221,12 @@ public sealed class OrderService : IOrderService
         var creatorId = await _orderRepository.GetCreatorIdForOwnerAsync(creatorSlug, ownerUserId, ct)
             ?? throw new NotFoundException("Creator workspace not found.");
 
-        if (_homeSummaryCache.TryGet(creatorId, out var cached) && cached is not null)
+        if (await _homeSummaryCache.GetAsync(creatorId, ct) is { } cached)
             return cached;
 
         var result = await _orderRepository.GetHomeSummaryByCreatorIdAsync(creatorId, ct);
 
-        _homeSummaryCache.Set(creatorId, result);
+        await _homeSummaryCache.SetAsync(creatorId, result, ct);
 
         return result;
     }

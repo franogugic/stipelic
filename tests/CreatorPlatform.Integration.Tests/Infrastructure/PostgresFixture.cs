@@ -32,6 +32,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         await _container.DisposeAsync();
     }
 
+    /// <summary>For tests that host the API's own DbContext registration (e.g. the health endpoint).</summary>
+    public string ConnectionString => _container.GetConnectionString();
+
     /// <summary>A fresh context per unit of work, as the API's scoped lifetime would give — never share one
     /// across the "act" and "assert" steps, or the identity map hides what is actually in the database.</summary>
     public CreatorPlatformDbContext CreateDbContext()
@@ -53,8 +56,10 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 }
 
+/// <summary>The database tests. Also gets a Redis, for the tests that need both (the health endpoint, the services
+/// behind a Redis cache); tests that need only Redis use <see cref="RedisCollection"/>.</summary>
 [CollectionDefinition(Name)]
-public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>
+public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>, ICollectionFixture<RedisFixture>
 {
     public const string Name = "Postgres";
 }

@@ -7,12 +7,12 @@ public sealed class FakePayoutScheduleCache : IPayoutScheduleCache
 {
     private readonly Dictionary<int, PayoutScheduleDto> _entries = [];
 
-    public bool TryGet(int creatorId, out PayoutScheduleDto? value)
-    {
-        var found = _entries.TryGetValue(creatorId, out var entry);
-        value = entry;
-        return found;
-    }
+    public ValueTask<PayoutScheduleDto?> GetAsync(int creatorId, CancellationToken ct) =>
+        ValueTask.FromResult(_entries.GetValueOrDefault(creatorId));
 
-    public void Set(int creatorId, PayoutScheduleDto value) => _entries[creatorId] = value;
+    public Task SetAsync(int creatorId, PayoutScheduleDto value, CancellationToken ct)
+    {
+        _entries[creatorId] = value;
+        return Task.CompletedTask;
+    }
 }

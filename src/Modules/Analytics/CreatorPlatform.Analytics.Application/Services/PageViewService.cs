@@ -84,12 +84,12 @@ public sealed class PageViewService : IPageViewService
         var creatorId = await _creatorContextProvider.GetCreatorIdBySlugForOwnerAsync(creatorSlug, ownerUserId, ct)
             ?? throw new NotFoundException("Creator workspace not found.");
 
-        if (_viewsSummaryCache.TryGet(creatorId, out var cached) && cached is not null)
+        if (await _viewsSummaryCache.GetAsync(creatorId, ct) is { } cached)
             return cached;
 
         var result = await _repository.GetViewsSummaryByCreatorIdAsync(creatorId, ct);
 
-        _viewsSummaryCache.Set(creatorId, result);
+        await _viewsSummaryCache.SetAsync(creatorId, result, ct);
 
         return result;
     }
@@ -99,6 +99,6 @@ public sealed class PageViewService : IPageViewService
         // CancellationToken.None: the caller's change is already committed, so an aborted request must not leave
         // a stale summary behind.
         if (await _creatorContextProvider.GetCreatorIdBySlugForOwnerAsync(creatorSlug, ownerUserId, CancellationToken.None) is int creatorId)
-            _viewsSummaryCache.Remove(creatorId);
+            await _viewsSummaryCache.RemoveAsync(creatorId, CancellationToken.None);
     }
 }

@@ -1,40 +1,34 @@
 using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
-using Microsoft.Extensions.Caching.Memory;
+using CreatorPlatform.Shared.Infrastructure.Redis;
 
 namespace CreatorPlatform.Analytics.Infrastructure.Services;
 
 public sealed class ViewsSummaryCache : IViewsSummaryCache
 {
-    private readonly IMemoryCache _cache;
-
     // Page views are recorded on every public visit, far more often than a creator revisits their dashboard,
     // so we deliberately don't invalidate on each recorded view (that would defeat the cache almost entirely).
     // A short TTL bounds staleness instead; landing page create/archive still invalidate explicitly so a
     // newly created page shows up without waiting out the window.
     private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(3);
 
-    public ViewsSummaryCache(IMemoryCache cache)
+    private readonly RedisJsonCache _cache;
+
+    public ViewsSummaryCache(RedisJsonCache cache)
     {
         _cache = cache;
     }
 
-    public bool TryGet(int creatorId, out List<LandingPageViewsSummaryDto>? value)
-    {
-        return _cache.TryGetValue(Key(creatorId), out value);
-    }
+    public ValueTask<List<LandingPageViewsSummaryDto>?> GetAsync(int creatorId, CancellationToken ct) =>
+        _cache.GetAsync<List<LandingPageViewsSummaryDto>>(Key(creatorId), ct);
 
-    public void Set(int creatorId, List<LandingPageViewsSummaryDto> value)
-    {
-        _cache.Set(Key(creatorId), value, Ttl);
-    }
+    public Task SetAsync(int creatorId, List<LandingPageViewsSummaryDto> value, CancellationToken ct) =>
+        _cache.SetAsync(Key(creatorId), value, Ttl, ct);
 
-    public void Remove(int creatorId)
-    {
-        _cache.Remove(Key(creatorId));
-    }
+    public Task RemoveAsync(int creatorId, CancellationToken ct) =>
+        _cache.RemoveAsync(Key(creatorId), ct);
 
     // Keyed by the internal creator id, resolved by the ownership check, so a request for someone else's slug
     // can neither read nor overwrite the owner's entry.
-    private static string Key(int creatorId) => $"views-summary:{creatorId}";
+    public static string Key(int creatorId) => $"views-summary:{creatorId}";
 }
