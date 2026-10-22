@@ -219,8 +219,9 @@ public sealed partial class CreatorService : ICreatorService
         await _unitOfWork.SaveChangesAsync(ct);
 
         // Cached analytics (home summary, dashboard trends) are bucketed in the old zone: rebuild them on next read.
+        // CancellationToken.None: the change is committed, so an aborted request must not leave them stale.
         if (timezoneChanged)
-            _cacheInvalidator.Invalidate(settings.CreatorId);
+            await _cacheInvalidator.InvalidateAsync(settings.CreatorId, CancellationToken.None);
 
         return ToSettingsResponse(settings);
     }

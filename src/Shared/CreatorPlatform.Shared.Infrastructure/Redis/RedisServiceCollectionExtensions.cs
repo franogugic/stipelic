@@ -16,8 +16,8 @@ public static class RedisServiceCollectionExtensions
 
     /// <summary>
     /// Binds and validates the <c>Redis</c> section (the start fails on an invalid one) and registers the
-    /// process-wide <see cref="IRedisAvailability"/> and <see cref="IRedisClient"/>. Nothing connects here: the first
-    /// call does, so the API starts while Redis is down.
+    /// process-wide <see cref="IRedisAvailability"/>, <see cref="IRedisClient"/> and <see cref="RedisJsonCache"/>.
+    /// Nothing connects here: the first call does, so the API starts while Redis is down.
     /// </summary>
     public static IServiceCollection AddRedis(
         this IServiceCollection services,
@@ -46,6 +46,7 @@ public static class RedisServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IRedisAvailability, RedisAvailability>();
         services.TryAddSingleton<IRedisClient, RedisClient>();
+        services.TryAddSingleton<RedisJsonCache>();
 
         return services;
     }

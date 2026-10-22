@@ -162,7 +162,11 @@ public sealed class FakeCreatorCacheInvalidator : ICreatorCacheInvalidator
 {
     public List<int> Invalidated { get; } = [];
 
-    public void Invalidate(int creatorId) => Invalidated.Add(creatorId);
+    public Task InvalidateAsync(int creatorId, CancellationToken ct)
+    {
+        Invalidated.Add(creatorId);
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeBillingCustomerService : IBillingCustomerService

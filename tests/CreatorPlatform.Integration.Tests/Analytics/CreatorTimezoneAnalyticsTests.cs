@@ -7,7 +7,6 @@ using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Orders.Infrastructure.Repositories;
 using CreatorPlatform.Orders.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using MarketingCreatorContextProvider = CreatorPlatform.Marketing.Infrastructure.Services.CreatorContextProvider;
 
 namespace CreatorPlatform.Integration.Tests.Analytics;
@@ -15,25 +14,28 @@ namespace CreatorPlatform.Integration.Tests.Analytics;
 /// <summary>The dashboard trends, the home summary's "this month" and the contact growth use the creator's months:
 /// 23:30 UTC on a month's last day is already the next month in Europe/Zagreb.</summary>
 [Collection(PostgresCollection.Name)]
-public sealed class CreatorTimezoneAnalyticsTests : IDisposable
+public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
 {
     private const string Zagreb = "Europe/Zagreb";
     private static readonly TimeZoneInfo Zone = TimeZoneInfo.FindSystemTimeZoneById(Zagreb);
 
     private readonly PostgresFixture _fixture;
     private readonly TestData _data;
-    private readonly MemoryCache _memoryCache = new(new MemoryCacheOptions());
+    private readonly TestRedisClient _redis;
 
-    public CreatorTimezoneAnalyticsTests(PostgresFixture fixture)
+    public CreatorTimezoneAnalyticsTests(PostgresFixture fixture, RedisFixture redis)
     {
         _fixture = fixture;
         _data = new TestData(fixture);
+        _redis = RedisFixture.CreateClient(redis.CreateOptions());
     }
 
-    public void Dispose() => _memoryCache.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync() => await _redis.DisposeAsync();
 
     private OrderService Orders(Shared.Infrastructure.Persistence.CreatorPlatformDbContext db) =>
-        new(new OrderRepository(db), new HomeSummaryCache(_memoryCache), new DashboardTrendsCache(_memoryCache));
+        new(new OrderRepository(db), new HomeSummaryCache(_redis.JsonCache), new DashboardTrendsCache(_redis.JsonCache));
 
     /// <summary>23:30 UTC on the last day of the previous UTC month, and the local month it falls in.</summary>
     private static (DateTimeOffset At, string LocalMonth, string UtcMonth) LateNight()

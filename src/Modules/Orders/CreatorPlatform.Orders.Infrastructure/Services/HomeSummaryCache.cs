@@ -1,35 +1,30 @@
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
-using Microsoft.Extensions.Caching.Memory;
+using CreatorPlatform.Shared.Infrastructure.Redis;
 
 namespace CreatorPlatform.Orders.Infrastructure.Services;
 
 public sealed class HomeSummaryCache : IHomeSummaryCache
 {
-    private readonly IMemoryCache _cache;
     private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(5);
 
-    public HomeSummaryCache(IMemoryCache cache)
+    private readonly RedisJsonCache _cache;
+
+    public HomeSummaryCache(RedisJsonCache cache)
     {
         _cache = cache;
     }
 
-    public bool TryGet(int creatorId, out HomeSummaryDto? value)
-    {
-        return _cache.TryGetValue(Key(creatorId), out value);
-    }
+    public ValueTask<HomeSummaryDto?> GetAsync(int creatorId, CancellationToken ct) =>
+        _cache.GetAsync<HomeSummaryDto>(Key(creatorId), ct);
 
-    public void Set(int creatorId, HomeSummaryDto value)
-    {
-        _cache.Set(Key(creatorId), value, Ttl);
-    }
+    public Task SetAsync(int creatorId, HomeSummaryDto value, CancellationToken ct) =>
+        _cache.SetAsync(Key(creatorId), value, Ttl, ct);
 
-    public void Remove(int creatorId)
-    {
-        _cache.Remove(Key(creatorId));
-    }
+    public Task RemoveAsync(int creatorId, CancellationToken ct) =>
+        _cache.RemoveAsync(Key(creatorId), ct);
 
     // Keyed by the internal creator id, resolved by the ownership check, so a request for someone else's slug
     // can neither read nor overwrite the owner's entry.
-    private static string Key(int creatorId) => $"home-summary:{creatorId}";
+    public static string Key(int creatorId) => $"home-summary:{creatorId}";
 }

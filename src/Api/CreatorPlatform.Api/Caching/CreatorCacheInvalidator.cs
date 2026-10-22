@@ -1,29 +1,33 @@
-using CreatorPlatform.Analytics.Application.Interfaces;
+using CreatorPlatform.Analytics.Infrastructure.Services;
 using CreatorPlatform.Creators.Application.Interfaces;
-using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Orders.Infrastructure.Services;
+using CreatorPlatform.Shared.Infrastructure.Redis;
 
 namespace CreatorPlatform.Api.Caching;
 
-/// <summary>The per-creator caches that hold plan-dependent, workspace-wide or timezone-bucketed numbers. The other
-/// short-lived one (payout schedule: 60 s) expires on its own.</summary>
+/// <summary>The per-creator caches that hold plan-dependent, workspace-wide or timezone-bucketed numbers, dropped in
+/// one Redis round trip (a batch: delete both summaries, bump the trends generation). The other short-lived one
+/// (payout schedule: 60 s) expires on its own.</summary>
 public sealed class CreatorCacheInvalidator : ICreatorCacheInvalidator
 {
-    private readonly IHomeSummaryCache _homeSummaryCache;
-    private readonly IViewsSummaryCache _viewsSummaryCache;
-    private readonly IDashboardTrendsCache _dashboardTrendsCache;
+    private readonly RedisJsonCache _cache;
 
-    public CreatorCacheInvalidator(
-        IHomeSummaryCache homeSummaryCache, IViewsSummaryCache viewsSummaryCache, IDashboardTrendsCache dashboardTrendsCache)
+    public CreatorCacheInvalidator(RedisJsonCache cache)
     {
-        _homeSummaryCache = homeSummaryCache;
-        _viewsSummaryCache = viewsSummaryCache;
-        _dashboardTrendsCache = dashboardTrendsCache;
+        _cache = cache;
     }
 
-    public void Invalidate(int creatorId)
-    {
-        _homeSummaryCache.Remove(creatorId);
-        _viewsSummaryCache.Remove(creatorId);
-        _dashboardTrendsCache.Remove(creatorId);
-    }
+    public Task InvalidateAsync(int creatorId, CancellationToken ct) =>
+        _cache.InvalidateAsync(
+            $"the cached analytics of creator {creatorId}",
+            async database =>
+            {
+                var batch = database.CreateBatch();
+                var summaries = batch.KeyDeleteAsync([HomeSummaryCache.Key(creatorId), ViewsSummaryCache.Key(creatorId)]);
+                var trends = DashboardTrendsCache.BumpGenerationAsync(batch, creatorId);
+                batch.Execute();
+                await Task.WhenAll(summaries, trends);
+                return true;
+            },
+            ct);
 }
