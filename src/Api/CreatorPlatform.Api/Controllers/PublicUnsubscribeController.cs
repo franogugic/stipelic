@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
@@ -33,13 +34,13 @@ public sealed class PublicUnsubscribeController : ControllerBase
     /// <summary>Links in emails sent before the unsubscribe page existed point here: forward them to the page (302),
     /// which asks for a confirmation. No side effect.</summary>
     [HttpGet("{token}")]
-    [EnableRateLimiting("Unsubscribe")]
+    [EnableRateLimiting(RateLimitPolicies.Unsubscribe)]
     public RedirectResult LegacyLink(string token) => Redirect(_tokenService.BuildUnsubscribePageUrl(token));
 
     /// <summary>The page's data: the creator's brand and whether the address is already unsubscribed. No side effect.
     /// 404 <c>unsubscribe_link_invalid</c> for a bad token.</summary>
     [HttpGet("{token}/info")]
-    [EnableRateLimiting("Unsubscribe")]
+    [EnableRateLimiting(RateLimitPolicies.Unsubscribe)]
     public async Task<ActionResult<ApiResponse<UnsubscribePageDto>>> Info(string token, CancellationToken ct)
     {
         var page = await _unsubscribePageService.GetInfoAsync(token, ct);
@@ -48,7 +49,7 @@ public sealed class PublicUnsubscribeController : ControllerBase
 
     /// <summary>The page's "Unsubscribe" button. Idempotent; 404 <c>unsubscribe_link_invalid</c> for a bad token.</summary>
     [HttpPost("{token}/confirm")]
-    [EnableRateLimiting("Unsubscribe")]
+    [EnableRateLimiting(RateLimitPolicies.Unsubscribe)]
     public async Task<ActionResult<ApiResponse<UnsubscribePageDto>>> Confirm(string token, CancellationToken ct)
     {
         var page = await _unsubscribePageService.ConfirmAsync(token, ct);
@@ -59,7 +60,7 @@ public sealed class PublicUnsubscribeController : ControllerBase
     /// recipient's behalf without any confirmation UI, so this must never require anything beyond the token itself.
     /// No body is returned: nobody reads it.</summary>
     [HttpPost("{token}")]
-    [EnableRateLimiting("Unsubscribe")]
+    [EnableRateLimiting(RateLimitPolicies.Unsubscribe)]
     public async Task<IActionResult> OneClick(string token, CancellationToken ct)
     {
         var payload = _tokenService.TryParse(token)

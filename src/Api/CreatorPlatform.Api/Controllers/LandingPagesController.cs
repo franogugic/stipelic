@@ -1,5 +1,6 @@
 using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
@@ -89,7 +90,7 @@ public sealed class LandingPagesController : ControllerBase
     }
 
     [HttpPost]
-    [EnableRateLimiting("CreateLandingPage")]
+    [EnableRateLimiting(RateLimitPolicies.CreateLandingPage)]
     public async Task<ActionResult<ApiResponse<LandingPageResponseDto>>> Create(
         string slug,
         [FromBody] CreateLandingPageRequestDto request,
@@ -141,7 +142,7 @@ public sealed class LandingPagesController : ControllerBase
     }
 
     [HttpPut("{pageId:guid}/editor")]
-    [EnableRateLimiting("UpdateLandingPage")]
+    [EnableRateLimiting(RateLimitPolicies.UpdateLandingPage)]
     public async Task<ActionResult<ApiResponse<LandingPageWithSectionsResponseDto>>> SaveEditor(
         string slug,
         Guid pageId,

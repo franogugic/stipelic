@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Authorization;
 using CreatorPlatform.Auth.Application.Dtos;
@@ -63,7 +64,7 @@ public sealed class AdminPayoutsController : ControllerBase
     }
 
     [HttpPost]
-    [EnableRateLimiting("AdminPayouts")]
+    [EnableRateLimiting(RateLimitPolicies.AdminPayouts)]
     public async Task<ActionResult<ApiResponse<PayoutDto>>> Create(
         [FromBody] CreatePayoutRequestDto request,
         CancellationToken ct)
@@ -81,7 +82,7 @@ public sealed class AdminPayoutsController : ControllerBase
     }
 
     [HttpPost("{publicId}/mark-paid")]
-    [EnableRateLimiting("AdminPayouts")]
+    [EnableRateLimiting(RateLimitPolicies.AdminPayouts)]
     public async Task<ActionResult<ApiResponse<PayoutDto>>> MarkPaid(
         Guid publicId,
         [FromBody] MarkPayoutPaidRequestDto request,
@@ -98,7 +99,7 @@ public sealed class AdminPayoutsController : ControllerBase
     }
 
     [HttpPost("{publicId}/mark-failed")]
-    [EnableRateLimiting("AdminPayouts")]
+    [EnableRateLimiting(RateLimitPolicies.AdminPayouts)]
     public async Task<ActionResult<ApiResponse<PayoutDto>>> MarkFailed(
         Guid publicId,
         [FromBody] MarkPayoutFailedRequestDto request,

@@ -2,6 +2,7 @@ using CreatorPlatform.Analytics.Application.Interfaces;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Interfaces;
@@ -83,7 +84,7 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpPut("{slug}/settings")]
-    [EnableRateLimiting("UpdateCreatorSettings")]
+    [EnableRateLimiting(RateLimitPolicies.UpdateCreatorSettings)]
     public async Task<ActionResult<ApiResponse<CreatorSettingsResponseDto>>> UpdateSettings(
         string slug,
         [FromBody] UpdateCreatorSettingsRequestDto request,
@@ -100,7 +101,7 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpPost]
-    [EnableRateLimiting("CreateCreator")]
+    [EnableRateLimiting(RateLimitPolicies.CreateCreator)]
     public async Task<ActionResult<ApiResponse<CreateCreatorResponseDto>>> Create(
         [FromBody] CreateCreatorRequestDto request,
         CancellationToken ct)
@@ -118,7 +119,7 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpDelete("current")]
-    [EnableRateLimiting("DeleteWorkspace")]
+    [EnableRateLimiting(RateLimitPolicies.DeleteWorkspace)]
     public async Task<ActionResult<ApiResponse<object>>> DeleteCurrent(CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
@@ -164,7 +165,7 @@ public sealed class CreatorsController : ControllerBase
 
     /// <summary>Payment-cancelled screen: leave the unpaid plan and use the workspace on Free.</summary>
     [HttpPost("current/subscription/continue-free")]
-    [EnableRateLimiting("ContinueFree")]
+    [EnableRateLimiting(RateLimitPolicies.ContinueFree)]
     public async Task<ActionResult<ApiResponse<CreatorResponseDto>>> ContinueOnFreePlan(CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
@@ -181,7 +182,7 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpPost("current/connect/onboarding-link")]
-    [EnableRateLimiting("ConnectOnboarding")]
+    [EnableRateLimiting(RateLimitPolicies.ConnectOnboarding)]
     public async Task<ActionResult<ApiResponse<ConnectOnboardingLinkResponseDto>>> ConnectOnboardingLink(CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
@@ -197,7 +198,7 @@ public sealed class CreatorsController : ControllerBase
     /// <summary>Signs the owner into their Stripe Express dashboard (balance, payouts, bank account). The link is
     /// single-use and expires within minutes, so the client opens it immediately.</summary>
     [HttpPost("current/payouts/connect/login-link")]
-    [EnableRateLimiting("ConnectDashboardLink")]
+    [EnableRateLimiting(RateLimitPolicies.ConnectDashboardLink)]
     public async Task<ActionResult<ApiResponse<ConnectDashboardLinkResponseDto>>> ConnectDashboardLoginLink(CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
@@ -211,7 +212,7 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpPost("current/subscription/checkout")]
-    [EnableRateLimiting("StartCreatorCheckout")]
+    [EnableRateLimiting(RateLimitPolicies.StartCreatorCheckout)]
     public async Task<ActionResult<ApiResponse<StartCreatorSubscriptionCheckoutResponseDto>>> StartSubscriptionCheckout(
         [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] StartCreatorSubscriptionCheckoutRequestDto? request,
         CancellationToken ct)

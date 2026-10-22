@@ -1,4 +1,5 @@
 using CreatorPlatform.Analytics.Application.Interfaces;
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
@@ -70,7 +71,7 @@ public sealed class ContactsController : ControllerBase
     /// <summary>CSV download of the directory (same <paramref name="search"/> / <paramref name="landingPageId"/> /
     /// <paramref name="status"/> filters as the list), streamed batch by batch.</summary>
     [HttpGet("export")]
-    [EnableRateLimiting("ExportContacts")]
+    [EnableRateLimiting(RateLimitPolicies.ExportContacts)]
     public async Task Export(
         string slug,
         [FromQuery] string? search,
@@ -94,7 +95,7 @@ public sealed class ContactsController : ControllerBase
     /// <summary>Removes a contact (summary + captures on this creator's pages). The email is the URL-encoded
     /// path segment, normalised server-side. Opt-outs and send history are kept.</summary>
     [HttpDelete("{email}")]
-    [EnableRateLimiting("DeleteContact")]
+    [EnableRateLimiting(RateLimitPolicies.DeleteContact)]
     public async Task<ActionResult<ApiResponse<object>>> Delete(string slug, string email, CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();

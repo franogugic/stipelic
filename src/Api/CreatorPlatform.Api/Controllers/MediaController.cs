@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
@@ -30,7 +31,7 @@ public sealed class MediaController : ControllerBase
     }
 
     [HttpPost("upload-url")]
-    [EnableRateLimiting("RequestMediaUpload")]
+    [EnableRateLimiting(RateLimitPolicies.RequestMediaUpload)]
     public async Task<ActionResult<ApiResponse<UploadUrlResponseDto>>> RequestUploadUrl(
         string slug, [FromBody] UploadUrlRequestDto request, CancellationToken ct)
     {
@@ -47,7 +48,7 @@ public sealed class MediaController : ControllerBase
     }
 
     [HttpPost("confirm")]
-    [EnableRateLimiting("RequestMediaUpload")]
+    [EnableRateLimiting(RateLimitPolicies.RequestMediaUpload)]
     public async Task<ActionResult<ApiResponse<ConfirmUploadResponseDto>>> Confirm(
         string slug, [FromBody] ConfirmUploadRequestDto request, CancellationToken ct)
     {

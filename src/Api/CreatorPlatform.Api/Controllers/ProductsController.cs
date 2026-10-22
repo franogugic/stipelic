@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Auth.Application.Interfaces;
@@ -45,7 +46,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPost]
-    [EnableRateLimiting("CreateProduct")]
+    [EnableRateLimiting(RateLimitPolicies.CreateProduct)]
     public async Task<ActionResult<ApiResponse<ProductResponseDto>>> Create(
         string slug,
         [FromBody] CreateProductRequestDto request,
@@ -65,7 +66,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPut("{productId:guid}")]
-    [EnableRateLimiting("UpdateProduct")]
+    [EnableRateLimiting(RateLimitPolicies.UpdateProduct)]
     public async Task<ActionResult<ApiResponse<ProductResponseDto>>> Update(
         string slug,
         Guid productId,

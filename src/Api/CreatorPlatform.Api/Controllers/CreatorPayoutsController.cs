@@ -1,3 +1,4 @@
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Auth.Application.Exceptions;
@@ -75,7 +76,7 @@ public sealed class CreatorPayoutsController : ControllerBase
     }
 
     [HttpPost("payouts/request")]
-    [EnableRateLimiting("RequestPayout")]
+    [EnableRateLimiting(RateLimitPolicies.RequestPayout)]
     public async Task<ActionResult<ApiResponse<PayoutDto>>> RequestPayout(
         string slug,
         [FromBody] RequestPayoutRequestDto request,
