@@ -62,6 +62,13 @@ public sealed class RedisClient : IRedisClient, IAsyncDisposable
             _availability.ReportFailure(exception);
             return RedisCallResult<T>.Failed;
         }
+        catch (RedisCommandException exception)
+        {
+            // A command the client refuses to send (e.g. a multi-key command across cluster slots) is a bug in the
+            // calling code, not an outage: say so loudly, keep the circuit closed, and let the caller fall back.
+            _logger.LogError(exception, "A Redis command was rejected by the client and not sent.");
+            return RedisCallResult<T>.Failed;
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             ObserveAbandoned(call);

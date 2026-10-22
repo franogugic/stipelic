@@ -12,8 +12,9 @@ public interface IRedisClient
     /// <summary>
     /// Runs <paramref name="operation"/> against a database whose keys all get the configured key prefix. The
     /// operation uses the async commands only (batches and transactions included); a sync command would block a thread.
-    /// Returns a failed result, without calling Redis, while the circuit is open; and a failed result (reported to
-    /// <see cref="IRedisAvailability"/>) when the call fails or exceeds the operation timeout. Only cancellation of
+    /// Returns a failed result, without calling Redis, while the circuit is open; a failed result (reported to
+    /// <see cref="IRedisAvailability"/>) when the call fails or exceeds the operation timeout; and a failed result
+    /// (logged as an error, circuit untouched) for a command the client refuses to send. Only cancellation of
     /// <paramref name="cancellationToken"/> is thrown.
     /// </summary>
     Task<RedisCallResult<T>> TryExecuteAsync<T>(Func<IDatabase, Task<T>> operation, CancellationToken cancellationToken);

@@ -57,14 +57,16 @@ public sealed class RedisFixture : IAsyncLifetime
         var time = timeProvider ?? TimeProvider.System;
         var availabilityLog = new ListLogger<RedisAvailability>();
         var availability = new RedisAvailability(Options.Create(options), time, availabilityLog);
-        var client = new RedisClient(Options.Create(options), availability, time, new ListLogger<RedisClient>());
+        var clientLog = new ListLogger<RedisClient>();
+        var client = new RedisClient(Options.Create(options), availability, time, clientLog);
         var cacheLog = new ListLogger<RedisJsonCache>();
-        return new TestRedisClient(client, availability, availabilityLog, new RedisJsonCache(client, cacheLog), cacheLog);
+        return new TestRedisClient(client, clientLog, availability, availabilityLog, new RedisJsonCache(client, cacheLog), cacheLog);
     }
 }
 
 public sealed record TestRedisClient(
     RedisClient Client,
+    ListLogger<RedisClient> ClientLog,
     RedisAvailability Availability,
     ListLogger<RedisAvailability> AvailabilityLog,
     RedisJsonCache JsonCache,
