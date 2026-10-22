@@ -13,13 +13,14 @@ services:
       - creator_platform_postgres_data:/var/lib/postgresql/data
 
   # A cache and rate-limit store: nothing in it needs to survive a restart, so no volume and no persistence.
+  # Host port 6380, not 6379, so a locally installed Redis (e.g. Homebrew on 127.0.0.1:6379) can never take its place.
   redis:
     image: redis:7.4-alpine
     container_name: creator_platform_redis
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
 volumes:
   creator_platform_postgres_data:

@@ -8,8 +8,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Redis;
 
 public static class RedisServiceCollectionExtensions
 {
-    /// <summary>The local docker-compose Redis. Used only in Development, and only when the section leaves it empty.</summary>
-    public const string DevelopmentConnectionString = "localhost:6379,abortConnect=false";
+    /// <summary>The local docker-compose Redis (host port 6380, see docker-compose.yml). Used only in Development, and
+    /// only when the section leaves it empty.</summary>
+    public const string DevelopmentConnectionString = "localhost:6380,abortConnect=false";
 
     public const string DevelopmentKeyPrefix = "luma:dev:";
 
