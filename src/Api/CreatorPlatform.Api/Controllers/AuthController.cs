@@ -16,12 +16,12 @@ public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly AuthOptions _authOptions;
-    private readonly LoginAttemptLimiter _loginAttemptLimiter;
+    private readonly ILoginAttemptLimiter _loginAttemptLimiter;
 
     public AuthController(
         IAuthService authService,
         IOptions<AuthOptions> authOptions,
-        LoginAttemptLimiter loginAttemptLimiter)
+        ILoginAttemptLimiter loginAttemptLimiter)
     {
         _authService = authService;
         _authOptions = authOptions.Value;
@@ -45,7 +45,7 @@ public sealed class AuthController : ControllerBase
         CancellationToken ct)
     {
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        if (!_loginAttemptLimiter.IsAllowed(ipAddress, request.Email))
+        if (!await _loginAttemptLimiter.TryAcquireAsync(ipAddress, request.Email, ct))
             throw new TooManyLoginAttemptsException();
 
         var result = await _authService.LoginAsync(request, ct);

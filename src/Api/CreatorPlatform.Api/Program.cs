@@ -96,7 +96,9 @@ builder.Services.AddAnalyticsInfrastructure();
 builder.Services.AddSingleton<CreatorPlatform.Creators.Application.Interfaces.ICreatorCacheInvalidator, CreatorPlatform.Api.Caching.CreatorCacheInvalidator>();
 builder.Services.AddOrdersInfrastructure();
 builder.Services.AddAccessInfrastructure();
-builder.Services.AddSingleton<LoginAttemptLimiter>();
+builder.Services.AddOptions<LoginAttemptLimiterOptions>();
+builder.Services.AddSingleton<InMemoryLoginAttemptLimiter>();
+builder.Services.AddSingleton<ILoginAttemptLimiter, RedisLoginAttemptLimiter>();
 builder.Services.AddRedis(builder.Configuration, builder.Environment);
 builder.Services.AddPlatformHealthChecks();
 
