@@ -111,8 +111,12 @@ public sealed class Order
         UpdatedAt = paidAt;
     }
 
+    /// <summary>A Pending order that can no longer be paid: its session expired, or creating the session failed.</summary>
     public void MarkFailed(DateTimeOffset updatedAt)
     {
+        if (Status != OrderStatus.Pending)
+            throw new InvalidOperationException($"Order {PublicId} is {Status}; only a Pending order can fail.");
+
         Status = OrderStatus.Failed;
         UpdatedAt = updatedAt;
     }

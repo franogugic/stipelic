@@ -168,6 +168,16 @@ public sealed class StripeWebhooksController : ControllerBase
                         ct);
                 break;
 
+            case StripeEventTypes.CheckoutSessionExpired
+                when webhookEvent.CheckoutSessionExpired is not null:
+                await _orderWebhookService
+                    .HandleCheckoutSessionExpiredAsync(
+                        new OrderCheckoutExpiredDto(
+                            webhookEvent.CheckoutSessionExpired.SessionId,
+                            webhookEvent.CheckoutSessionExpired.Metadata),
+                        ct);
+                break;
+
             case StripeEventTypes.CustomerSubscriptionCreated
                 when webhookEvent.SubscriptionChanged is not null:
                 await _creatorWebhookService

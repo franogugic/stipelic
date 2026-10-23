@@ -22,7 +22,7 @@ namespace CreatorPlatform.Integration.Tests.Orders;
 
 /// <summary>B2 against the real database: the Pending order is committed before Stripe is called, a failed Stripe call
 /// leaves it Failed, and checkout.session.completed for a session whose id was never stored finds the order by the
-/// metadata and pays it; the database refuses a paid order without a session.</summary>
+/// metadata and pays it; an expired session fails its order (B4); the database refuses a paid order without a session.</summary>
 [Collection(PostgresCollection.Name)]
 public sealed class CheckoutOrderFirstTests
 {
@@ -167,6 +167,20 @@ public sealed class CheckoutOrderFirstTests
             SELECT COUNT(*)::int AS "Value" FROM products.access_grants WHERE "CreatorId" = {seeded.CreatorId}
             """).ToListAsync()).Single();
         Assert.Equal(1, grants);
+    }
+
+    [Fact]
+    public async Task AnExpiredSession_FailsItsOrder()
+    {
+        var seeded = await SeedAsync();
+        var sessions = new RecordingSessions();
+        await using (var db = _fixture.CreateDbContext())
+            await Checkout(db, seeded, sessions).CreateCheckoutAsync("acme", "sale", "buyer@example.test", None);
+
+        await using (var db = _fixture.CreateDbContext())
+            await Webhooks(db).HandleCheckoutSessionExpiredAsync(new OrderCheckoutExpiredDto(sessions.SessionId, sessions.Metadata), None);
+
+        Assert.Equal([new OrderRow("Failed", sessions.SessionId)], await OrdersAsync(seeded.CreatorId));
     }
 
     [Fact]

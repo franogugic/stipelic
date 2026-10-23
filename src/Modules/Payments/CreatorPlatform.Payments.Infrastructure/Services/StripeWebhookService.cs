@@ -63,6 +63,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
         return stripeEvent.Type switch
         {
             StripeEventTypes.CheckoutSessionCompleted => MapCheckoutSessionCompleted(stripeEvent),
+            StripeEventTypes.CheckoutSessionExpired => MapCheckoutSessionExpired(stripeEvent),
             StripeEventTypes.CustomerSubscriptionCreated => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.CustomerSubscriptionUpdated => MapSubscriptionChanged(stripeEvent),
             StripeEventTypes.CustomerSubscriptionDeleted => MapSubscriptionChanged(stripeEvent),
@@ -96,6 +97,24 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 StripePaymentIntentId = session.PaymentIntentId,
                 CustomerEmail = session.CustomerDetails?.Email,
                 CustomerName = session.CustomerDetails?.Name,
+                Metadata = session.Metadata ?? new Dictionary<string, string>()
+            }
+        };
+    }
+
+    private static StripeWebhookEventDto MapCheckoutSessionExpired(Event stripeEvent)
+    {
+        var session = stripeEvent.Data.Object as Session
+            ?? throw new InvalidOperationException(
+                $"Expected Session object in checkout.session.expired event. EventId: {stripeEvent.Id}");
+
+        return new StripeWebhookEventDto
+        {
+            EventId = stripeEvent.Id,
+            EventType = stripeEvent.Type,
+            CheckoutSessionExpired = new CheckoutSessionExpiredData
+            {
+                SessionId = session.Id,
                 Metadata = session.Metadata ?? new Dictionary<string, string>()
             }
         };

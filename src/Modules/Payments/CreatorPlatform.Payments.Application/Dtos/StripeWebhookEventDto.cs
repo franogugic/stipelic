@@ -5,6 +5,7 @@ public sealed class StripeWebhookEventDto
     public required string EventId { get; init; }
     public required string EventType { get; init; }
     public CheckoutSessionCompletedData? CheckoutSessionCompleted { get; init; }
+    public CheckoutSessionExpiredData? CheckoutSessionExpired { get; init; }
     public SubscriptionChangedData? SubscriptionChanged { get; init; }
     public InvoicePaymentFailedData? InvoicePaymentFailed { get; init; }
     public ChargeRefundedData? ChargeRefunded { get; init; }
@@ -35,6 +36,13 @@ public sealed class CheckoutSessionCompletedData
     public string? CustomerEmail { get; init; }
     /// <summary><c>customer_details.name</c>.</summary>
     public string? CustomerName { get; init; }
+    public required IReadOnlyDictionary<string, string> Metadata { get; init; }
+}
+
+/// <summary>A Checkout session that can no longer be paid (Stripe expires an unpaid session after at most 24 hours).</summary>
+public sealed class CheckoutSessionExpiredData
+{
+    public required string SessionId { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
 }
 
@@ -86,6 +94,7 @@ public sealed class ChargeRefundedData
 public static class StripeEventTypes
 {
     public const string CheckoutSessionCompleted = "checkout.session.completed";
+    public const string CheckoutSessionExpired = "checkout.session.expired";
     public const string CustomerSubscriptionCreated = "customer.subscription.created";
     public const string CustomerSubscriptionUpdated = "customer.subscription.updated";
     public const string CustomerSubscriptionDeleted = "customer.subscription.deleted";

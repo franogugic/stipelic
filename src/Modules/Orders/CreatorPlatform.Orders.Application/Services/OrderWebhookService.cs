@@ -123,6 +123,38 @@ public sealed class OrderWebhookService : IOrderWebhookService
         await InvalidateHomeSummaryAsync(affectedCreatorId);
     }
 
+    public async Task HandleCheckoutSessionExpiredAsync(OrderCheckoutExpiredDto data, CancellationToken ct)
+    {
+        int? affectedCreatorId = null;
+
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            var order = await FindSaleOrderForUpdateAsync(
+                data.SessionId, data.Metadata, "checkout.session.expired", ct, orderRequired: false);
+            if (order is null)
+                return;
+
+            if (order.Status != OrderStatus.Pending)
+            {
+                _logger.LogInformation(
+                    "checkout.session.expired for an order that is not Pending, ignoring. OrderId: {OrderId}, Status: {Status}",
+                    order.PublicId, order.Status);
+                return;
+            }
+
+            order.MarkFailed(DateTimeOffset.UtcNow);
+            await _unitOfWork.SaveChangesAsync(ct);
+            affectedCreatorId = order.CreatorId;
+
+            _logger.LogInformation(
+                "Checkout session expired; order marked Failed. OrderId: {OrderId}, SessionId: {SessionId}",
+                order.PublicId, data.SessionId);
+        }, ct);
+
+        // The pending count on the creator's home summary dropped.
+        await InvalidateHomeSummaryAsync(affectedCreatorId);
+    }
+
     public async Task HandleChargeRefundedAsync(OrderChargeRefundedDto data, CancellationToken ct)
     {
         int? affectedCreatorId = null;
@@ -185,10 +217,12 @@ public sealed class OrderWebhookService : IOrderWebhookService
     /// session metadata (the order is saved before its session, and storing the session id on it may have failed) —
     /// the session id is then stored. Null for a session that is not a product sale (a plan subscription's).
     /// A sale session whose order is missing, or an order already tied to another session, throws: the event is
-    /// recorded as a webhook failure for an admin instead of being ignored.
+    /// recorded as a webhook failure for an admin instead of being ignored — unless <paramref name="orderRequired"/> is
+    /// false (an expired session: nothing was paid, so a missing order only needs a warning).
     /// </summary>
     private async Task<Order?> FindSaleOrderForUpdateAsync(
-        string sessionId, IReadOnlyDictionary<string, string>? metadata, string eventType, CancellationToken ct)
+        string sessionId, IReadOnlyDictionary<string, string>? metadata, string eventType, CancellationToken ct,
+        bool orderRequired = true)
     {
         var order = await _orderRepository.GetByStripeCheckoutSessionIdForUpdateAsync(sessionId, ct);
         if (order is not null)
@@ -206,6 +240,14 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
         if (hasOrderId && Guid.TryParse(orderIdValue, out var orderPublicId))
             order = await _orderRepository.GetByPublicIdForUpdateAsync(orderPublicId, ct);
+
+        if (order is null && !orderRequired)
+        {
+            _logger.LogWarning(
+                "{EventType} for a product sale matches no order, ignoring. SessionId: {SessionId}, OrderId: {OrderId}",
+                eventType, sessionId, orderIdValue);
+            return null;
+        }
 
         if (order is null)
         {

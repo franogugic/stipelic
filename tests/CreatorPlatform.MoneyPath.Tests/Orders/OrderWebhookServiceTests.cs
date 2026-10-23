@@ -343,4 +343,80 @@ public class OrderWebhookServiceTests
         Assert.Equal(OrderStatus.Pending, order.Status);
         Assert.Empty(ledger.Entries);
     }
+
+    // ---- B4: an expired session fails its order -------------------------------------------------------------------
+
+    [Fact]
+    public async Task AnExpiredSession_FailsItsPendingOrder_Once()
+    {
+        var order = BuildOrder(PayoutMode.BankTransfer);
+        var (service, _, ledger) = BuildService(order);
+        var expired = new OrderCheckoutExpiredDto(order.StripeCheckoutSessionId!, SaleMetadata(order.PublicId));
+
+        await service.HandleCheckoutSessionExpiredAsync(expired, CancellationToken.None);
+        var failedAt = order.UpdatedAt;
+        await service.HandleCheckoutSessionExpiredAsync(expired, CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Failed, order.Status);
+        Assert.Equal(failedAt, order.UpdatedAt);
+        Assert.Empty(ledger.Entries);
+    }
+
+    [Fact]
+    public async Task AnExpiredSession_WhoseIdWasNeverStored_FailsTheOrderFoundByTheMetadata()
+    {
+        var order = PendingOrderWithoutSession();
+        var (service, _, _) = BuildService(order);
+
+        await service.HandleCheckoutSessionExpiredAsync(new OrderCheckoutExpiredDto("cs_never_stored", SaleMetadata(order.PublicId)), CancellationToken.None);
+
+        Assert.Equal((OrderStatus.Failed, "cs_never_stored"), (order.Status, order.StripeCheckoutSessionId));
+    }
+
+    [Fact]
+    public async Task AnExpiredSession_LeavesAPaidOrderAlone()
+    {
+        var order = BuildOrder(PayoutMode.BankTransfer);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
+        var (service, _, _) = BuildService(order);
+
+        await service.HandleCheckoutSessionExpiredAsync(new OrderCheckoutExpiredDto(order.StripeCheckoutSessionId!, SaleMetadata(order.PublicId)), CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Paid, order.Status);
+    }
+
+    [Fact]
+    public async Task AnExpiredSaleSession_WithNoOrder_IsOnlyLogged_AndAPlanSessionIsIgnored()
+    {
+        var order = PendingOrderWithoutSession();
+        var (service, _, _) = BuildService(order);
+
+        await service.HandleCheckoutSessionExpiredAsync(new OrderCheckoutExpiredDto("cs_lost", SaleMetadata(Guid.NewGuid())), CancellationToken.None);
+        await service.HandleCheckoutSessionExpiredAsync(new OrderCheckoutExpiredDto("cs_plan", new Dictionary<string, string> { ["subscriptionId"] = "9" }), CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Pending, order.Status);
+    }
+
+    [Fact]
+    public async Task APaidSession_ForAnOrderAlreadyFailed_StillPaysIt()
+    {
+        // The maintenance job (or a late expiry) failed it, but the buyer did pay: the money wins.
+        var order = BuildOrder(PayoutMode.BankTransfer);
+        order.MarkFailed(DateTimeOffset.UtcNow);
+        var (service, _, ledger) = BuildService(order);
+
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Paid, order.Status);
+        Assert.Equal(2, ledger.Entries.Count);
+    }
+
+    [Fact]
+    public void OnlyAPendingOrder_CanFail()
+    {
+        var order = BuildOrder(PayoutMode.BankTransfer);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
+
+        Assert.Throws<InvalidOperationException>(() => order.MarkFailed(DateTimeOffset.UtcNow));
+    }
 }
