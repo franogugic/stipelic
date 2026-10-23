@@ -9,6 +9,9 @@ using CreatorPlatform.Marketing.Application.Services;
 using CreatorPlatform.Marketing.Infrastructure.Persistence;
 using CreatorPlatform.Marketing.Infrastructure.Repositories;
 using CreatorPlatform.Marketing.Infrastructure.Services;
+using CreatorPlatform.Auth.Infrastructure.Maintenance;
+using CreatorPlatform.Email.Infrastructure.Maintenance;
+using CreatorPlatform.Shared.Infrastructure.Maintenance;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -55,8 +58,14 @@ builder.Services.AddSingleton<IClickTrackingTokenService, ClickTrackingTokenServ
 builder.Services.AddScoped<ICampaignLinkRepository, CampaignLinkRepository>();
 builder.Services.AddScoped<ICampaignSendService, CampaignSendService>();
 
+// Cleanup (retention): each module registers the tasks for its own tables.
+builder.Services.AddMaintenance(builder.Configuration);
+builder.Services.AddEmailMaintenanceTasks();
+builder.Services.AddAuthMaintenanceTasks();
+
 builder.Services.AddHostedService<EmailOutboxWorker>();
 builder.Services.AddHostedService<ScheduledCampaignDispatchWorker>();
+builder.Services.AddHostedService<MaintenanceWorker>();
 
 var host = builder.Build();
 host.Run();

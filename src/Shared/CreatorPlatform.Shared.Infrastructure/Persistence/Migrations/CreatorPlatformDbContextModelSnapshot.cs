@@ -1054,7 +1054,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("HtmlBody")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("LastError")
@@ -1069,7 +1068,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PlainTextBody")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("ProcessingExpiresAt")
@@ -1106,6 +1104,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(254)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SentAt")
+                        .HasDatabaseName("IX_email_outbox_messages_SentAt_WithBodies")
+                        .HasFilter("\"Status\" = 'Sent' AND \"HtmlBody\" IS NOT NULL");
 
                     b.HasIndex("Status", "NextAttemptAt");
 

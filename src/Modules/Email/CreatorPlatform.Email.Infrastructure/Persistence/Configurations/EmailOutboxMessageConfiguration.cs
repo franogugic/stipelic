@@ -6,6 +6,10 @@ namespace CreatorPlatform.Email.Infrastructure.Persistence.Configurations;
 
 public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<EmailOutboxMessage>
 {
+    public const string SentWithBodiesIndexName = "IX_email_outbox_messages_SentAt_WithBodies";
+
+    public const string SentWithBodiesIndexFilter = "\"Status\" = 'Sent' AND \"HtmlBody\" IS NOT NULL";
+
     public void Configure(EntityTypeBuilder<EmailOutboxMessage> builder)
     {
         builder.ToTable("email_outbox_messages", "email");
@@ -30,11 +34,10 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
             .HasMaxLength(200)
             .IsRequired();
 
-        builder.Property(message => message.HtmlBody)
-            .IsRequired();
+        // Nullable: dropped from sent mail after the retention period (maintenance); set on every message that can be sent.
+        builder.Property(message => message.HtmlBody);
 
-        builder.Property(message => message.PlainTextBody)
-            .IsRequired();
+        builder.Property(message => message.PlainTextBody);
 
         builder.Property(message => message.ReplyTo)
             .HasMaxLength(254);
@@ -64,5 +67,11 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
         builder.HasIndex(message => new { message.Status, message.NextAttemptAt });
         builder.HasIndex(message => new { message.Status, message.ProcessingExpiresAt });
         builder.HasIndex(message => new { message.Purpose, message.CorrelationKey, message.Status });
+
+        // The body purge's work list: sent messages that still have their bodies. Purged rows leave the index, so the
+        // purge never rescans years of already-purged mail. Its query repeats this predicate word for word.
+        builder.HasIndex(message => message.SentAt)
+            .HasDatabaseName(SentWithBodiesIndexName)
+            .HasFilter(SentWithBodiesIndexFilter);
     }
 }

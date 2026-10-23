@@ -61,6 +61,20 @@ remove in a later release), because the old API serves requests until its contai
 5. `docker compose -f docker-compose.prod.yml up -d`, then check `docker compose ... ps` (migrate: exited 0) and
    `curl https://<domain>/health`.
 
+## Maintenance (the Worker's cleanup)
+
+The Worker runs the cleanup every hour (first one minute after it starts). With several Worker replicas, a Postgres
+advisory lock lets one of them work per run. Each job only touches rows past its age, works in batches of 1,000, and
+logs its count at Information; a job that fails logs an Error and is retried on the next run while the others still run.
+
+| Job | What it does | Setting (`Maintenance` section) |
+|---|---|---|
+| `sent-email-bodies` | Drops the HTML and text bodies of mail sent more than 30 days ago; the row (status, dates, recipient) stays. Failed mail keeps its body (it can be resent). | `SentEmailBodyRetentionDays` = 30 |
+| `expired-auth-records` | Deletes sessions and one-time tokens 30 days after they expired; sessions also 30 days after they were revoked. | `ExpiredAuthRecordRetentionDays` = 30 |
+
+Also: `Enabled` (true), `IntervalMinutes` (60), `StartDelaySeconds` (60), `BatchSize` (1000). Invalid values stop the
+Worker at start. Override any of them in `luma.env`, e.g. `Maintenance__IntervalMinutes=30`.
+
 ## Build the images
 
 From the backend checkout (the `Dockerfile` at its root):

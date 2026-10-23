@@ -143,6 +143,10 @@ public sealed class EmailOutboxWorker(
                 message.ToEmail,
                 message.CorrelationKey);
 
+            // Only sent mail ever loses its bodies (maintenance), and sent mail is never claimed again.
+            if (message.HtmlBody is null || message.PlainTextBody is null)
+                throw new InvalidOperationException($"Email outbox message {message.Id} has no body to send.");
+
             await emailSender.SendAsync(
                 message.ToEmail,
                 message.Subject,

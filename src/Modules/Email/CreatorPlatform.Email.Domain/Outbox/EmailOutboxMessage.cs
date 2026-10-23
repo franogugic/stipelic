@@ -136,9 +136,13 @@ public sealed class EmailOutboxMessage
 
     public string Subject { get; private set; } = string.Empty;
 
-    public string HtmlBody { get; private set; } = string.Empty;
+    /// <summary>Null once the message has been sent and is past its retention: the maintenance job drops the bodies of
+    /// old sent mail (a campaign stores one full body per recipient) and keeps the row. Never null on a message that can
+    /// still be sent: only <see cref="EmailOutboxMessageStatus.Sent"/> rows are purged, and those are never sent again.</summary>
+    public string? HtmlBody { get; private set; }
 
-    public string PlainTextBody { get; private set; } = string.Empty;
+    /// <inheritdoc cref="HtmlBody"/>
+    public string? PlainTextBody { get; private set; }
 
     /// <summary>Reply-To address for this message (e.g. a creator's SupportEmail) — null for transactional
     /// mail that doesn't need it (verification, order access).</summary>
