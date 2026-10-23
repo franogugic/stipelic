@@ -1459,6 +1459,67 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.ToTable("campaign_recipients", "marketing");
                 });
 
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactImport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("ConsentAttestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConsentVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DuplicateCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExistingCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("ImportedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("InvalidCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UnsubscribedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("CreatorId", "CreatedAt");
+
+                    b.ToTable("contact_imports", "marketing");
+                });
+
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactSummary", b =>
                 {
                     b.Property<int>("Id")
@@ -1478,6 +1539,12 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("FirstCapturedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("ImportId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("LastCapturedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1486,6 +1553,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer[]");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ImportId");
 
                     b.HasIndex("SourceLandingPageIds");
 
@@ -2243,6 +2312,15 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactImport", b =>
+                {
+                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactSummary", b =>
                 {
                     b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
@@ -2250,6 +2328,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Contacts.ContactImport", null)
+                        .WithMany()
+                        .HasForeignKey("ImportId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Templates.EmailTemplate", b =>

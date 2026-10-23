@@ -46,6 +46,7 @@ public static class RateLimitPolicies
     public const string CampaignInsights = "CampaignInsights";
     public const string ExportOrders = "ExportOrders";
     public const string ExportContacts = "ExportContacts";
+    public const string ImportContacts = "ImportContacts";
     public const string DeleteContact = "DeleteContact";
     public const string MutateTemplate = "MutateTemplate";
     public const string RequestMediaUpload = "RequestMediaUpload";
@@ -92,6 +93,8 @@ public static class RateLimitPolicies
         new(CampaignInsights, 60, OneMinute),
         new(ExportOrders, 10, TenMinutes),
         new(ExportContacts, 10, TenMinutes),
+        // A dry run and the real import are two requests: up to five imports an hour.
+        new(ImportContacts, 10, OneHour),
         new(DeleteContact, 60, TenMinutes),
         new(MutateTemplate, 30, TenMinutes),
         new(RequestMediaUpload, 20, TenMinutes),

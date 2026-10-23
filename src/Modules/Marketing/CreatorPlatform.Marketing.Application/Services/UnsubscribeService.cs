@@ -37,6 +37,9 @@ public sealed class UnsubscribeService : IUnsubscribeService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
+            // Shared with other unsubscribes, exclusive against a running contacts import (which must not import an
+            // email that is being unsubscribed, nor create a contact this unsubscribe fails to see).
+            await _unitOfWork.AcquireCreatorContactsLockAsync(creatorId, exclusive: false, ct);
             await _unitOfWork.AcquireContactLockAsync(creatorId, unsubscribe.Email, ct);
 
             var inserted = await _unsubscribeRepository.AddIfNotExistsAsync(unsubscribe, ct);

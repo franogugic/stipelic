@@ -297,6 +297,14 @@ public sealed class FakeMarketingUnitOfWork : IMarketingUnitOfWork
         return Task.CompletedTask;
     }
 
+    public List<(int CreatorId, bool Exclusive)> CreatorContactsLocks { get; } = [];
+
+    public Task AcquireCreatorContactsLockAsync(int creatorId, bool exclusive, CancellationToken ct)
+    {
+        CreatorContactsLocks.Add((creatorId, exclusive));
+        return Task.CompletedTask;
+    }
+
     public int SaveChangesCallCount { get; private set; }
     public bool TransactionCommitted { get; private set; }
     public int? LockedCreatorId { get; private set; }

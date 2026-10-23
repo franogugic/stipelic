@@ -23,7 +23,7 @@ public sealed class FakeContactsRepository : IContactsRepository
     }
 
     public Task<ContactStatsCountsRow> GetStatsCountsAsync(int creatorId, DateTimeOffset monthStart, CancellationToken ct)
-        => Task.FromResult(new ContactStatsCountsRow(0, 0, 0, 0));
+        => Task.FromResult(new ContactStatsCountsRow(0, 0, 0, 0, 0, 0));
 
     public Task<List<ContactGrowthRow>> GetGrowthAsync(
         int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, DateTimeOffset windowEnd, string timezone,

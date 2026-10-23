@@ -121,7 +121,8 @@ public sealed class ContactsService : IContactsService
         row.SourcesCount,
         row.Sources,
         row.IsUnsubscribed,
-        row.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList());
+        row.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList(),
+        row.ImportedAt);
 
     public async Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct)
     {
@@ -148,7 +149,9 @@ public sealed class ContactsService : IContactsService
             counts.Unsubscribed,
             growth.Select(g => new ContactGrowthPointDto(g.Month, g.Total)).ToList(),
             sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList(),
-            monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList());
+            monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList(),
+            counts.ImportedThisMonth,
+            counts.Imported);
     }
 
     public async Task DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)

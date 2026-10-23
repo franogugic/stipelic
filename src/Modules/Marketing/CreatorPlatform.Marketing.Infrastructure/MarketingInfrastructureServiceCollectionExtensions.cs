@@ -35,6 +35,9 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<IContactsService, ContactsService>();
         services.AddScoped<IUnsubscribePageService, UnsubscribePageService>();
         services.AddScoped<IUnsubscribeService, UnsubscribeService>();
+        services.AddSingleton<IContactCsvReader, ContactCsvReader>();
+        services.AddScoped<IContactImportRepository, ContactImportRepository>();
+        services.AddScoped<IContactImportService, ContactImportService>();
 
         return services;
     }

@@ -13,7 +13,8 @@ namespace CreatorPlatform.Marketing.Infrastructure.Repositories;
 /// per-row correlated subqueries.</summary>
 public sealed class ContactsRepository : IContactsRepository
 {
-    private sealed record SummaryRow(string Email, DateTimeOffset FirstCapturedAt, List<int> SourceLandingPageIds);
+    private sealed record SummaryRow(
+        string Email, DateTimeOffset FirstCapturedAt, List<int> SourceLandingPageIds, DateTimeOffset? ImportedAt);
 
     private readonly CreatorPlatformDbContext _context;
 
@@ -44,7 +45,8 @@ public sealed class ContactsRepository : IContactsRepository
             SELECT
                 "Email" AS "Email",
                 "FirstCapturedAt" AS "FirstCapturedAt",
-                "SourceLandingPageIds" AS "SourceLandingPageIds"
+                "SourceLandingPageIds" AS "SourceLandingPageIds",
+                "ImportedAt" AS "ImportedAt"
             FROM marketing.contact_summaries
             WHERE "CreatorId" = {creatorId}
               AND "Email" > {after}
@@ -102,7 +104,8 @@ public sealed class ContactsRepository : IContactsRepository
                     s.SourceLandingPageIds.Count,
                     string.Join(", ", titles),
                     unsubscribedEmails.Contains(s.Email),
-                    sourceList);
+                    sourceList,
+                    s.ImportedAt);
             })
             .ToList();
     }
@@ -120,7 +123,9 @@ public sealed class ContactsRepository : IContactsRepository
                 COUNT(*)::int AS "Total",
                 (COUNT(*) FILTER (WHERE u."Id" IS NULL))::int AS "Active",
                 (COUNT(*) FILTER (WHERE cs."FirstCapturedAt" >= {monthStart}))::int AS "NewThisMonth",
-                (COUNT(*) FILTER (WHERE u."Id" IS NOT NULL))::int AS "Unsubscribed"
+                (COUNT(*) FILTER (WHERE u."Id" IS NOT NULL))::int AS "Unsubscribed",
+                (COUNT(*) FILTER (WHERE cs."ImportId" IS NOT NULL AND cs."ImportedAt" >= {monthStart}))::int AS "ImportedThisMonth",
+                (COUNT(*) FILTER (WHERE cs."ImportId" IS NOT NULL))::int AS "Imported"
             FROM marketing.contact_summaries cs
             LEFT JOIN marketing.unsubscribes u
                 ON u."CreatorId" = {creatorId}

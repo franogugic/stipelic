@@ -1,16 +1,19 @@
 namespace CreatorPlatform.Marketing.Application.Interfaces;
 
+/// <param name="ImportedAt">When a CSV import created the contact; null for page sign-ups.</param>
 public sealed record ContactRow(
     string Email,
     DateTimeOffset FirstCapturedAt,
     int SourcesCount,
     string Sources,
     bool IsUnsubscribed,
-    List<ContactSourceRow> SourceList);
+    List<ContactSourceRow> SourceList,
+    DateTimeOffset? ImportedAt);
 
 public sealed record ContactSourceRow(Guid LandingPagePublicId, string Title);
 
-public sealed record ContactStatsCountsRow(int Total, int Active, int NewThisMonth, int Unsubscribed);
+public sealed record ContactStatsCountsRow(
+    int Total, int Active, int NewThisMonth, int Unsubscribed, int ImportedThisMonth, int Imported);
 
 /// <param name="Month">"yyyy-MM".</param>
 public sealed record ContactGrowthRow(string Month, int Total);

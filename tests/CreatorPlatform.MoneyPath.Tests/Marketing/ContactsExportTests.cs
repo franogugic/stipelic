@@ -31,7 +31,8 @@ public class ContactsExportTests
             2,
             "ignored legacy label",
             true,
-            [new ContactSourceDto(Guid.NewGuid(), "Spring Sale"), new ContactSourceDto(Guid.NewGuid(), "Guide, 2nd ed.")]);
+            [new ContactSourceDto(Guid.NewGuid(), "Spring Sale"), new ContactSourceDto(Guid.NewGuid(), "Guide, 2nd ed.")],
+            null);
 
         Assert.Equal(
             "lead@example.com,\"Spring Sale; Guide, 2nd ed.\",2026-07-01T08:30:00Z,unsubscribed",
@@ -39,10 +40,22 @@ public class ContactsExportTests
     }
 
     [Fact]
+    public void Row_AnImportedContact_HasImportAsItsFirstSource()
+    {
+        var importedAt = new DateTimeOffset(2026, 10, 23, 9, 0, 0, TimeSpan.Zero);
+        var contact = new ContactDto(
+            "imported@example.com", importedAt, 1, "", false, [new ContactSourceDto(Guid.NewGuid(), "Spring Sale")], importedAt);
+        var importOnly = contact with { SourcesCount = 0, SourceList = [] };
+
+        Assert.Equal("imported@example.com,Import; Spring Sale,2026-10-23T09:00:00Z,active", ContactsCsv.Row(contact));
+        Assert.Equal("imported@example.com,Import,2026-10-23T09:00:00Z,active", ContactsCsv.Row(importOnly));
+    }
+
+    [Fact]
     public void Row_ActiveContactWithAFormulaLikeTitle_IsGuarded()
     {
         var contact = new ContactDto(
-            "a@example.com", DateTimeOffset.UnixEpoch, 1, "", false, [new ContactSourceDto(Guid.NewGuid(), "=cmd|' /C calc'!A0")]);
+            "a@example.com", DateTimeOffset.UnixEpoch, 1, "", false, [new ContactSourceDto(Guid.NewGuid(), "=cmd|' /C calc'!A0")], null);
 
         Assert.Equal("a@example.com,'=cmd|' /C calc'!A0,1970-01-01T00:00:00Z,active", ContactsCsv.Row(contact));
     }
@@ -59,7 +72,7 @@ public class ContactsExportTests
     {
         var (service, _, repository) = BuildService();
         repository.Rows = Enumerable.Range(0, 1203)
-            .Select(i => new ContactRow($"c{i:D5}@example.com", DateTimeOffset.UnixEpoch, 1, "", false, []))
+            .Select(i => new ContactRow($"c{i:D5}@example.com", DateTimeOffset.UnixEpoch, 1, "", false, [], null))
             .Reverse()
             .ToList();
 

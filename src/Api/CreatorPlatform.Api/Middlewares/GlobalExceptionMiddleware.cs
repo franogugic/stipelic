@@ -27,7 +27,7 @@ public sealed class GlobalExceptionMiddleware
         {
             var statusCode = StatusCodes.Status400BadRequest;
             _logger.LogWarning(e, "Bad request: {Message}", e.Message);
-            await HandleExceptionAsync(context, statusCode, e.Message, "BAD_REQUEST");
+            await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
         }
         catch (UnauthorizedException e)
         {

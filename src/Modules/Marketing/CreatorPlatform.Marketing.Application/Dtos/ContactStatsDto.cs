@@ -12,6 +12,10 @@ namespace CreatorPlatform.Marketing.Application.Dtos;
 /// last.</param>
 /// <param name="Sources">Every landing page (archived included) with at least one contact, most contacts
 /// first.</param>
+/// <param name="ImportedThisMonth">Contacts a CSV import created since the start of the current month (creator timezone);
+/// they are part of <paramref name="NewThisMonth"/> too.</param>
+/// <param name="Imported">Contacts a CSV import created, all time — the "Imported" source next to
+/// <paramref name="Sources"/>.</param>
 public sealed record ContactStatsDto(
     int Total,
     int Active,
@@ -19,7 +23,9 @@ public sealed record ContactStatsDto(
     int Unsubscribed,
     List<ContactGrowthPointDto> Growth,
     List<ContactSourceCountDto> Sources,
-    List<ContactMonthDto> Monthly);
+    List<ContactMonthDto> Monthly,
+    int ImportedThisMonth,
+    int Imported);
 
 /// <param name="Month">"yyyy-MM" in the creator's timezone; the last 12 months, oldest first, current month last.</param>
 /// <param name="Joined">Contacts first captured in the month (deleted contacts are no longer counted).</param>

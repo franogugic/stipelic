@@ -39,7 +39,7 @@ public class ContactsServiceTests
     }
 
     private static ContactRow BuildRow(string email) =>
-        new(email, DateTimeOffset.UtcNow, 1, "Landing Page", false, [new ContactSourceRow(Guid.NewGuid(), "Landing Page")]);
+        new(email, DateTimeOffset.UtcNow, 1, "Landing Page", false, [new ContactSourceRow(Guid.NewGuid(), "Landing Page")], null);
 
     [Fact]
     public async Task SearchAsync_UnknownCreator_ThrowsNotFound()
