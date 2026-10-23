@@ -17,16 +17,13 @@ public sealed class OrderService : IOrderService
 
     private readonly IOrderRepository _orderRepository;
     private readonly IHomeSummaryCache _homeSummaryCache;
-    private readonly IDashboardTrendsCache _dashboardTrendsCache;
 
     public OrderService(
         IOrderRepository orderRepository,
-        IHomeSummaryCache homeSummaryCache,
-        IDashboardTrendsCache dashboardTrendsCache)
+        IHomeSummaryCache homeSummaryCache)
     {
         _orderRepository = orderRepository;
         _homeSummaryCache = homeSummaryCache;
-        _dashboardTrendsCache = dashboardTrendsCache;
     }
 
     public async Task<OrdersPageDto> ListAsync(
@@ -155,63 +152,6 @@ public sealed class OrderService : IOrderService
             throw new BadRequestException($"Invalid status. Valid values: {string.Join(", ", Enum.GetNames<OrderStatus>())}.");
 
         return parsed;
-    }
-
-    private sealed record TrendRange(string Unit, int Buckets);
-
-    private static readonly IReadOnlyDictionary<string, TrendRange> TrendRanges = new Dictionary<string, TrendRange>
-    {
-        ["30d"] = new("day", 30),
-        ["6m"] = new("month", 6),
-        ["12m"] = new("month", 12),
-    };
-
-    public async Task<DashboardTrendsDto> GetDashboardTrendsAsync(
-        string creatorSlug, int ownerUserId, string? range, CancellationToken ct)
-    {
-        var rangeKey = string.IsNullOrWhiteSpace(range) ? "30d" : range.Trim().ToLowerInvariant();
-        if (!TrendRanges.TryGetValue(rangeKey, out var trendRange))
-            throw new BadRequestException("Invalid range. Valid values: 30d, 6m, 12m.");
-
-        // Ownership first, cache second: the cache is keyed by the internal creator id and is never consulted for a
-        // caller who doesn't own the workspace.
-        var creatorId = await _orderRepository.GetCreatorIdForOwnerAsync(creatorSlug, ownerUserId, ct)
-            ?? throw new NotFoundException("Creator workspace not found.");
-
-        if (await _dashboardTrendsCache.GetAsync(creatorId, rangeKey, ct) is { } cached)
-            return cached;
-
-        // Days and months are the creator's own (creator timezone); the bounds are the instants they start.
-        var timezone = await _orderRepository.GetCreatorTimezoneAsync(creatorId, ct);
-        var local = CreatorTimeZone.LocalNow(DateTimeOffset.UtcNow, timezone);
-        DateTime lastLocal, firstLocal;
-        if (trendRange.Unit == "day")
-        {
-            lastLocal = local.Date;
-            firstLocal = lastLocal.AddDays(-(trendRange.Buckets - 1));
-        }
-        else
-        {
-            lastLocal = new DateTime(local.Year, local.Month, 1);
-            firstLocal = lastLocal.AddMonths(-(trendRange.Buckets - 1));
-        }
-        var firstBucket = CreatorTimeZone.ToInstant(firstLocal, timezone);
-        var lastBucket = CreatorTimeZone.ToInstant(lastLocal, timezone);
-
-        // Sequential: both use the request's single DbContext.
-        var revenue = await _orderRepository.GetRevenueTrendAsync(creatorId, trendRange.Unit, firstBucket, lastBucket, timezone, ct);
-        var views = await _orderRepository.GetViewsTrendAsync(creatorId, trendRange.Unit, firstBucket, lastBucket, timezone, ct);
-        var viewsByBucket = views.ToDictionary(v => v.BucketStart, v => v.Value);
-
-        var result = new DashboardTrendsDto(
-            rangeKey,
-            trendRange.Unit,
-            revenue
-                .Select(r => new DashboardTrendPointDto(r.BucketStart, r.Value, viewsByBucket.GetValueOrDefault(r.BucketStart)))
-                .ToList());
-
-        await _dashboardTrendsCache.SetAsync(creatorId, rangeKey, result, ct);
-        return result;
     }
 
     public Task<OrderSummaryDto> GetSummaryAsync(string creatorSlug, int ownerUserId, CancellationToken ct)

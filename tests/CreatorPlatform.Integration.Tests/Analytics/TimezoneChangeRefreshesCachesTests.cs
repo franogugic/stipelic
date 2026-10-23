@@ -26,7 +26,6 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
     // One process-wide cache, as in production; services are per request.
     private readonly TestRedisClient _redis;
     private readonly HomeSummaryCache _homeSummaryCache;
-    private readonly DashboardTrendsCache _trendsCache;
 
     public TimezoneChangeRefreshesCachesTests(PostgresFixture fixture, RedisFixture redis)
     {
@@ -34,20 +33,18 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
         _data = new TestData(fixture);
         _redis = RedisFixture.CreateClient(redis.CreateOptions());
         _homeSummaryCache = new HomeSummaryCache(_redis.JsonCache);
-        _trendsCache = new DashboardTrendsCache(_redis.JsonCache);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync() => await _redis.DisposeAsync();
 
-    private async Task<(int ThisMonth, long TrendThisMonth)> ReadAsync(TestData.SeededCreator creator)
+    private async Task<int> ReadAsync(TestData.SeededCreator creator)
     {
         await using var db = _fixture.CreateDbContext();
-        var orders = new OrderService(new OrderRepository(db), _homeSummaryCache, _trendsCache);
+        var orders = new OrderService(new OrderRepository(db), _homeSummaryCache);
         var summary = await orders.GetHomeSummaryAsync(creator.Slug, creator.OwnerUserId, CancellationToken.None);
-        var trends = await orders.GetDashboardTrendsAsync(creator.Slug, creator.OwnerUserId, "6m", CancellationToken.None);
-        return (summary.ThisMonthRevenueCents, trends.Points[^1].RevenueCents);
+        return summary.ThisMonthRevenueCents;
     }
 
     private async Task SaveTimezoneAsync(TestData.SeededCreator creator, string timezone, ICreatorCacheInvalidator invalidator)
@@ -78,7 +75,7 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ANewTimezone_RebuildsTheHomeSummaryAndTheTrendsInIt()
+    public async Task ANewTimezone_RebuildsTheHomeSummaryInIt()
     {
         var creator = await _data.CreateCreatorAsync();
         await SeedSettingsAsync(creator.CreatorId, "UTC");
@@ -88,12 +85,12 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
         var zagrebMonthStart = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(new DateTime(local.Year, local.Month, 1), zone), TimeSpan.Zero);
         await AddPaidOrderAsync(creator.CreatorId, 1500, zagrebMonthStart);
 
-        Assert.Equal((0, 0L), await ReadAsync(creator)); // cached in UTC
+        Assert.Equal(0, await ReadAsync(creator)); // cached in UTC
 
         var invalidator = new CreatorCacheInvalidator(_redis.JsonCache);
         await SaveTimezoneAsync(creator, Zagreb, invalidator);
 
-        Assert.Equal((1500, 1500L), await ReadAsync(creator));
+        Assert.Equal(1500, await ReadAsync(creator));
     }
 
     [Fact]

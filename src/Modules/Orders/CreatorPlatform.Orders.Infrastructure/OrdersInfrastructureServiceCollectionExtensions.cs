@@ -12,7 +12,6 @@ public static class OrdersInfrastructureServiceCollectionExtensions
     public static IServiceCollection AddOrdersInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<IHomeSummaryCache, HomeSummaryCache>();
-        services.AddSingleton<IDashboardTrendsCache, DashboardTrendsCache>();
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IOrderReceiptReader, OrderReceiptReader>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();

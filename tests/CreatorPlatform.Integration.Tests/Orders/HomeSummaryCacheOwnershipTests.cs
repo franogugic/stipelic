@@ -18,7 +18,6 @@ public sealed class HomeSummaryCacheOwnershipTests : IAsyncLifetime
     // One process-wide cache, as in production (a singleton over the shared Redis); services are per request.
     private readonly TestRedisClient _redis;
     private readonly HomeSummaryCache _cache;
-    private readonly DashboardTrendsCache _trendsCache;
 
     public HomeSummaryCacheOwnershipTests(PostgresFixture fixture, RedisFixture redis)
     {
@@ -26,7 +25,6 @@ public sealed class HomeSummaryCacheOwnershipTests : IAsyncLifetime
         _data = new TestData(fixture);
         _redis = RedisFixture.CreateClient(redis.CreateOptions());
         _cache = new HomeSummaryCache(_redis.JsonCache);
-        _trendsCache = new DashboardTrendsCache(_redis.JsonCache);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -39,14 +37,14 @@ public sealed class HomeSummaryCacheOwnershipTests : IAsyncLifetime
     private async Task<HomeSummaryDto> GetAsync(string slug, int userId)
     {
         await using var db = _fixture.CreateDbContext();
-        var service = new OrderService(new OrderRepository(db), _cache, _trendsCache);
+        var service = new OrderService(new OrderRepository(db), _cache);
         return await service.GetHomeSummaryAsync(slug, userId, CancellationToken.None);
     }
 
     private async Task InvalidateAsync(string slug, int userId)
     {
         await using var db = _fixture.CreateDbContext();
-        var service = new OrderService(new OrderRepository(db), _cache, _trendsCache);
+        var service = new OrderService(new OrderRepository(db), _cache);
         await service.InvalidateHomeSummaryAsync(slug, userId);
     }
 

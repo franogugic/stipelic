@@ -4,9 +4,6 @@ using CreatorPlatform.Shared.Application.Analytics;
 
 namespace CreatorPlatform.Orders.Application.Interfaces;
 
-/// <param name="BucketStart">"yyyy-MM-dd" (UTC).</param>
-public sealed record TrendBucketRow(string BucketStart, long Value);
-
 public sealed record OrderPeriodContext(int CreatorId, string Timezone, string Currency, DateTimeOffset CreatedAt);
 
 public sealed record OrderPeriodTotalsRow(
@@ -64,16 +61,6 @@ public interface IOrderRepository
 
     /// <summary>The creator's analytics timezone, resolved (an IANA name, UTC when unset or unknown).</summary>
     Task<string> GetCreatorTimezoneAsync(int creatorId, CancellationToken ct);
-
-    /// <summary>Paid revenue per bucket, one row per bucket from <paramref name="firstBucket"/> to
-    /// <paramref name="lastBucket"/> (UTC bucket starts; <paramref name="unit"/> is "day" or "month"), 0 when empty.</summary>
-    Task<List<TrendBucketRow>> GetRevenueTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct);
-
-    /// <summary>Page views on the creator's landing pages per bucket, same shape as
-    /// <see cref="GetRevenueTrendAsync"/>.</summary>
-    Task<List<TrendBucketRow>> GetViewsTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct);
 
     /// <summary>True when the slug is an active (not Disabled) workspace owned by the user.</summary>
     Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct);

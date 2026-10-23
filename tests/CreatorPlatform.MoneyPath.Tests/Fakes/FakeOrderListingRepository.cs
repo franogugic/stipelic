@@ -96,11 +96,7 @@ public sealed class FakeOrderListingRepository : IOrderRepository
     public Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult<int?>(null);
 
-    public Task<List<TrendBucketRow>> GetRevenueTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-        => Task.FromResult(new List<TrendBucketRow>());
 
-    public Task<List<TrendBucketRow>> GetViewsTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-        => Task.FromResult(new List<TrendBucketRow>());
 
     public Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(CreatorExists);
@@ -135,16 +131,6 @@ public sealed class FakeOrderListingHomeSummaryCache : IHomeSummaryCache
     public ValueTask<HomeSummaryDto?> GetAsync(int creatorId, CancellationToken ct) => ValueTask.FromResult<HomeSummaryDto?>(null);
 
     public Task SetAsync(int creatorId, HomeSummaryDto value, CancellationToken ct) => Task.CompletedTask;
-
-    public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
-}
-
-public sealed class FakeDashboardTrendsCache : IDashboardTrendsCache
-{
-    public ValueTask<DashboardTrendsDto?> GetAsync(int creatorId, string range, CancellationToken ct) =>
-        ValueTask.FromResult<DashboardTrendsDto?>(null);
-
-    public Task SetAsync(int creatorId, string range, DashboardTrendsDto value, CancellationToken ct) => Task.CompletedTask;
 
     public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
 }

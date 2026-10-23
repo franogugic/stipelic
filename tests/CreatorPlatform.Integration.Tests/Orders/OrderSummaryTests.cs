@@ -237,17 +237,10 @@ public sealed class OrderSummaryTests
         public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
     }
 
-    private sealed class NoTrendsCache : IDashboardTrendsCache
-    {
-        public ValueTask<DashboardTrendsDto?> GetAsync(int creatorId, string range, CancellationToken ct) => ValueTask.FromResult<DashboardTrendsDto?>(null);
-        public Task SetAsync(int creatorId, string range, DashboardTrendsDto value, CancellationToken ct) => Task.CompletedTask;
-        public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
-    }
-
     private async Task<T> WithServiceAsync<T>(Func<CreatorPlatform.Orders.Application.Services.OrderService, Task<T>> call)
     {
         await using var db = _fixture.CreateDbContext();
-        return await call(new CreatorPlatform.Orders.Application.Services.OrderService(new OrderRepository(db), new NoHomeSummaryCache(), new NoTrendsCache()));
+        return await call(new CreatorPlatform.Orders.Application.Services.OrderService(new OrderRepository(db), new NoHomeSummaryCache()));
     }
 
     private async Task<Guid> ProductPublicIdAsync(int productId)

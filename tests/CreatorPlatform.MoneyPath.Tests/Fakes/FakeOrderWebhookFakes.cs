@@ -41,11 +41,7 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
     public Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult<int?>(null);
 
-    public Task<List<TrendBucketRow>> GetRevenueTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-        => Task.FromResult(new List<TrendBucketRow>());
 
-    public Task<List<TrendBucketRow>> GetViewsTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-        => Task.FromResult(new List<TrendBucketRow>());
 
     public Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(true);
