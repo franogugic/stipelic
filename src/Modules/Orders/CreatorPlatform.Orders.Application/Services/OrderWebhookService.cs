@@ -134,7 +134,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            var order = await _orderRepository.GetByStripePaymentIntentIdAsync(data.PaymentIntentId, ct);
+            var order = await _orderRepository.GetByStripePaymentIntentIdForUpdateAsync(data.PaymentIntentId, ct);
             if (order is null)
             {
                 _logger.LogInformation(
@@ -151,17 +151,30 @@ public sealed class OrderWebhookService : IOrderWebhookService
                 return;
             }
 
+            var refundedTo = RefundedToOrderCents(order, data);
             var refundedAt = DateTimeOffset.UtcNow;
-            order.MarkRefunded(refundedAt);
-            await _accessGrants.RevokeForOrderAsync(order.Id, refundedAt, ct);
+            if (!order.ApplyRefund(refundedTo, refundedAt))
+            {
+                _logger.LogInformation(
+                    "charge.refunded adds nothing to the order's refunds (replayed or out of order), ignoring. OrderId: {OrderId}, Status: {Status}, RefundedCents: {RefundedCents}, EventRefundedTo: {EventRefundedTo}",
+                    order.PublicId, order.Status, order.RefundedCents, refundedTo);
+                return;
+            }
 
-            // Partial refunds are not modeled (same limitation as MarkRefunded) — a refund always reverses
-            // the full sale + fee for a BankTransfer order.
+            // Only a full refund takes the buyer's link away; a partly refunded buyer keeps the file.
+            if (order.Status == OrderStatus.Refunded)
+                await _accessGrants.RevokeForOrderAsync(order.Id, refundedAt, ct);
+
             if (order.PayoutMode == nameof(PayoutMode.BankTransfer))
             {
                 await _payoutLedgerService.AppendRefundAsync(
-                    order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.Currency, refundedAt, ct);
+                    order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.RefundedCents, order.Currency,
+                    refundedAt, ct);
             }
+
+            _logger.LogInformation(
+                "Order refund applied. OrderId: {OrderId}, Status: {Status}, RefundedCents: {RefundedCents} of {AmountCents}",
+                order.PublicId, order.Status, order.RefundedCents, order.AmountCents);
 
             await _unitOfWork.SaveChangesAsync(ct);
 
@@ -170,6 +183,22 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
         // Refund lowers revenue on the creator's home summary — invalidate so it isn't stale.
         await InvalidateHomeSummaryAsync(affectedCreatorId);
+    }
+
+    /// <summary>The charge's cumulative refund in the order's currency. The charge may be in the buyer's currency
+    /// (Adaptive Pricing), so a partial refund is taken as its share of the charge and applied to the order amount;
+    /// it stays between 1 cent and one cent under the full amount, so only a full refund marks the order Refunded.</summary>
+    private static int RefundedToOrderCents(Order order, OrderChargeRefundedDto data)
+    {
+        if (data.FullyRefunded || data.ChargeAmountRefundedCents >= data.ChargeAmountCents || order.AmountCents <= 1)
+            return order.AmountCents;
+
+        if (data.ChargeAmountCents <= 0 || data.ChargeAmountRefundedCents <= 0)
+            throw new InvalidOperationException(
+                $"charge.refunded for order {order.PublicId} carries no usable amounts (amount {data.ChargeAmountCents}, refunded {data.ChargeAmountRefundedCents}).");
+
+        var share = (decimal)order.AmountCents * data.ChargeAmountRefundedCents / data.ChargeAmountCents;
+        return (int)Math.Clamp(Math.Round(share, MidpointRounding.AwayFromZero), 1, order.AmountCents - 1);
     }
 
     // CancellationToken.None: the change is already committed, so an aborted request must not leave a stale summary.

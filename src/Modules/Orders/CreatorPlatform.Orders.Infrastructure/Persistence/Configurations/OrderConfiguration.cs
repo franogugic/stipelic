@@ -71,6 +71,9 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(o => o.StripePaymentIntentId)
             .HasMaxLength(255);
 
+        builder.Property(o => o.RefundedCents)
+            .IsRequired();
+
         builder.Property(o => o.CreatedAt)
             .IsRequired();
 
@@ -96,6 +99,8 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.ToTable(t => t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0"));
         builder.ToTable(t => t.HasCheckConstraint("CK_orders_PlatformFeeCents_NonNegative", "\"PlatformFeeCents\" >= 0"));
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_orders_RefundedCents_WithinAmount", "\"RefundedCents\" >= 0 AND \"RefundedCents\" <= \"AmountCents\""));
 
         builder.HasOne<Creator>()
             .WithMany()

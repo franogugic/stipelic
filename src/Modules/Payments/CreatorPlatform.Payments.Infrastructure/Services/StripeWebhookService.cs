@@ -202,7 +202,10 @@ public sealed class StripeWebhookService : IStripeWebhookService
             ChargeRefunded = new ChargeRefundedData
             {
                 PaymentIntentId = charge.PaymentIntentId ?? string.Empty,
-                ChargeId = charge.Id
+                ChargeId = charge.Id,
+                AmountCents = charge.Amount,
+                AmountRefundedCents = charge.AmountRefunded,
+                FullyRefunded = charge.Refunded
             }
         };
     }

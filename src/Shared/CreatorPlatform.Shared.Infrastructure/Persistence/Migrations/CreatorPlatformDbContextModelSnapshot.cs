@@ -1772,6 +1772,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("RefundedCents")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1816,6 +1819,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0");
 
                             t.HasCheckConstraint("CK_orders_PlatformFeeCents_NonNegative", "\"PlatformFeeCents\" >= 0");
+
+                            t.HasCheckConstraint("CK_orders_RefundedCents_WithinAmount", "\"RefundedCents\" >= 0 AND \"RefundedCents\" <= \"AmountCents\"");
                         });
                 });
 
@@ -1899,6 +1904,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("RefundedToCents")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -1911,17 +1919,21 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatorId", "CreatedAt");
 
-                    b.HasIndex("OrderId", "Type")
-                        .IsUnique()
-                        .HasFilter("\"OrderId\" IS NOT NULL");
-
                     b.HasIndex("PayoutId", "Type")
                         .IsUnique()
                         .HasFilter("\"PayoutId\" IS NOT NULL");
 
+                    b.HasIndex("OrderId", "Type", "RefundedToCents")
+                        .IsUnique()
+                        .HasFilter("\"OrderId\" IS NOT NULL");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("OrderId", "Type", "RefundedToCents"), false);
+
                     b.ToTable("ledger_entries", "payouts", t =>
                         {
                             t.HasCheckConstraint("CK_ledger_entries_AmountCents_NotZero", "\"AmountCents\" <> 0");
+
+                            t.HasCheckConstraint("CK_ledger_entries_RefundedToCents_OnRefundsOnly", "(\"Type\" IN ('RefundDebit', 'FeeRefundCredit')) = (\"RefundedToCents\" IS NOT NULL)");
                         });
                 });
 

@@ -99,10 +99,27 @@ public sealed class Order
         UpdatedAt = updatedAt;
     }
 
-    public void MarkRefunded(DateTimeOffset updatedAt)
+    /// <summary>Applies Stripe's cumulative refunded amount, converted to the order's currency. Below
+    /// <see cref="AmountCents"/> the order stays Paid ("partly refunded") and the buyer keeps access; at the full amount
+    /// it becomes Refunded. Returns false, changing nothing, when the amount is not above what is already applied
+    /// (a replayed or out-of-order event) or the order is not Paid.</summary>
+    public bool ApplyRefund(int refundedToCents, DateTimeOffset refundedAt)
     {
-        Status = OrderStatus.Refunded;
-        UpdatedAt = updatedAt;
+        if (Status != OrderStatus.Paid || refundedToCents <= RefundedCents)
+            return false;
+
+        if (refundedToCents >= AmountCents)
+        {
+            RefundedCents = AmountCents;
+            Status = OrderStatus.Refunded;
+        }
+        else
+        {
+            RefundedCents = refundedToCents;
+        }
+
+        UpdatedAt = refundedAt;
+        return true;
     }
 
     public int Id { get; private set; }
@@ -140,6 +157,12 @@ public sealed class Order
     public string StripeCheckoutSessionId { get; private set; } = string.Empty;
 
     public string? StripePaymentIntentId { get; private set; }
+
+    /// <summary>How much of <see cref="AmountCents"/> has been refunded, in the order's currency. Equal to it once
+    /// Refunded; between 0 and it on a Paid order that was partly refunded.</summary>
+    public int RefundedCents { get; private set; }
+
+    public bool IsPartlyRefunded => Status == OrderStatus.Paid && RefundedCents > 0;
 
     public DateTimeOffset CreatedAt { get; private set; }
 

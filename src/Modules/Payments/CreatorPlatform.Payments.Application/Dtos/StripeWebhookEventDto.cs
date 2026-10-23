@@ -70,6 +70,17 @@ public sealed class ChargeRefundedData
 {
     public required string PaymentIntentId { get; init; }
     public required string ChargeId { get; init; }
+
+    /// <summary><c>charge.amount</c>, in the charge's own (presentment) currency — with Adaptive Pricing that is the
+    /// buyer's currency, not the order's.</summary>
+    public long AmountCents { get; init; }
+
+    /// <summary><c>charge.amount_refunded</c>: cumulative over every refund of the charge, same currency as
+    /// <see cref="AmountCents"/>.</summary>
+    public long AmountRefundedCents { get; init; }
+
+    /// <summary><c>charge.refunded</c>: true once the charge is fully refunded.</summary>
+    public bool FullyRefunded { get; init; }
 }
 
 public static class StripeEventTypes

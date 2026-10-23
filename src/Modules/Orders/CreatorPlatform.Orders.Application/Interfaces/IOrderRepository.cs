@@ -42,6 +42,10 @@ public interface IOrderRepository
 
     Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct);
 
+    /// <summary>Same, with the row locked (<c>FOR UPDATE</c>) for the caller's transaction — serializes concurrent
+    /// refund events for one order.</summary>
+    Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct);
+
     Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,

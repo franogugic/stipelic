@@ -38,6 +38,9 @@ public sealed class FakeOrderListingRepository : IOrderRepository
     public Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
         => Task.FromResult<Order?>(null);
 
+    public Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct)
+        => Task.FromResult<Order?>(null);
+
     public OrderListFilter? LastFilter { get; private set; }
 
     public Task<List<OrderDto>> GetByCreatorSlugAsync(

@@ -197,7 +197,10 @@ public sealed class StripeWebhooksController : ControllerBase
                     .HandleChargeRefundedAsync(
                         new OrderChargeRefundedDto(
                             webhookEvent.ChargeRefunded.PaymentIntentId,
-                            webhookEvent.ChargeRefunded.ChargeId),
+                            webhookEvent.ChargeRefunded.ChargeId,
+                            webhookEvent.ChargeRefunded.AmountCents,
+                            webhookEvent.ChargeRefunded.AmountRefundedCents,
+                            webhookEvent.ChargeRefunded.FullyRefunded),
                         ct);
                 break;
 

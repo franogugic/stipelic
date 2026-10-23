@@ -20,4 +20,7 @@ public sealed record OrderDto(
     // Refunded, CreatedAt when Pending or Failed.
     DateTimeOffset CountedAt = default,
     // R6.5: the refund time of a Refunded order (its UpdatedAt), else null.
-    DateTimeOffset? RefundedAt = null);
+    DateTimeOffset? RefundedAt = null,
+    // B3: how much was refunded (order currency). The whole amount when Refunded; above 0 on a Paid order means
+    // "partly refunded" — the buyer keeps access.
+    int RefundedCents = 0);

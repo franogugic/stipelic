@@ -4,7 +4,11 @@ namespace CreatorPlatform.Orders.Application.Interfaces;
 /// <param name="CustomerName">Stripe's <c>customer_details.name</c>.</param>
 public sealed record OrderCheckoutCompletedDto(string SessionId, string? PaymentIntentId, string? CustomerEmail = null, string? CustomerName = null);
 
-public sealed record OrderChargeRefundedDto(string PaymentIntentId, string ChargeId);
+/// <param name="ChargeAmountCents">The charge's amount in its own currency (Adaptive Pricing may make it the buyer's).</param>
+/// <param name="ChargeAmountRefundedCents">Cumulative refunded amount of the charge, same currency.</param>
+/// <param name="FullyRefunded">Stripe's <c>charge.refunded</c> flag.</param>
+public sealed record OrderChargeRefundedDto(
+    string PaymentIntentId, string ChargeId, long ChargeAmountCents, long ChargeAmountRefundedCents, bool FullyRefunded);
 
 public interface IOrderWebhookService
 {

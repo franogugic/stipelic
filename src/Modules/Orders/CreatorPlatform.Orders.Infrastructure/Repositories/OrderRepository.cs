@@ -57,6 +57,19 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(o => o.StripePaymentIntentId == stripePaymentIntentId, ct);
     }
 
+    public async Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Order>()
+            .FromSqlInterpolated($"""
+                SELECT * FROM orders.orders
+                WHERE "StripePaymentIntentId" = {stripePaymentIntentId}
+                LIMIT 1
+                FOR UPDATE
+                """)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,
@@ -111,7 +124,8 @@ public sealed class OrderRepository : IOrderRepository
                 x.DownloadCount ?? 0,
                 x.LastDownloadedAt,
                 x.CountedAt,
-                x.o.Status == OrderStatus.Refunded ? x.o.UpdatedAt : null))
+                x.o.Status == OrderStatus.Refunded ? x.o.UpdatedAt : null,
+                x.o.RefundedCents))
             .ToListAsync(ct);
     }
 
@@ -576,7 +590,9 @@ public sealed class OrderRepository : IOrderRepository
                 null,
                 0,
                 null,
-                o.PaidAt ?? o.CreatedAt)
+                o.PaidAt ?? o.CreatedAt,
+                null,
+                o.RefundedCents)
         ).Take(5).ToListAsync(ct);
 
         // Top product by paid revenue (all-time).

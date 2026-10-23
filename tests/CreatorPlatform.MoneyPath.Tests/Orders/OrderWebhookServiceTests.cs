@@ -64,6 +64,12 @@ public class OrderWebhookServiceTests
         return (service, orderRepository, ledgerRepository, grants, emailOutbox);
     }
 
+    /// <summary>charge.refunded for the default 1000-cent order, charged in the order's own currency.</summary>
+    private static OrderChargeRefundedDto FullRefund() => new("pi_1", "ch_1", 1000, 1000, FullyRefunded: true);
+
+    private static OrderChargeRefundedDto PartialRefund(long refunded, long chargeAmount = 1000) =>
+        new("pi_1", "ch_1", chargeAmount, refunded, FullyRefunded: false);
+
     [Fact]
     public async Task HandleCheckoutSessionCompleted_BankTransfer_BooksTwoEntries()
     {
@@ -119,7 +125,7 @@ public class OrderWebhookServiceTests
         order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
         var (service, orderRepository, ledgerRepository) = BuildService(order);
 
-        await service.HandleChargeRefundedAsync(new OrderChargeRefundedDto("pi_1", "ch_1"), CancellationToken.None);
+        await service.HandleChargeRefundedAsync(FullRefund(), CancellationToken.None);
 
         Assert.Equal(OrderStatus.Refunded, orderRepository.Order!.Status);
         Assert.Equal(2, ledgerRepository.Entries.Count);
@@ -133,7 +139,7 @@ public class OrderWebhookServiceTests
         var order = BuildOrder(PayoutMode.BankTransfer);
         order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
         var (service, _, ledgerRepository) = BuildService(order);
-        var data = new OrderChargeRefundedDto("pi_1", "ch_1");
+        var data = FullRefund();
 
         await service.HandleChargeRefundedAsync(data, CancellationToken.None);
         await service.HandleChargeRefundedAsync(data, CancellationToken.None);
@@ -168,7 +174,7 @@ public class OrderWebhookServiceTests
         var (service, _, _, grants, _) = BuildServiceWithDelivery(order);
         await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
 
-        var refund = new OrderChargeRefundedDto("pi_1", "ch_1");
+        var refund = FullRefund();
         await service.HandleChargeRefundedAsync(refund, CancellationToken.None);
         var revokedAt = Assert.Single(grants.ByOrderId).Value.RevokedAt;
         await service.HandleChargeRefundedAsync(refund, CancellationToken.None);
@@ -176,5 +182,97 @@ public class OrderWebhookServiceTests
         Assert.NotNull(revokedAt);
         Assert.Equal(revokedAt, grants.ByOrderId.Single().Value.RevokedAt);
         Assert.Equal(1, grants.RevokeCallCount);
+    }
+
+    // ---- B3: partial refunds --------------------------------------------------------------------------------------
+
+    private static async Task<(OrderWebhookService Service, Order Order, FakeLedgerEntryRepository Ledger, FakeOrderAccessGrants Grants)>
+        PaidAsync(PayoutMode payoutMode, int amountCents = 1000, int platformFeeCents = 50)
+    {
+        var order = BuildOrder(payoutMode, amountCents, platformFeeCents);
+        var (service, _, ledger, grants, _) = BuildServiceWithDelivery(order);
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
+        return (service, order, ledger, grants);
+    }
+
+    [Fact]
+    public async Task APartialRefund_KeepsTheOrderPaid_AndTheBuyersAccess_AndReversesOnlyItsShare()
+    {
+        var (service, order, ledger, grants) = await PaidAsync(PayoutMode.BankTransfer);
+
+        await service.HandleChargeRefundedAsync(PartialRefund(300), CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Paid, order.Status);
+        Assert.True(order.IsPartlyRefunded);
+        Assert.Equal(300, order.RefundedCents);
+        Assert.Null(Assert.Single(grants.ByOrderId).Value.RevokedAt);
+        Assert.Equal(0, grants.RevokeCallCount);
+        Assert.Equal(-300, Assert.Single(ledger.Entries, e => e.Type == LedgerEntryType.RefundDebit).AmountCents);
+        Assert.Equal(15, Assert.Single(ledger.Entries, e => e.Type == LedgerEntryType.FeeRefundCredit).AmountCents);
+        Assert.Equal(1000 - 50 - 300 + 15, ledger.Entries.Sum(e => e.AmountCents));
+    }
+
+    [Fact]
+    public async Task APartialRefundThenTheRest_RefundsTheOrder_RevokesTheLink_AndReversesTheWholeSale()
+    {
+        var (service, order, ledger, grants) = await PaidAsync(PayoutMode.BankTransfer);
+
+        await service.HandleChargeRefundedAsync(PartialRefund(300), CancellationToken.None);
+        await service.HandleChargeRefundedAsync(new OrderChargeRefundedDto("pi_1", "ch_1", 1000, 1000, FullyRefunded: true), CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Refunded, order.Status);
+        Assert.Equal(1000, order.RefundedCents);
+        Assert.NotNull(Assert.Single(grants.ByOrderId).Value.RevokedAt);
+        Assert.Equal(0, ledger.Entries.Sum(e => e.AmountCents));
+    }
+
+    [Fact]
+    public async Task AReplayedOrOutOfOrderPartialRefund_ChangesNothing()
+    {
+        var (service, order, ledger, _) = await PaidAsync(PayoutMode.BankTransfer);
+        await service.HandleChargeRefundedAsync(PartialRefund(600), CancellationToken.None);
+        var updatedAt = order.UpdatedAt;
+
+        await service.HandleChargeRefundedAsync(PartialRefund(600), CancellationToken.None);
+        await service.HandleChargeRefundedAsync(PartialRefund(300), CancellationToken.None);
+
+        Assert.Equal(600, order.RefundedCents);
+        Assert.Equal(updatedAt, order.UpdatedAt);
+        Assert.Equal(4, ledger.Entries.Count);
+    }
+
+    [Fact]
+    public async Task APartialRefundInTheBuyersCurrency_IsAppliedAsItsShareOfTheOrder()
+    {
+        // Adaptive Pricing: a 15.00 EUR order charged as 30.51 BAM; a third of the BAM charge is refunded.
+        var (service, order, ledger, _) = await PaidAsync(PayoutMode.BankTransfer, amountCents: 1500, platformFeeCents: 75);
+
+        await service.HandleChargeRefundedAsync(PartialRefund(refunded: 1017, chargeAmount: 3051), CancellationToken.None);
+
+        Assert.Equal(500, order.RefundedCents);
+        Assert.Equal(OrderStatus.Paid, order.Status);
+        Assert.Equal(-500, Assert.Single(ledger.Entries, e => e.Type == LedgerEntryType.RefundDebit).AmountCents);
+    }
+
+    [Fact]
+    public async Task APartialRefundRoundingToTheFullAmount_StillKeepsTheOrderPaid()
+    {
+        var (service, order, _, grants) = await PaidAsync(PayoutMode.StripeConnect);
+
+        await service.HandleChargeRefundedAsync(PartialRefund(refunded: 99_999, chargeAmount: 100_000), CancellationToken.None);
+
+        Assert.Equal((OrderStatus.Paid, 999), (order.Status, order.RefundedCents));
+        Assert.Equal(0, grants.RevokeCallCount);
+    }
+
+    [Fact]
+    public async Task APartialRefundOnAConnectOrder_BooksNoLedgerEntries()
+    {
+        var (service, order, ledger, _) = await PaidAsync(PayoutMode.StripeConnect);
+
+        await service.HandleChargeRefundedAsync(PartialRefund(400), CancellationToken.None);
+
+        Assert.Equal((OrderStatus.Paid, 400), (order.Status, order.RefundedCents));
+        Assert.Empty(ledger.Entries);
     }
 }

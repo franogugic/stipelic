@@ -26,6 +26,9 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
     public Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
         => Task.FromResult(Order);
 
+    public Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct)
+        => Task.FromResult(Order);
+
     public Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug, int ownerUserId, OrderListFilter filter, OrderListCursor? after, int limit, CancellationToken ct)
         => Task.FromResult(new List<OrderDto>());
