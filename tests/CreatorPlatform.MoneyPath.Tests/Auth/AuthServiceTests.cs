@@ -321,6 +321,42 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task VerifyEmailAsync_ALinkUsedAgain_Is400Used_WithoutTheName()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens, unitOfWork);
+        var user = CreateUser(userRepository);
+        AddVerificationToken(tokens, user, "valid-token", DateTimeOffset.UtcNow.AddHours(1));
+        await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "valid-token" }, CancellationToken.None);
+        var saves = unitOfWork.SaveChangesCallCount;
+
+        var rejected = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "valid-token" }, CancellationToken.None));
+
+        Assert.Equal(AuthService.VerificationLinkUsedCode, rejected.Code);
+        Assert.DoesNotContain(user.FirstName, rejected.Message);
+        Assert.Equal(saves, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_AnOldLinkAfterTheEmailWasVerified_IsUsedNotReplaced()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens);
+        var user = CreateUser(userRepository);
+        var first = AddVerificationToken(tokens, user, "first-token", DateTimeOffset.UtcNow.AddHours(1));
+        first.Invalidate(DateTimeOffset.UtcNow.AddMinutes(-10));
+        AddVerificationToken(tokens, user, "second-token", DateTimeOffset.UtcNow.AddHours(23));
+        await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "second-token" }, CancellationToken.None);
+
+        var rejected = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "first-token" }, CancellationToken.None));
+
+        Assert.Equal(AuthService.VerificationLinkUsedCode, rejected.Code);
+    }
+
+    [Fact]
     public async Task VerifyEmailAsync_UnknownToken_ThrowsBadRequest()
     {
         var (service, _, _, _, _, _) = BuildService();

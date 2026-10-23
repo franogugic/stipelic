@@ -21,6 +21,8 @@ public sealed class AuthService : IAuthService
     private const string EmailVerificationLinkReplacedMessage = "This verification link was replaced by a newer one. Use the latest email.";
     public const string VerificationLinkReplacedCode = "VERIFICATION_LINK_REPLACED";
     public const string VerificationLinkExpiredCode = "VERIFICATION_LINK_EXPIRED";
+    public const string VerificationLinkUsedCode = "VERIFICATION_LINK_USED";
+    private const string EmailVerificationLinkUsedMessage = "This verification link was already used. Log in to continue.";
     private const string LoggedOutSuccessfullyMessage = "Logged out successfully.";
     private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
     private const string InvalidLoginCredentialsMessage = "Invalid email or password.";
@@ -216,8 +218,10 @@ public sealed class AuthService : IAuthService
 
         var user = emailVerificationToken.User;
 
+        // The address is verified already (with this link or a later one): say so, and greet no one — whoever opens an
+        // old link learns nothing about the account.
         if (user.IsEmailVerified)
-            return CreateEmailVerifiedResponse(user);
+            throw new BadRequestException(EmailVerificationLinkUsedMessage, VerificationLinkUsedCode);
 
         // A real token, but no longer usable; the code says why, so the page can say what to do. Nothing is written.
         // For a user who is not verified yet, a used token can only have been invalidated by a resend — a real use
