@@ -3,6 +3,7 @@ using CreatorPlatform.Api.Middlewares;
 using CreatorPlatform.Api.Networking;
 using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
+using CreatorPlatform.Api.Security;
 using CreatorPlatform.Auth.Application.Options;
 using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Creators.Infrastructure;
@@ -31,21 +32,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Frontend", policy =>
-    {
-        policy
-            .WithOrigins(
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:3001")
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
+builder.Services.AddFrontendCors(builder.Configuration);
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
@@ -112,7 +99,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseCors("Frontend");
+app.UseCors(FrontendCorsOptions.PolicyName);
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseMiddleware<SessionAuthenticationMiddleware>();
 app.UseRateLimiter();
