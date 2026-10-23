@@ -40,9 +40,13 @@ public sealed class UnsubscribePageTests
     {
         await using var db = _fixture.CreateDbContext();
         var repository = new UnsubscribeRepository(db);
-        var pages = new UnsubscribePageService(_tokens, repository, new MarketingCreatorContextProvider(db));
-        return await act(new PublicUnsubscribeController(_tokens, repository, pages));
+        var unsubscribes = UnsubscribeServiceFor(db);
+        var pages = new UnsubscribePageService(_tokens, repository, unsubscribes, new MarketingCreatorContextProvider(db));
+        return await act(new PublicUnsubscribeController(_tokens, unsubscribes, pages));
     }
+
+    private static UnsubscribeService UnsubscribeServiceFor(CreatorPlatform.Shared.Infrastructure.Persistence.CreatorPlatformDbContext db) =>
+        new(new UnsubscribeRepository(db), new ContactsRepository(db), new CreatorPlatform.Creators.Infrastructure.Services.CreatorUsageService(db), new CreatorPlatform.Marketing.Infrastructure.Persistence.MarketingUnitOfWork(db));
 
     private static UnsubscribePageDto Body(ActionResult<ApiResponse<UnsubscribePageDto>> result) =>
         Assert.IsType<ApiResponse<UnsubscribePageDto>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
@@ -103,8 +107,9 @@ public sealed class UnsubscribePageTests
 
         await using var db = _fixture.CreateDbContext();
         var repository = new UnsubscribeRepository(db);
+        var unsubscribes = UnsubscribeServiceFor(db);
         var controller = new PublicUnsubscribeController(
-            _tokens, repository, new UnsubscribePageService(_tokens, repository, new MarketingCreatorContextProvider(db)));
+            _tokens, unsubscribes, new UnsubscribePageService(_tokens, repository, unsubscribes, new MarketingCreatorContextProvider(db)));
 
         var redirect = controller.LegacyLink(token);
 

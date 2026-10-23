@@ -19,11 +19,12 @@ public sealed record LandingPageProductInfo(
     // Null when the creator has no active subscription (checkout is rejected before this matters).
     int? PlatformFeeBasisPoints);
 
-/// <param name="ProductTypeLabel">"Digital download", "Service" or "Online course".</param>
+/// <param name="FileContentType">The product document's type and size (null without a file): "ZIP · 17.5 MB".</param>
 /// <param name="CreatorName">The brand name when the creator saved one, else the workspace name.</param>
 public sealed record OrderEmailContext(
     string ProductName,
-    string ProductTypeLabel,
+    string? FileContentType,
+    long? FileSizeBytes,
     string? ProductThumbnailUrl,
     string CreatorName,
     string? BrandColor,

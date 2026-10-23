@@ -114,6 +114,14 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
         return Task.CompletedTask;
     }
 
+    public List<(string ToEmail, string CorrelationKey, LeadMagnetEmail Lead)> QueuedLeadMagnets { get; } = new();
+
+    public Task QueueLeadMagnetAsync(string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct)
+    {
+        QueuedLeadMagnets.Add((toEmail, correlationKey, lead));
+        return Task.CompletedTask;
+    }
+
     public Task QueuePayoutRequestedAsync(string toEmail, string payoutPublicId, PayoutRequestedEmail payout, CancellationToken ct)
     {
         PayoutRequestedQueuedCount++;
@@ -143,4 +151,29 @@ public sealed class FakeHomeSummaryCache : IHomeSummaryCache
     public Task SetAsync(int creatorId, HomeSummaryDto value, CancellationToken ct) => Task.CompletedTask;
 
     public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
+}
+
+/// <summary>The buyers' personal links in memory: one per order, like the unique index.</summary>
+public sealed class FakeOrderAccessGrants : IOrderAccessGrants
+{
+    public Dictionary<int, (string Token, string Email, DateTimeOffset? RevokedAt)> ByOrderId { get; } = [];
+    public int RevokeCallCount { get; private set; }
+
+    public string CreateForPaidOrder(int creatorId, int productId, int orderId, string buyerEmail, DateTimeOffset createdAt)
+    {
+        if (ByOrderId.ContainsKey(orderId))
+            throw new InvalidOperationException($"Order {orderId} already has a grant (unique index violation).");
+
+        var token = CreatorPlatform.Products.Domain.Access.AccessGrant.NewToken();
+        ByOrderId[orderId] = (token, buyerEmail, null);
+        return token;
+    }
+
+    public Task RevokeForOrderAsync(int orderId, DateTimeOffset revokedAt, CancellationToken ct)
+    {
+        RevokeCallCount++;
+        if (ByOrderId.TryGetValue(orderId, out var grant) && grant.RevokedAt is null)
+            ByOrderId[orderId] = grant with { RevokedAt = revokedAt };
+        return Task.CompletedTask;
+    }
 }

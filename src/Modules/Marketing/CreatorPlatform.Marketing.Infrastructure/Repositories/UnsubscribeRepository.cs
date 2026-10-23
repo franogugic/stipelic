@@ -14,9 +14,9 @@ public sealed class UnsubscribeRepository : IUnsubscribeRepository
         _context = context;
     }
 
-    public async Task AddIfNotExistsAsync(Unsubscribe unsubscribe, CancellationToken ct)
+    public async Task<bool> AddIfNotExistsAsync(Unsubscribe unsubscribe, CancellationToken ct)
     {
-        await _context.Database.ExecuteSqlAsync(
+        return 1 == await _context.Database.ExecuteSqlAsync(
             $"""
              INSERT INTO marketing.unsubscribes ("CreatorId", "Email", "Source", "UnsubscribedAt")
              VALUES ({unsubscribe.CreatorId}, {unsubscribe.Email}, {unsubscribe.Source.ToString()}, {unsubscribe.UnsubscribedAt})

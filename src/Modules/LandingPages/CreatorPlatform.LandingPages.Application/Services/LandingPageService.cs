@@ -20,6 +20,12 @@ public sealed partial class LandingPageService : ILandingPageService
     public const string PayoutsNotReadyCode = "PAYOUTS_NOT_READY";
     public const string PlanLimitReachedCode = "PLAN_LIMIT_REACHED";
 
+    // Product rules (F8): a Sales page sells an Active paid product; a lead page gives away an Active free one, or nothing.
+    public const string ProductRequiredCode = "PRODUCT_REQUIRED";
+    public const string ProductNotPaidCode = "PRODUCT_NOT_PAID";
+    public const string ProductNotFreeCode = "PRODUCT_NOT_FREE";
+    public const string ProductNotActiveCode = "PRODUCT_NOT_ACTIVE";
+
     /// <summary>The <c>details</c> of a PLAN_LIMIT_REACHED conflict: "{used} of {limit} pages".</summary>
     public sealed record PlanLimitDetails(int Used, int Limit);
 
@@ -59,9 +65,13 @@ public sealed partial class LandingPageService : ILandingPageService
         if (await _landingPageRepository.SlugExistsForCreatorAsync(creatorId, slug, ct))
             throw new ConflictException("A landing page with this URL already exists.");
 
-        var productId = await _creatorContextProvider.GetProductIdForCreatorAsync(creatorId, request.ProductId, ct);
-        if (productId is null)
-            throw new NotFoundException("Product not found.");
+        int? productId = null;
+        ProductInfo? product = null;
+        if (request.ProductId is { } productPublicId)
+            (productId, product) = await GetCreatorProductAsync(creatorId, productPublicId, ct);
+
+        if (ProductProblem(type, product) is { } problem)
+            throw new BadRequestException(problem.Message, problem.Code);
 
         var now = DateTimeOffset.UtcNow;
         var landingPage = LandingPage.Create(creatorId, productId, title, slug, type, now);
@@ -156,6 +166,9 @@ public sealed partial class LandingPageService : ILandingPageService
                 $"Your plan includes {context.MaxLandingPages} landing page(s) and you have {context.ActiveLandingPageCount}. Archive a page or upgrade your plan to publish.",
                 PlanLimitReachedCode,
                 new PlanLimitDetails(context.ActiveLandingPageCount, context.MaxLandingPages));
+
+        if (ProductProblem(landingPage.Type, await GetProductInfoAsync(landingPage, ct)) is { } problem)
+            throw new ConflictException(problem.Message, problem.Code);
 
         if (landingPage.Type == LandingPageType.Sales)
         {
@@ -258,6 +271,19 @@ public sealed partial class LandingPageService : ILandingPageService
         if (slug != landingPage.Slug && await _landingPageRepository.SlugExistsForCreatorAsync(creatorId, slug, ct))
             throw new ConflictException("A landing page with this URL already exists.");
 
+        // The page's product, after this save, has to fit its (possibly changed) type.
+        var productId = landingPage.ProductId;
+        ProductInfo? product;
+        if (request.ProductId is { } productPublicId)
+            (productId, product) = await GetCreatorProductAsync(creatorId, productPublicId, ct);
+        else if (request.RemoveProduct)
+            (productId, product) = (null, null);
+        else
+            product = await GetProductInfoAsync(landingPage, ct);
+
+        if (ProductProblem(type, product) is { } productProblem)
+            throw new BadRequestException(productProblem.Message, productProblem.Code);
+
         // Validate sections structure
         if (request.Sections.Count < 4)
             throw new BadRequestException("Landing page must have at least Navbar, Hero, CTA and Footer sections.");
@@ -295,7 +321,7 @@ public sealed partial class LandingPageService : ILandingPageService
         var now = DateTimeOffset.UtcNow;
 
         // Update page info
-        landingPage.Update(landingPage.ProductId, title, slug, type, now);
+        landingPage.Update(productId, title, slug, type, now);
 
         // Determine sections to delete (existing ones not present in request)
         var requestedPublicIds = request.Sections
@@ -443,6 +469,39 @@ public sealed partial class LandingPageService : ILandingPageService
 
     private static bool IsLockedSection(LandingPageSectionType type)
         => type is LandingPageSectionType.Navbar or LandingPageSectionType.Footer;
+
+    private async Task<(int Id, ProductInfo Info)> GetCreatorProductAsync(int creatorId, Guid productPublicId, CancellationToken ct)
+    {
+        var productId = await _creatorContextProvider.GetProductIdForCreatorAsync(creatorId, productPublicId, ct)
+            ?? throw new NotFoundException("Product not found.");
+        var info = await _creatorContextProvider.GetProductInfoAsync(productId, ct)
+            ?? throw new NotFoundException("Product not found.");
+        return (productId, info);
+    }
+
+    /// <summary>Null when the product fits the page type: a Sales page needs an Active paid product; a lead page needs
+    /// nothing, or an Active free product (the document a sign-up gets by email).</summary>
+    private static (string Message, string Code)? ProductProblem(LandingPageType type, ProductInfo? product)
+    {
+        if (type == LandingPageType.Sales)
+        {
+            if (product is null)
+                return ("A Sales page needs the product it sells.", ProductRequiredCode);
+            if (product.IsFree)
+                return ("A Sales page sells a paid product. Free products are given away on lead pages.", ProductNotPaidCode);
+            if (!product.IsActive)
+                return ("A Sales page sells an active product. Make the product active first.", ProductNotActiveCode);
+            return null;
+        }
+
+        if (product is null)
+            return null;
+        if (!product.IsFree)
+            return ("A lead page gives its document away, so its product must be free.", ProductNotFreeCode);
+        if (!product.IsActive)
+            return ("The document this page gives away must be an active product with its file.", ProductNotActiveCode);
+        return null;
+    }
 
     private async Task<ProductInfo?> GetProductInfoAsync(LandingPage landingPage, CancellationToken ct)
         => landingPage.ProductId is int productId

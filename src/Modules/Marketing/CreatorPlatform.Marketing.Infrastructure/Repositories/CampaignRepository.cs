@@ -32,6 +32,34 @@ public sealed class CampaignRepository : ICampaignRepository
             .FirstOrDefaultAsync(c => c.PublicId == publicId, ct);
     }
 
+    public async Task LockForUpdateAsync(int campaignId, CancellationToken ct)
+    {
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM marketing.campaigns WHERE \"Id\" = {campaignId} FOR UPDATE", ct);
+    }
+
+    public async Task<List<Campaign>> GetResendsAsync(int originalCampaignId, CancellationToken ct)
+    {
+        return await _context.Set<Campaign>()
+            .AsNoTracking()
+            .Where(c => c.SourceCampaignId == originalCampaignId)
+            .OrderBy(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<Dictionary<int, CampaignSourceSummary>> GetSourceSummariesAsync(
+        IReadOnlyCollection<int> campaignIds, CancellationToken ct)
+    {
+        if (campaignIds.Count == 0)
+            return [];
+
+        return await _context.Set<Campaign>()
+            .AsNoTracking()
+            .Where(c => campaignIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => new CampaignSourceSummary(c.PublicId, c.Subject), ct);
+    }
+
     public async Task<List<Campaign>> GetRecentByCreatorIdAsync(int creatorId, int take, CancellationToken ct)
     {
         return await _context.Set<Campaign>()

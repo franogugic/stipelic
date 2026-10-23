@@ -23,7 +23,7 @@ public sealed class FakeContactsRepository : IContactsRepository
     }
 
     public Task<ContactStatsCountsRow> GetStatsCountsAsync(int creatorId, DateTimeOffset monthStart, CancellationToken ct)
-        => Task.FromResult(new ContactStatsCountsRow(0, 0, 0, 0));
+        => Task.FromResult(new ContactStatsCountsRow(0, 0, 0, 0, 0, 0));
 
     public Task<List<ContactGrowthRow>> GetGrowthAsync(
         int creatorId, DateTimeOffset windowStart, DateTimeOffset lastMonthStart, DateTimeOffset windowEnd, string timezone,
@@ -33,6 +33,9 @@ public sealed class FakeContactsRepository : IContactsRepository
     /// <summary>What <see cref="DeleteAsync"/> returns — false (the default) models "no such contact".</summary>
     public bool ContactExists { get; set; }
     public (int CreatorId, string Email)? LastDeleteCall { get; private set; }
+
+    public Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct)
+        => Task.FromResult(ContactExists);
 
     public Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct)
     {

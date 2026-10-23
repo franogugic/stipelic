@@ -46,9 +46,11 @@ public static class RateLimitPolicies
     public const string CampaignInsights = "CampaignInsights";
     public const string ExportOrders = "ExportOrders";
     public const string ExportContacts = "ExportContacts";
+    public const string ImportContacts = "ImportContacts";
     public const string DeleteContact = "DeleteContact";
     public const string MutateTemplate = "MutateTemplate";
     public const string RequestMediaUpload = "RequestMediaUpload";
+    public const string ProductAccess = "ProductAccess";
 
     private static readonly TimeSpan OneMinute = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan TenMinutes = TimeSpan.FromMinutes(10);
@@ -92,9 +94,13 @@ public static class RateLimitPolicies
         new(CampaignInsights, 60, OneMinute),
         new(ExportOrders, 10, TenMinutes),
         new(ExportContacts, 10, TenMinutes),
+        // A dry run and the real import are two requests: up to five imports an hour.
+        new(ImportContacts, 10, OneHour),
         new(DeleteContact, 60, TenMinutes),
         new(MutateTemplate, 30, TenMinutes),
         new(RequestMediaUpload, 20, TenMinutes),
+        // The public download page: loading it and each download share one bucket per IP.
+        new(ProductAccess, 30, TenMinutes),
     ];
 
     /// <summary>The global limiter every request passes through, on top of its endpoint policy.</summary>
@@ -105,6 +111,11 @@ public static class RateLimitPolicies
     // forged token is rejected by the HMAC check before any database query, and a repeated valid token
     // is an idempotent UPDATE that changes nothing.
     private const string OpenPixelPath = "/api/public/o";
+
+    // Tracked links in campaign emails are exempt for the same reason: corporate link scanners and mail gateways
+    // click through shared IPs, and a rejection would answer JSON instead of the redirect. A forged token is
+    // rejected by its HMAC before any database query.
+    private const string TrackedLinkPath = "/api/public/c";
 
     /// <summary>The global limiter's partition: per client IP, or no limit for the exempt paths.</summary>
     public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext) =>
@@ -117,6 +128,9 @@ public static class RateLimitPolicies
 
         if (path.StartsWithSegments(OpenPixelPath, StringComparison.OrdinalIgnoreCase))
             return RateLimitPartition.GetNoLimiter("open-pixel");
+
+        if (path.StartsWithSegments(TrackedLinkPath, StringComparison.OrdinalIgnoreCase))
+            return RateLimitPartition.GetNoLimiter("tracked-link");
 
         // Probes (container platform, uptime monitors) must never be throttled into reporting the API as down.
         if (path.StartsWithSegments(HealthEndpoint.Path, StringComparison.OrdinalIgnoreCase))

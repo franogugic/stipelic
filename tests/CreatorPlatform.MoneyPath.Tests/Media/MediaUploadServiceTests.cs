@@ -35,7 +35,7 @@ public class MediaUploadServiceTests
         var blobStorageClient = new FakeBlobStorageClient();
         var unitOfWork = new FakeMediaUnitOfWork();
 
-        var service = new MediaUploadService(repository, blobStorageClient, unitOfWork, Options.Create(options));
+        var service = new MediaUploadService(repository, blobStorageClient, new FakeProductFileStorage(), unitOfWork, Options.Create(options));
 
         return new Harness(service, repository, blobStorageClient, unitOfWork, options);
     }
@@ -106,7 +106,7 @@ public class MediaUploadServiceTests
     {
         var h = BuildHarness(sasExpiryMinutes: 15);
         var longAgo = DateTimeOffset.UtcNow.AddMinutes(-30);
-        var reference = BlobReference.CreatePending(CreatorId, MediaUploadPurpose.ProductThumbnail, "https://fake.blob.core.windows.net/creator-media/expired.jpg", "image/jpeg", longAgo);
+        var reference = BlobReference.CreatePending(CreatorId, MediaUploadPurpose.ProductThumbnail, "https://fake.blob.core.windows.net/creator-media/expired.jpg", "expired.jpg", "image/jpeg", longAgo);
         await h.Repository.AddAsync(reference, CancellationToken.None);
 
         await Assert.ThrowsAsync<ConflictException>(

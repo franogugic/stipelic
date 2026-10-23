@@ -6,6 +6,12 @@ namespace CreatorPlatform.MoneyPath.Tests.Fakes;
 
 public sealed class FakeEmailCaptureRepository : IEmailCaptureRepository
 {
+    /// <summary>Emails (normalised) that have an unsubscribe row for the creator.</summary>
+    public HashSet<string> UnsubscribedEmails { get; } = [];
+
+    public Task<bool> IsUnsubscribedAsync(int creatorId, string email, CancellationToken ct)
+        => Task.FromResult(UnsubscribedEmails.Contains(email));
+
     public List<EmailCapture> Added { get; } = [];
     public List<(int CreatorId, int LandingPageId, string Email, DateTimeOffset CapturedAt)> ContactSummaryUpserts { get; } = [];
 
@@ -76,6 +82,14 @@ public sealed class FakeAnalyticsCreatorContextProvider : ICreatorContextProvide
 
 public sealed class FakeAnalyticsUnitOfWork : IAnalyticsUnitOfWork
 {
+    public List<(int CreatorId, string Email)> ContactLocks { get; } = [];
+
+    public Task AcquireContactLockAsync(int creatorId, string normalizedEmail, CancellationToken ct)
+    {
+        ContactLocks.Add((creatorId, normalizedEmail));
+        return Task.CompletedTask;
+    }
+
     public int SaveChangesCallCount { get; private set; }
 
     /// <summary>True when the last transaction's operation completed without throwing.</summary>
@@ -92,5 +106,17 @@ public sealed class FakeAnalyticsUnitOfWork : IAnalyticsUnitOfWork
         LastTransactionCommitted = false;
         await operation();
         LastTransactionCommitted = true;
+    }
+}
+
+/// <summary>Records every delivery call the capture service makes (the real one is covered by integration tests).</summary>
+public sealed class FakeLeadMagnetDelivery : ILeadMagnetDelivery
+{
+    public List<(int CreatorId, int LandingPageId, string Email)> Deliveries { get; } = [];
+
+    public Task DeliverAsync(int creatorId, int landingPageId, string normalizedEmail, DateTimeOffset now, CancellationToken ct)
+    {
+        Deliveries.Add((creatorId, landingPageId, normalizedEmail));
+        return Task.CompletedTask;
     }
 }

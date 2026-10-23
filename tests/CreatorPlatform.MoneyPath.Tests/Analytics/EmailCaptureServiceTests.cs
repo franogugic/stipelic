@@ -17,7 +17,7 @@ public class EmailCaptureServiceTests
         var usageService = new FakeCreatorUsageService();
         var unitOfWork = new FakeAnalyticsUnitOfWork();
 
-        var service = new EmailCaptureService(repository, contextProvider, usageService, unitOfWork);
+        var service = new EmailCaptureService(repository, contextProvider, usageService, unitOfWork, new FakeLeadMagnetDelivery());
 
         return (service, repository, contextProvider, usageService, unitOfWork);
     }
@@ -102,5 +102,54 @@ public class EmailCaptureServiceTests
         await service.CaptureAsync(LandingPageId, null, CreatorId, "visitor@example.com", CancellationToken.None);
 
         Assert.Single(repository.Added);
+    }
+
+    // ---- F8: the lead page's document ---------------------------------------------------------------------------
+
+    private static (EmailCaptureService Service, FakeCreatorUsageService UsageService, FakeLeadMagnetDelivery Delivery, FakeEmailCaptureRepository Repository)
+        BuildWithDelivery()
+    {
+        var repository = new FakeEmailCaptureRepository();
+        var usageService = new FakeCreatorUsageService();
+        var delivery = new FakeLeadMagnetDelivery();
+        var service = new EmailCaptureService(
+            repository, new FakeAnalyticsCreatorContextProvider { PlanLimit = 500 }, usageService, new FakeAnalyticsUnitOfWork(), delivery);
+        return (service, usageService, delivery, repository);
+    }
+
+    [Fact]
+    public async Task ANewAndARepeatSignUp_BothAskForTheDocument_WithTheNormalisedEmail()
+    {
+        var (service, _, delivery, _) = BuildWithDelivery();
+
+        await service.CaptureAsync(LandingPageId, 3, CreatorId, " Visitor@Example.com ", CancellationToken.None);
+        await service.CaptureAsync(LandingPageId, 3, CreatorId, "visitor@example.com", CancellationToken.None);
+
+        // The delivery decides about the 24-hour re-send; the capture always asks.
+        Assert.Equal([(CreatorId, LandingPageId, "visitor@example.com"), (CreatorId, LandingPageId, "visitor@example.com")], delivery.Deliveries);
+    }
+
+    [Fact]
+    public async Task ASignUpRejectedByTheContactLimit_SendsNothing()
+    {
+        var (service, usageService, delivery, _) = BuildWithDelivery();
+        usageService.Used[(CreatorId, "max_contacts")] = 500;
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => service.CaptureAsync(LandingPageId, 3, CreatorId, "visitor@example.com", CancellationToken.None));
+
+        Assert.Empty(delivery.Deliveries);
+    }
+
+    [Fact]
+    public async Task AnUnsubscribedEmail_StillGetsTheDocumentItAskedFor()
+    {
+        var (service, usageService, delivery, repository) = BuildWithDelivery();
+        repository.UnsubscribedEmails.Add("visitor@example.com");
+        usageService.Used[(CreatorId, "max_contacts")] = 500;
+
+        await service.CaptureAsync(LandingPageId, 3, CreatorId, "visitor@example.com", CancellationToken.None);
+
+        Assert.Single(delivery.Deliveries);
     }
 }

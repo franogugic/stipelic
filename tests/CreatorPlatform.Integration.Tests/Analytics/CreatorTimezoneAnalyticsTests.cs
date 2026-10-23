@@ -94,7 +94,7 @@ public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
 
         await using var read = _fixture.CreateDbContext();
         var stats = await new ContactsService(
-                new MarketingCreatorContextProvider(read), new ContactsRepository(read), new MarketingUnitOfWork(read), new CreatorUsageService(read))
+                new MarketingCreatorContextProvider(read), new ContactsRepository(read), new MarketingUnitOfWork(read), new CreatorUsageService(read), new UnsubscribeRepository(read))
             .GetStatsAsync(creator.Slug, creator.OwnerUserId, CancellationToken.None);
 
         Assert.Equal(0, stats.Growth.Single(g => g.Month == utcMonth).Total);
@@ -118,8 +118,8 @@ public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
         await using var db = _fixture.CreateDbContext();
         var now = DateTimeOffset.UtcNow;
         return (await db.Database.SqlQuery<int>($"""
-            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', 1000, 'Digital', 'Active', {now}, {now})
+            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', 1000, 'Active', 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }

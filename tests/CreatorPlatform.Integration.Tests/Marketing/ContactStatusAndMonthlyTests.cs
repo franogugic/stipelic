@@ -28,7 +28,7 @@ public sealed class ContactStatusAndMonthlyTests
     {
         await using var db = _fixture.CreateDbContext();
         return await act(new ContactsService(
-            new MarketingCreatorContextProvider(db), new ContactsRepository(db), new MarketingUnitOfWork(db), new CreatorUsageService(db)));
+            new MarketingCreatorContextProvider(db), new ContactsRepository(db), new MarketingUnitOfWork(db), new CreatorUsageService(db), new UnsubscribeRepository(db)));
     }
 
     private Task<List<string>> ListAsync(TestData.SeededCreator creator, string? status) =>

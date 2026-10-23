@@ -14,7 +14,7 @@ public sealed class FakeOrdersCreatorContextProvider : ICreatorContextProvider
         => Task.FromResult(ProductInfo);
 
     public OrderEmailContext? OrderEmailContext { get; set; } =
-        new("Product", "Digital download", null, "Creator", null, null, null);
+        new("Product", "application/zip", 18_350_080, null, "Creator", null, null, null);
 
     public Task<OrderEmailContext?> GetOrderEmailContextAsync(int productId, CancellationToken ct)
         => Task.FromResult(OrderEmailContext);

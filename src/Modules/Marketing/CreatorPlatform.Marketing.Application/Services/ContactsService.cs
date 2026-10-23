@@ -21,17 +21,20 @@ public sealed class ContactsService : IContactsService
     private readonly IContactsRepository _contactsRepository;
     private readonly IMarketingUnitOfWork _unitOfWork;
     private readonly ICreatorUsageService _usageService;
+    private readonly IUnsubscribeRepository _unsubscribeRepository;
 
     public ContactsService(
         ICreatorContextProvider creatorContextProvider,
         IContactsRepository contactsRepository,
         IMarketingUnitOfWork unitOfWork,
-        ICreatorUsageService usageService)
+        ICreatorUsageService usageService,
+        IUnsubscribeRepository unsubscribeRepository)
     {
         _creatorContextProvider = creatorContextProvider;
         _contactsRepository = contactsRepository;
         _unitOfWork = unitOfWork;
         _usageService = usageService;
+        _unsubscribeRepository = unsubscribeRepository;
     }
 
     public async Task<ContactsPageDto> SearchAsync(
@@ -119,7 +122,8 @@ public sealed class ContactsService : IContactsService
         row.SourcesCount,
         row.Sources,
         row.IsUnsubscribed,
-        row.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList());
+        row.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList(),
+        row.ImportedAt);
 
     public async Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct)
     {
@@ -146,7 +150,9 @@ public sealed class ContactsService : IContactsService
             counts.Unsubscribed,
             growth.Select(g => new ContactGrowthPointDto(g.Month, g.Total)).ToList(),
             sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList(),
-            monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList());
+            monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList(),
+            counts.ImportedThisMonth,
+            counts.Imported);
     }
 
     public async Task<ContactPeriodStatsDto> GetPeriodStatsAsync(string slug, int ownerUserId, string period, CancellationToken ct)
@@ -188,7 +194,9 @@ public sealed class ContactsService : IContactsService
             plan.Step,
             context.Timezone,
             new ContactPeriodRangeDto(plan.RangeFrom, plan.RangeTo),
-            buckets);
+            buckets,
+            counts.ImportedThisMonth,
+            counts.Imported);
     }
 
     public async Task DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
@@ -202,18 +210,21 @@ public sealed class ContactsService : IContactsService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
+            // Same lock as a sign-up and an unsubscribe of this email, so "is it unsubscribed?" below can't race them.
+            await _unitOfWork.AcquireContactLockAsync(context.CreatorId, normalizedEmail, ct);
+
             var deleted = await _contactsRepository.DeleteAsync(context.CreatorId, normalizedEmail, ct);
 
             // Nothing was deleted, so throwing here (rolling back an empty transaction) is safe.
             if (!deleted)
                 throw new NotFoundException(ContactNotFoundMessage);
 
-            // Give the contact's plan slot back in the same transaction: max_contacts counts unique contacts
-            // (EmailCaptureService consumes one unit when a sign-up creates the summary row), so one deleted
-            // contact refunds exactly one. AllTime counters have a single fixed period row, so asOf selects
-            // nothing here.
-            await _usageService.RefundAsync(
-                context.CreatorId, MaxContactsLimitKey, 1, UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
+            // max_contacts counts contacts that are not unsubscribed (F5.0): deleting an active contact gives its
+            // place back, deleting an unsubscribed one gives nothing (it held none). The unsubscribe itself is kept.
+            // AllTime counters have a single fixed period row, so asOf selects nothing here.
+            if (!await _unsubscribeRepository.ExistsAsync(context.CreatorId, normalizedEmail, ct))
+                await _usageService.RefundAsync(
+                    context.CreatorId, MaxContactsLimitKey, 1, UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
         }, ct);
     }
 

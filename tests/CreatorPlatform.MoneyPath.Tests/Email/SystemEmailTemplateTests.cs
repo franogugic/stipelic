@@ -21,16 +21,29 @@ public class SystemEmailTemplateTests
         BuyerName: text,
         BuyerEmail: "jane@example.test",
         ProductName: text,
-        ProductTypeLabel: "Digital download",
+        FileLabel: "ZIP · 17.5 MB",
         ProductThumbnailUrl: null,
         AmountCents: 2900,
         Currency: "Eur",
         PaidAt: At,
-        AccessUrl: url,
+        DownloadUrl: url,
         CreatorName: text,
         BrandColor: brandColor,
         LogoUrl: null,
         SupportEmail: "help@acme.test");
+
+    private static LeadMagnetEmail Lead(string text = "Jane Doe", string url = "https://app.test/d/1", string? unsubscribeUrl = "https://app.test/unsubscribe/t") => new(
+        SignupEmail: "jane@example.test",
+        ProductName: text,
+        FileLabel: "PDF · 8.2 MB",
+        ProductThumbnailUrl: null,
+        SignedUpAt: At,
+        DownloadUrl: url,
+        CreatorName: text,
+        BrandColor: "#2F8F9D",
+        LogoUrl: null,
+        SupportEmail: "help@acme.test",
+        UnsubscribeUrl: unsubscribeUrl is null ? null : url);
 
     private static PayoutRequestedEmail Payout(string text = "Jane Doe") => new(
         text, text, text, 50000, "Eur", "RS35260005601001611379", "RS", At, 74860);
@@ -45,6 +58,7 @@ public class SystemEmailTemplateTests
         yield return ("change-notice", EmailChangedTemplate.Render(Branding, text, text, text, At, url));
         yield return ("payout", PayoutRequestedTemplate.Render(Branding, Payout(text), url));
         yield return ("order", OrderAccessTemplate.Render(Order(text, url)));
+        yield return ("lead-magnet", LeadMagnetTemplate.Render(Lead(text, url)));
         var campaign = new CampaignEmailRenderer().Render(text, text, text, url, text, null, "#E2553A", text);
         yield return ("campaign", new RenderedEmail(campaign.Subject, campaign.HtmlBody, campaign.PlainTextBody));
     }
@@ -68,6 +82,49 @@ public class SystemEmailTemplateTests
         var email = EmailVerificationTemplate.Render(Branding, "Jane", "jane@example.test", HostileUrl);
 
         Assert.Contains("href=\"https://app.test/x?a=&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;\"", email.Html);
+    }
+
+    [Fact]
+    public void TheOrderEmail_LinksThePersonalDownloadPage_WithTheFileLabel()
+    {
+        var email = OrderAccessTemplate.Render(Order("Adriatic Summer Presets", "https://app.test/d/tok"));
+
+        Assert.Equal("Your Adriatic Summer Presets", email.Subject);
+        Assert.Contains("Download your file", email.Html);
+        Assert.Contains("href=\"https://app.test/d/tok\"", email.Html);
+        Assert.Contains(System.Net.WebUtility.HtmlEncode("ZIP · 17.5 MB"), email.Html);
+        Assert.Contains("It’s personal, so please don’t share it.", email.Html);
+        Assert.Contains("https://app.test/d/tok", email.PlainText);
+        Assert.DoesNotContain("/api/access/", email.Html);
+    }
+
+    [Fact]
+    public void TheLeadMagnetEmail_LinksTheDownload_AndOffersUnsubscribeOnlyToSubscribers()
+    {
+        var subscribed = LeadMagnetTemplate.Render(Lead("Color Grading Guide", "https://app.test/d/tok"));
+        var unsubscribed = LeadMagnetTemplate.Render(Lead("Color Grading Guide", "https://app.test/d/tok", unsubscribeUrl: null));
+
+        Assert.Equal("Your free download: Color Grading Guide", subscribed.Subject);
+        Assert.Contains("Download the guide", subscribed.Html);
+        Assert.Contains("href=\"https://app.test/d/tok\"", subscribed.Html);
+        Assert.Contains(System.Net.WebUtility.HtmlEncode("PDF · 8.2 MB"), subscribed.Html);
+        Assert.Contains(">Free<", subscribed.Html);
+        Assert.Contains("Unsubscribe", subscribed.Html);
+        Assert.Contains("You’ll also get", subscribed.PlainText);
+
+        Assert.DoesNotContain("Unsubscribe", unsubscribed.Html);
+        Assert.DoesNotContain("You’ll also get", unsubscribed.PlainText);
+        Assert.Contains("https://app.test/d/tok", unsubscribed.PlainText);
+    }
+
+    [Fact]
+    public void TheFileLabel_NamesTheKindAndSize()
+    {
+        Assert.Equal("PDF · 8.2 MB", EmailFileLabel.From("application/pdf", 8_600_000));
+        Assert.Equal("ZIP · 17.5 MB", EmailFileLabel.From("application/zip", 18_350_080));
+        Assert.Equal("EPUB · 100 MB", EmailFileLabel.From("application/epub+zip", 104_857_600));
+        Assert.Equal("PDF · 640 KB", EmailFileLabel.From("application/pdf", 655_360));
+        Assert.Null(EmailFileLabel.From(null, null));
     }
 
     [Fact]

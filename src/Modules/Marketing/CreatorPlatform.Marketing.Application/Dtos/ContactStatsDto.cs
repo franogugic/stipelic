@@ -12,6 +12,10 @@ namespace CreatorPlatform.Marketing.Application.Dtos;
 /// last.</param>
 /// <param name="Sources">Every landing page (archived included) with at least one contact, most contacts
 /// first.</param>
+/// <param name="ImportedThisMonth">Contacts a CSV import created since the start of the current month (creator timezone);
+/// they are part of <paramref name="NewThisMonth"/> too.</param>
+/// <param name="Imported">Contacts a CSV import created, all time — the "Imported" source next to
+/// <paramref name="Sources"/>.</param>
 public sealed record ContactStatsDto(
     int Total,
     int Active,
@@ -19,7 +23,9 @@ public sealed record ContactStatsDto(
     int Unsubscribed,
     List<ContactGrowthPointDto> Growth,
     List<ContactSourceCountDto> Sources,
-    List<ContactMonthDto> Monthly);
+    List<ContactMonthDto> Monthly,
+    int ImportedThisMonth,
+    int Imported);
 
 /// <param name="Month">"yyyy-MM" in the creator's timezone; the last 12 months, oldest first, current month last.</param>
 /// <param name="Joined">Contacts first captured in the month (deleted contacts are no longer counted).</param>
@@ -38,6 +44,8 @@ public sealed record ContactSourceCountDto(Guid LandingPagePublicId, string Titl
 /// <summary>The subscriber overview with the growth chart cut to one period — the answer of
 /// <c>GET contacts/stats?period=</c>. The headline counts and <paramref name="Sources"/> are the same all-time figures
 /// as in <see cref="ContactStatsDto"/>; <paramref name="Buckets"/> replaces its <c>Growth</c> and <c>Monthly</c>.</summary>
+/// <param name="ImportedThisMonth">As in <see cref="ContactStatsDto"/> — all-time figures, not cut to the period.</param>
+/// <param name="Imported">As in <see cref="ContactStatsDto"/> — all-time figures, not cut to the period.</param>
 /// <param name="Period">"today" | "7d" | "15d" | "30d" | "2m" | "3m" | "6m" | "all".</param>
 /// <param name="Step">"hour" | "day" | "week" | "month" — the bucket size.</param>
 /// <param name="Timezone">The IANA zone the buckets are in.</param>
@@ -54,7 +62,9 @@ public sealed record ContactPeriodStatsDto(
     string Step,
     string Timezone,
     ContactPeriodRangeDto Range,
-    List<ContactBucketDto> Buckets);
+    List<ContactBucketDto> Buckets,
+    int ImportedThisMonth,
+    int Imported);
 
 public sealed record ContactPeriodRangeDto(DateTimeOffset From, DateTimeOffset To);
 

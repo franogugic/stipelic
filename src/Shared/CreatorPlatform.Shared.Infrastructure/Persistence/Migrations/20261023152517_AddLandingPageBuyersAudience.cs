@@ -19,7 +19,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                 name: "CK_campaigns_Audience_Matches_Fk",
                 schema: "marketing",
                 table: "campaigns",
-                sql: "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
+                sql: "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'CampaignNonOpeners' AND \"SourceCampaignId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
         }
 
         /// <inheritdoc />
@@ -34,7 +34,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                 name: "CK_campaigns_Audience_Matches_Fk",
                 schema: "marketing",
                 table: "campaigns",
-                sql: "(\"AudienceType\" = 'LandingPage' AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
+                sql: "(\"AudienceType\" = 'LandingPage' AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'CampaignNonOpeners' AND \"SourceCampaignId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
         }
     }
 }

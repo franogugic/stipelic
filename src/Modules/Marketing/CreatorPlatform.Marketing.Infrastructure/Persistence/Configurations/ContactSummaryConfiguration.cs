@@ -40,6 +40,15 @@ public sealed class ContactSummaryConfiguration : IEntityTypeConfiguration<Conta
         builder.HasIndex(c => c.SourceLandingPageIds)
             .HasMethod("gin");
 
+        builder.Property(c => c.ImportedAt);
+
+        builder.Property(c => c.ImportId);
+
+        builder.HasOne<ContactImport>()
+            .WithMany()
+            .HasForeignKey(c => c.ImportId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasOne<Creator>()
             .WithMany()
             .HasForeignKey(c => c.CreatorId)

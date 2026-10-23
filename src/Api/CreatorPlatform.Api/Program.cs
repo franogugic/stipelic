@@ -57,7 +57,9 @@ builder.Services.PostConfigure<MarketingOptions>(options =>
     if (string.IsNullOrWhiteSpace(options.FrontendBaseUrl))
         options.FrontendBaseUrl = builder.Configuration["Email:FrontendBaseUrl"] ?? string.Empty;
 });
-builder.Services.Configure<MediaOptions>(builder.Configuration.GetSection(MediaOptions.SectionName));
+builder.Services.AddOptions<MediaOptions>()
+    .Bind(builder.Configuration.GetSection(MediaOptions.SectionName))
+    .ValidateOnStart();
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;

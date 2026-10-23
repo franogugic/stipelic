@@ -54,6 +54,10 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
 
         builder.Property(c => c.ProductId);
 
+        builder.Property(c => c.SourceCampaignId);
+
+        builder.Property(c => c.ResendRound);
+
         builder.Property(c => c.Status)
             .HasConversion<string>()
             .HasMaxLength(30)
@@ -70,6 +74,15 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
             .HasDefaultValue(0)
             .IsRequired();
 
+        builder.Property(c => c.UniqueClickCount)
+            .HasDefaultValue(0)
+            .IsRequired();
+
+        // Existing rows are sends from before click tracking: false. Every new send sets it explicitly.
+        builder.Property(c => c.ClickTracked)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(c => c.Note)
             .HasMaxLength(500);
 
@@ -84,11 +97,21 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         // Backs the scheduled-dispatch worker's poll (WHERE Status = 'Scheduled' AND ScheduledAt <= now()).
         builder.HasIndex(c => new { c.Status, c.ScheduledAt });
 
+        // The resends of an original (eligibility, history); only resends have a source.
+        builder.HasIndex(c => c.SourceCampaignId)
+            .HasFilter("\"SourceCampaignId\" IS NOT NULL");
+
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_campaigns_Audience_Matches_Fk",
-            "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) " +
-            "OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) " +
-            "OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)"));
+            "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) " +
+            "OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"SourceCampaignId\" IS NULL) " +
+            "OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) " +
+            "OR (\"AudienceType\" = 'CampaignNonOpeners' AND \"SourceCampaignId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)"));
+
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_campaigns_ResendRound",
+            $"(\"SourceCampaignId\" IS NULL AND \"ResendRound\" IS NULL) " +
+            $"OR (\"SourceCampaignId\" IS NOT NULL AND \"ResendRound\" BETWEEN 1 AND {Campaign.MaxNonOpenerResends})"));
 
         builder.HasOne<Creator>()
             .WithMany()
@@ -104,6 +127,11 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         builder.HasOne<Product>()
             .WithMany()
             .HasForeignKey(c => c.ProductId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Campaign>()
+            .WithMany()
+            .HasForeignKey(c => c.SourceCampaignId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne<EmailTemplate>()

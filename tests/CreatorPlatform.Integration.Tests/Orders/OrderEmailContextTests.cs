@@ -21,7 +21,7 @@ public sealed class OrderEmailContextTests
     public async Task WithBrandSettings_TheEmailUsesTheBrand()
     {
         var creator = await _data.CreateCreatorAsync();
-        var productId = await AddProductAsync(creator.CreatorId, "Course", "https://cdn.example.test/cover.png");
+        var productId = await AddProductAsync(creator.CreatorId, "https://cdn.example.test/cover.png");
         await using (var db = _fixture.CreateDbContext())
         {
             var now = DateTimeOffset.UtcNow;
@@ -36,33 +36,33 @@ public sealed class OrderEmailContextTests
 
         Assert.NotNull(context);
         Assert.Equal(
-            ("Kept product", "Online course", "https://cdn.example.test/cover.png", "Acme", "#E2553A", "https://cdn.example.test/logo.png", "help@acme.test"),
-            (context.ProductName, context.ProductTypeLabel, context.ProductThumbnailUrl, context.CreatorName, context.BrandColor, context.LogoUrl, context.SupportEmail));
+            ("Kept product", "application/pdf", 1024L, "https://cdn.example.test/cover.png", "Acme", "#E2553A", "https://cdn.example.test/logo.png", "help@acme.test"),
+            (context.ProductName, context.FileContentType, context.FileSizeBytes, context.ProductThumbnailUrl, context.CreatorName, context.BrandColor, context.LogoUrl, context.SupportEmail));
     }
 
     [Fact]
     public async Task WithoutBrandSettings_TheWorkspaceNameAndNoBrand()
     {
         var creator = await _data.CreateCreatorAsync();
-        var productId = await AddProductAsync(creator.CreatorId, "Digital", null);
+        var productId = await AddProductAsync(creator.CreatorId, null);
 
         await using var db = _fixture.CreateDbContext();
         var context = await new CreatorContextProvider(db).GetOrderEmailContextAsync(productId, CancellationToken.None);
 
         Assert.NotNull(context);
-        Assert.Equal(("Digital download", "Test Creator"), (context.ProductTypeLabel, context.CreatorName));
+        Assert.Equal(("application/pdf", "Test Creator"), (context.FileContentType, context.CreatorName));
         Assert.Null(context.BrandColor);
         Assert.Null(context.SupportEmail);
         Assert.Null(await new CreatorContextProvider(db).GetOrderEmailContextAsync(int.MaxValue, CancellationToken.None));
     }
 
-    private async Task<int> AddProductAsync(int creatorId, string type, string? thumbnailUrl)
+    private async Task<int> AddProductAsync(int creatorId, string? thumbnailUrl)
     {
         await using var db = _fixture.CreateDbContext();
         var now = DateTimeOffset.UtcNow;
         return (await db.Database.SqlQuery<int>($"""
-            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "ThumbnailUrl", "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, 'Kept product', 2900, {type}, 'Active', {thumbnailUrl}, {now}, {now})
+            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "ThumbnailUrl", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {creatorId}, 'Kept product', 2900, 'Active', 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {thumbnailUrl}, {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }

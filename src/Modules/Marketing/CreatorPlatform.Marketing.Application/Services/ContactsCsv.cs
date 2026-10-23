@@ -8,11 +8,15 @@ public static class ContactsCsv
 {
     public static readonly string Header = CsvFormatter.Row("email", "sources", "joined_at", "status");
 
-    /// <summary>Sources are every source page title in first-capture order joined with "; "; joined_at is the
-    /// first capture in ISO 8601 UTC; status is active or unsubscribed.</summary>
+    public const string ImportSource = "Import";
+
+    /// <summary>Sources are every source page title in first-capture order joined with "; ", led by "Import" for a
+    /// contact a CSV import created (that was its first source); joined_at is the first capture in ISO 8601 UTC;
+    /// status is active or unsubscribed.</summary>
     public static string Row(ContactDto contact) => CsvFormatter.Row(
         contact.Email,
-        string.Join("; ", contact.SourceList.Select(source => source.Title)),
+        string.Join("; ", (contact.ImportedAt is null ? [] : new[] { ImportSource })
+            .Concat(contact.SourceList.Select(source => source.Title))),
         CsvFormatter.Timestamp(contact.FirstCapturedAt),
         contact.IsUnsubscribed ? "unsubscribed" : "active");
 

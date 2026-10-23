@@ -1102,8 +1102,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ToEmail")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
 
                     b.HasKey("Id");
 
@@ -1251,6 +1251,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("ClickTracked")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1284,8 +1289,14 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int>("RecipientCount")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("ResendRound")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset?>("ScheduledAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("SourceCampaignId")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1299,6 +1310,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<int?>("TemplateId")
                         .HasColumnType("integer");
+
+                    b.Property<int>("UniqueClickCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<int>("UniqueOpenCount")
                         .ValueGeneratedOnAdd()
@@ -1317,6 +1333,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasIndex("PublicId")
                         .IsUnique();
 
+                    b.HasIndex("SourceCampaignId")
+                        .HasFilter("\"SourceCampaignId\" IS NOT NULL");
+
                     b.HasIndex("TemplateId");
 
                     b.HasIndex("CreatorId", "CreatedAt");
@@ -1325,8 +1344,86 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.ToTable("campaigns", "marketing", t =>
                         {
-                            t.HasCheckConstraint("CK_campaigns_Audience_Matches_Fk", "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
+                            t.HasCheckConstraint("CK_campaigns_Audience_Matches_Fk", "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'CampaignNonOpeners' AND \"SourceCampaignId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_campaigns_ResendRound", "(\"SourceCampaignId\" IS NULL AND \"ResendRound\" IS NULL) OR (\"SourceCampaignId\" IS NOT NULL AND \"ResendRound\" BETWEEN 1 AND 5)");
                         });
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<short>("Position")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("TotalClickCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("UniqueClickCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "Url")
+                        .IsUnique();
+
+                    b.ToTable("campaign_links", "marketing", t =>
+                        {
+                            t.HasCheckConstraint("CK_campaign_links_Label_Matches_Kind", "(\"Kind\" = 'Button' AND \"Label\" IS NOT NULL) OR (\"Kind\" = 'Text' AND \"Label\" IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLinkClick", b =>
+                {
+                    b.Property<int>("LinkId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RecipientId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ClickCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("FirstClickedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastClickedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("LinkId", "RecipientId");
+
+                    b.HasIndex("RecipientId");
+
+                    b.ToTable("campaign_link_clicks", "marketing");
                 });
 
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignRecipient", b =>
@@ -1348,6 +1445,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
 
+                    b.Property<DateTimeOffset?>("FirstClickedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("FirstOpenedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1357,6 +1457,67 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("campaign_recipients", "marketing");
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactImport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("ConsentAttestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConsentVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DuplicateCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExistingCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("ImportedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("InvalidCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UnsubscribedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("CreatorId", "CreatedAt");
+
+                    b.ToTable("contact_imports", "marketing");
                 });
 
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactSummary", b =>
@@ -1378,6 +1539,12 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("FirstCapturedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("ImportId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("LastCapturedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1386,6 +1553,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer[]");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ImportId");
 
                     b.HasIndex("SourceLandingPageIds");
 
@@ -1494,6 +1663,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("BlobPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("BlobUrl")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -1512,6 +1685,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("CreatorId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
@@ -1811,7 +1988,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("CreatorPlatform.Products.Domain.Products.Product", b =>
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Access.AccessGrant", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1819,9 +1996,75 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AccessUrl")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DownloadCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<Guid?>("EmailCaptureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("LastDownloadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("OrderId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasFilter("\"OrderId\" IS NOT NULL");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.HasIndex("CreatorId", "ProductId");
+
+                    b.HasIndex("EmailCaptureId", "ProductId")
+                        .IsUnique()
+                        .HasFilter("\"EmailCaptureId\" IS NOT NULL");
+
+                    b.ToTable("access_grants", "products", t =>
+                        {
+                            t.HasCheckConstraint("CK_access_grants_One_Source", "(\"OrderId\" IS NOT NULL AND \"EmailCaptureId\" IS NULL) OR (\"OrderId\" IS NULL AND \"EmailCaptureId\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Products.Product", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1832,6 +2075,24 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("FileBlobPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("FileContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("FileUploadedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1853,11 +2114,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1872,6 +2128,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.ToTable("products", "products", t =>
                         {
+                            t.HasCheckConstraint("CK_products_Active_Has_File", "\"Status\" <> 'Active' OR \"FileBlobPath\" IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_products_File_Complete", "(\"FileBlobPath\" IS NULL AND \"FileName\" IS NULL AND \"FileSizeBytes\" IS NULL AND \"FileContentType\" IS NULL AND \"FileUploadedAt\" IS NULL) OR (\"FileBlobPath\" IS NOT NULL AND \"FileName\" IS NOT NULL AND \"FileSizeBytes\" > 0 AND \"FileContentType\" IS NOT NULL AND \"FileUploadedAt\" IS NOT NULL)");
+
                             t.HasCheckConstraint("CK_products_PriceCents_NonNegative", "\"PriceCents\" >= 0");
                         });
                 });
@@ -2099,10 +2359,39 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("SourceCampaignId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CreatorPlatform.Marketing.Domain.Templates.EmailTemplate", null)
                         .WithMany()
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLink", b =>
+                {
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLinkClick", b =>
+                {
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLink", null)
+                        .WithMany()
+                        .HasForeignKey("LinkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.CampaignRecipient", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignRecipient", b =>
@@ -2114,6 +2403,15 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactImport", b =>
+                {
+                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Contacts.ContactSummary", b =>
                 {
                     b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
@@ -2121,6 +2419,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Contacts.ContactImport", null)
+                        .WithMany()
+                        .HasForeignKey("ImportId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Templates.EmailTemplate", b =>
@@ -2194,6 +2497,31 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
                         .WithMany()
                         .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Access.AccessGrant", b =>
+                {
+                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CreatorPlatform.Analytics.Domain.EmailCaptures.EmailCapture", null)
+                        .WithMany()
+                        .HasForeignKey("EmailCaptureId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CreatorPlatform.Orders.Domain.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CreatorPlatform.Products.Domain.Products.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

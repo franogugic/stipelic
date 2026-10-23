@@ -32,6 +32,42 @@ public sealed class FakeProductRepository : IProductRepository
         Seed(product);
         return Task.CompletedTask;
     }
+
+    public Task<bool> IsFileInUseAsync(string blobPath, int? exceptProductId, CancellationToken ct)
+        => Task.FromResult(Products.Any(p => p.FileBlobPath == blobPath && p.Id != exceptProductId));
+
+    /// <summary>Products someone holds a working personal link to.</summary>
+    public HashSet<int> ProductsWithActiveGrants { get; } = [];
+
+    public Task<bool> HasActiveAccessGrantsAsync(int productId, CancellationToken ct)
+        => Task.FromResult(ProductsWithActiveGrants.Contains(productId));
+
+}
+
+/// <summary>Confirmed uploads by (creator, reference); every other reference resolves to nothing, like another creator's
+/// or an unconfirmed upload. Deleted blob paths are recorded.</summary>
+public sealed class FakeProductFiles : IProductFiles
+{
+    public Dictionary<(int CreatorId, Guid Reference), ProductFile> Uploads { get; } = [];
+    public List<string> DeletedBlobPaths { get; } = [];
+
+    /// <summary>A confirmed upload of <paramref name="creatorId"/>; returns its reference.</summary>
+    public Guid Upload(int creatorId, string fileName = "guide.pdf", long sizeBytes = 8_600_000, string contentType = "application/pdf")
+    {
+        var reference = Guid.NewGuid();
+        Uploads[(creatorId, reference)] = ProductFile.Create(
+            $"productfile/{creatorId}/{reference:N}.pdf", fileName, sizeBytes, contentType, DateTimeOffset.UtcNow);
+        return reference;
+    }
+
+    public Task<ProductFile?> ResolveAsync(int creatorId, Guid fileReference, CancellationToken ct)
+        => Task.FromResult(Uploads.GetValueOrDefault((creatorId, fileReference)));
+
+    public Task DeleteAsync(string blobPath, CancellationToken ct)
+    {
+        DeletedBlobPaths.Add(blobPath);
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FakeProductsCreatorContextProvider : CreatorPlatform.Products.Application.Interfaces.ICreatorContextProvider
@@ -76,4 +112,15 @@ public sealed class FakeLandingPageContextProvider : ILandingPageContextProvider
 
     public Task<bool> IsUsedByPublishedPageAsync(int productId, CancellationToken ct)
         => Task.FromResult(UsedByPublishedPage);
+
+    public bool UsedByLeadPage { get; set; }
+    public bool UsedBySalesPage { get; set; }
+
+    public Task<(bool LeadPage, bool SalesPage)> GetPageKindsUsingAsync(int productId, CancellationToken ct)
+        => Task.FromResult((UsedByLeadPage, UsedBySalesPage));
+
+    public Dictionary<int, ProductSignups> SignupsByProductId { get; } = [];
+
+    public Task<Dictionary<int, ProductSignups>> GetProductSignupsAsync(int creatorId, DateTimeOffset now, CancellationToken ct)
+        => Task.FromResult(SignupsByProductId);
 }

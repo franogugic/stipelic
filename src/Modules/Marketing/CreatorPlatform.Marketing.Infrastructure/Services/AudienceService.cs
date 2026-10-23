@@ -20,7 +20,7 @@ public sealed class AudienceService : IAudienceService
     }
 
     public async Task<int> GetAudienceCountAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId, CancellationToken ct)
     {
         if (audienceType == CampaignAudienceType.LandingPageBuyers)
         {
@@ -37,12 +37,14 @@ public sealed class AudienceService : IAudienceService
                 )
                 """).ToListAsync(ct)).Single();
         }
+        if (audienceType == CampaignAudienceType.CampaignNonOpeners)
+            return await NonOpeners(RequireSource(sourceCampaignId), creatorId).CountAsync(ct);
 
         return await BuildAudienceQuery(audienceType, landingPageId, productId, creatorId).CountAsync(ct);
     }
 
     public async Task<List<string>> GetAudienceEmailsAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId, CancellationToken ct)
     {
         if (audienceType == CampaignAudienceType.LandingPageBuyers)
         {
@@ -60,16 +62,30 @@ public sealed class AudienceService : IAudienceService
                 ORDER BY b."Email"
                 """).AsNoTracking().ToListAsync(ct)).Select(r => r.Email).ToList();
         }
+        if (audienceType == CampaignAudienceType.CampaignNonOpeners)
+            return await NonOpeners(RequireSource(sourceCampaignId), creatorId).Select(r => r.Email).ToListAsync(ct);
 
         return await BuildAudienceQuery(audienceType, landingPageId, productId, creatorId).ToListAsync(ct);
     }
 
     public async Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId,
         string? afterEmail, int limit, CancellationToken ct)
     {
         var after = afterEmail?.Trim().ToLowerInvariant() ?? string.Empty;
         var fetchLimit = limit + 1;
+
+        if (audienceType == CampaignAudienceType.CampaignNonOpeners)
+        {
+            var page = await NonOpeners(RequireSource(sourceCampaignId), creatorId)
+                .Where(r => string.Compare(r.Email, after) > 0)
+                .OrderBy(r => r.Email)
+                .Take(fetchLimit)
+                .Select(r => r.Email)
+                .ToListAsync(ct);
+
+            return page.Count > limit ? (page.Take(limit).ToList(), true) : (page, false);
+        }
 
         // Raw SQL keyset scan (same pattern as ContactsRepository.SearchAsync) — Npgsql's EF provider does
         // not translate string comparison after a LINQ Distinct/Union, so this can't be a plain IQueryable
@@ -233,6 +249,81 @@ public sealed class AudienceService : IAudienceService
             buyers.Select(r => new LandingPageAudienceDto(r.PublicId, r.Title, r.RecipientCount)).ToList());
     }
 
+    public async Task<(int OpenedAny, int OpenedThroughResends)> GetNonOpenerReachAsync(int originalCampaignId, CancellationToken ct)
+    {
+        // Each person once: the opens across the original and its sent resends, grouped by (normalised) email.
+        var reach = await _context.Database.SqlQuery<ReachRow>($"""
+            WITH opens AS (
+                SELECT r."Email", bool_or(c."Id" = {originalCampaignId}) AS "OpenedOriginal"
+                FROM marketing.campaigns c
+                JOIN marketing.campaign_recipients r ON r."CampaignId" = c."Id"
+                WHERE (c."Id" = {originalCampaignId}
+                       OR (c."SourceCampaignId" = {originalCampaignId} AND c."Status" = 'Queued'))
+                  AND r."FirstOpenedAt" IS NOT NULL
+                GROUP BY r."Email"
+            )
+            SELECT COUNT(*)::int AS "OpenedAny",
+                   (COUNT(*) FILTER (WHERE NOT "OpenedOriginal"))::int AS "OpenedThroughResends"
+            FROM opens
+            """)
+            .AsNoTracking()
+            .SingleAsync(ct);
+
+        return (reach.OpenedAny, reach.OpenedThroughResends);
+    }
+
+    /// <summary>
+    /// The next non-opener resend of an original: its recipients whose email was delivered (outbox <c>Sent</c>;
+    /// failed deliveries are what "retry failed" is for) and who have opened neither the original nor any sent
+    /// resend of it, minus current unsubscribes. Someone who was in an earlier resend stays in only if that resend
+    /// was delivered to them. Emails are compared normalised (recipient rows store them trimmed and lower-cased).
+    /// Delivery is looked up per recipient on the outbox (<c>Purpose</c>, <c>CorrelationKey</c>, <c>Status</c>)
+    /// index with the <c>{campaignPublicId}:{recipientId}</c> key; nothing runs per row in the application.
+    /// Open tracking over-reports (Apple Mail Privacy Protection), so this under-reaches rather than over-reaches.
+    /// </summary>
+    private IQueryable<EmailRow> NonOpeners(int originalCampaignId, int creatorId) =>
+        // The delivery checks are a LATERAL ... LIMIT 1 and a scalar subquery on purpose: an EXISTS would be
+        // flattened into a join that reads every Sent broadcast message; these stay one index-only probe of the
+        // (Purpose, CorrelationKey, Status) index per recipient, so the cost follows the recipients, not the outbox.
+        _context.Database.SqlQuery<EmailRow>($"""
+            SELECT r."Email" AS "Email"
+            FROM marketing.campaigns o
+            JOIN marketing.campaign_recipients r ON r."CampaignId" = o."Id"
+            JOIN LATERAL (
+                SELECT 1 FROM email.email_outbox_messages m
+                WHERE m."Purpose" = 'CampaignBroadcast'
+                  AND m."CorrelationKey" = o."PublicId"::text || ':' || r."Id"::text
+                  AND m."Status" = 'Sent'
+                LIMIT 1
+            ) delivered ON true
+            WHERE o."Id" = {originalCampaignId}
+              AND o."CreatorId" = {creatorId}
+              AND r."FirstOpenedAt" IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM marketing.unsubscribes u
+                  WHERE u."CreatorId" = {creatorId} AND u."Email" = r."Email"
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM marketing.campaigns c
+                  JOIN marketing.campaign_recipients rr ON rr."CampaignId" = c."Id" AND rr."Email" = r."Email"
+                  WHERE c."SourceCampaignId" = o."Id"
+                    AND c."Status" = 'Queued'
+                    AND (rr."FirstOpenedAt" IS NOT NULL
+                         OR (SELECT 1 FROM email.email_outbox_messages mm
+                             WHERE mm."Purpose" = 'CampaignBroadcast'
+                               AND mm."CorrelationKey" = c."PublicId"::text || ':' || rr."Id"::text
+                               AND mm."Status" = 'Sent'
+                             LIMIT 1) IS NULL)
+              )
+            """)
+            .AsNoTracking();
+
+    private static int RequireSource(int? sourceCampaignId) =>
+        sourceCampaignId ?? throw new ArgumentException("A CampaignNonOpeners audience needs its source campaign.", nameof(sourceCampaignId));
+
+    private sealed record ReachRow(int OpenedAny, int OpenedThroughResends);
+
     private sealed record EmailRow(string Email);
 
     private sealed record LandingPageAudienceRow(Guid PublicId, string Title, int RecipientCount);
@@ -242,6 +333,9 @@ public sealed class AudienceService : IAudienceService
     private IQueryable<string> BuildAudienceQuery(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId)
     {
+        if (audienceType == CampaignAudienceType.CampaignNonOpeners)
+            throw new ArgumentOutOfRangeException(nameof(audienceType), audienceType, "Non-opener audiences are resolved by NonOpeners.");
+
         var unsubscribedEmails = _context.Set<Unsubscribe>()
             .AsNoTracking()
             .Where(u => u.CreatorId == creatorId)

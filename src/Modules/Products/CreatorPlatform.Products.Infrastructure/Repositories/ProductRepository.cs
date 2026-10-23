@@ -1,4 +1,5 @@
 using CreatorPlatform.Products.Application.Interfaces;
+using CreatorPlatform.Products.Domain.Access;
 using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -34,5 +35,19 @@ public sealed class ProductRepository : IProductRepository
     public async Task AddAsync(Product product, CancellationToken ct)
     {
         await _context.Set<Product>().AddAsync(product, ct);
+    }
+
+    public async Task<bool> IsFileInUseAsync(string blobPath, int? exceptProductId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Product>()
+            .AnyAsync(p => p.FileBlobPath == blobPath && (exceptProductId == null || p.Id != exceptProductId), ct);
+    }
+
+    public async Task<bool> HasActiveAccessGrantsAsync(int productId, CancellationToken ct)
+    {
+        return await _context
+            .Set<AccessGrant>()
+            .AnyAsync(g => g.ProductId == productId && g.RevokedAt == null, ct);
     }
 }

@@ -12,15 +12,18 @@ public sealed class UnsubscribePageService : IUnsubscribePageService
 
     private readonly IUnsubscribeTokenService _tokenService;
     private readonly IUnsubscribeRepository _unsubscribeRepository;
+    private readonly IUnsubscribeService _unsubscribeService;
     private readonly ICreatorContextProvider _creatorContextProvider;
 
     public UnsubscribePageService(
         IUnsubscribeTokenService tokenService,
         IUnsubscribeRepository unsubscribeRepository,
+        IUnsubscribeService unsubscribeService,
         ICreatorContextProvider creatorContextProvider)
     {
         _tokenService = tokenService;
         _unsubscribeRepository = unsubscribeRepository;
+        _unsubscribeService = unsubscribeService;
         _creatorContextProvider = creatorContextProvider;
     }
 
@@ -34,8 +37,7 @@ public sealed class UnsubscribePageService : IUnsubscribePageService
     public async Task<UnsubscribePageDto> ConfirmAsync(string token, CancellationToken ct)
     {
         var (payload, creator) = await ResolveAsync(token, ct);
-        await _unsubscribeRepository.AddIfNotExistsAsync(
-            Unsubscribe.Create(payload.CreatorId, payload.Email, UnsubscribeSource.Link, DateTimeOffset.UtcNow), ct);
+        await _unsubscribeService.UnsubscribeAsync(payload.CreatorId, payload.Email, UnsubscribeSource.Link, ct);
         return new UnsubscribePageDto(creator, AlreadyUnsubscribed: true);
     }
 

@@ -28,7 +28,8 @@ public sealed class DeleteContactTests
             new MarketingCreatorContextProvider(db),
             new ContactsRepository(db),
             new MarketingUnitOfWork(db),
-            new CreatorUsageService(db));
+            new CreatorUsageService(db),
+            new UnsubscribeRepository(db));
 
         await service.DeleteAsync(creator.Slug, creator.OwnerUserId, email, CancellationToken.None);
     }

@@ -27,16 +27,20 @@ public sealed class OrderReceiptReader : IOrderReceiptReader
                 o."CreatedAt"        AS "CreatedAt",
                 o."PaidAt"           AS "PaidAt",
                 p."Name"             AS "ProductName",
+                p."FileName"         AS "FileName",
+                p."FileSizeBytes"    AS "FileSizeBytes",
                 c."Name"             AS "CreatorName",
                 c."Slug"             AS "CreatorSlug",
                 s."BrandName"        AS "BrandName",
                 s."PrimaryColor"     AS "BrandColor",
                 s."LogoUrl"          AS "LogoUrl",
-                s."SupportEmail"     AS "SupportEmail"
+                s."SupportEmail"     AS "SupportEmail",
+                g."Token"            AS "AccessToken"
             FROM orders.orders o
             JOIN products.products p ON p."Id" = o."ProductId"
             JOIN creators.creators c ON c."Id" = o."CreatorId"
             LEFT JOIN creators.creator_settings s ON s."CreatorId" = c."Id"
+            LEFT JOIN products.access_grants g ON g."OrderId" = o."Id" AND g."RevokedAt" IS NULL
             WHERE o."StripeCheckoutSessionId" = {checkoutSessionId}
             """)
             .AsNoTracking()

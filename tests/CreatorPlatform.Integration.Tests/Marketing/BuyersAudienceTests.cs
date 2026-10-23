@@ -56,9 +56,9 @@ public sealed class BuyersAudienceTests
         await AddUnsubscribeAsync(foreign.CreatorId, "iva@example.test");                                          // another creator's opt-out
 
         var count = await WithAudienceAsync(a => a.GetAudienceCountAsync(
-            CampaignAudienceType.LandingPageBuyers, s.PageId, null, s.Creator.CreatorId, CancellationToken.None));
+            CampaignAudienceType.LandingPageBuyers, s.PageId, null, null, s.Creator.CreatorId, CancellationToken.None));
         var emails = await WithAudienceAsync(a => a.GetAudienceEmailsAsync(
-            CampaignAudienceType.LandingPageBuyers, s.PageId, null, s.Creator.CreatorId, CancellationToken.None));
+            CampaignAudienceType.LandingPageBuyers, s.PageId, null, null, s.Creator.CreatorId, CancellationToken.None));
 
         Assert.Equal(["ana@example.test", "iva@example.test"], emails);
         Assert.Equal(2, count);
@@ -72,7 +72,7 @@ public sealed class BuyersAudienceTests
         await AddOrderAsync(s.Creator.CreatorId, s.ProductId, s.PageId, "Paid", "iva@example.test");
 
         Task<List<string>> Emails() => WithAudienceAsync(a => a.GetAudienceEmailsAsync(
-            CampaignAudienceType.LandingPageBuyers, s.PageId, null, s.Creator.CreatorId, CancellationToken.None));
+            CampaignAudienceType.LandingPageBuyers, s.PageId, null, null, s.Creator.CreatorId, CancellationToken.None));
 
         Assert.Equal(2, (await Emails()).Count);
         await AddUnsubscribeAsync(s.Creator.CreatorId, "ana@example.test");
@@ -88,11 +88,11 @@ public sealed class BuyersAudienceTests
         await AddOrderAsync(s.Creator.CreatorId, s.ProductId, s.PageId, "Paid", "B@example.test"); // a repeat of b
 
         var first = await WithAudienceAsync(a => a.GetAudiencePageAsync(
-            CampaignAudienceType.LandingPageBuyers, s.PageId, null, s.Creator.CreatorId, null, 2, CancellationToken.None));
+            CampaignAudienceType.LandingPageBuyers, s.PageId, null, null, s.Creator.CreatorId, null, 2, CancellationToken.None));
         var second = await WithAudienceAsync(a => a.GetAudiencePageAsync(
-            CampaignAudienceType.LandingPageBuyers, s.PageId, null, s.Creator.CreatorId, first.Emails[^1], 2, CancellationToken.None));
+            CampaignAudienceType.LandingPageBuyers, s.PageId, null, null, s.Creator.CreatorId, first.Emails[^1], 2, CancellationToken.None));
         var third = await WithAudienceAsync(a => a.GetAudiencePageAsync(
-            CampaignAudienceType.LandingPageBuyers, s.PageId, null, s.Creator.CreatorId, second.Emails[^1], 2, CancellationToken.None));
+            CampaignAudienceType.LandingPageBuyers, s.PageId, null, null, s.Creator.CreatorId, second.Emails[^1], 2, CancellationToken.None));
 
         Assert.Equal(["a@example.test", "b@example.test"], first.Emails);
         Assert.True(first.HasMore);
@@ -173,8 +173,8 @@ public sealed class BuyersAudienceTests
         await using var db = _fixture.CreateDbContext();
         var now = DateTimeOffset.UtcNow;
         return (await db.Database.SqlQuery<int>($"""
-            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', 1000, 'Digital', 'Active', {now}, {now})
+            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', 1000, 'Active', 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }

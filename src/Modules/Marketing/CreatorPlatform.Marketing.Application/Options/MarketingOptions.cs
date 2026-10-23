@@ -16,6 +16,12 @@ public sealed class MarketingOptions
     /// every pixel already sent stop counting.</summary>
     public string OpenTrackingSecret { get; init; } = string.Empty;
 
+    /// <summary>HMAC-SHA256 signing secret for tracked-link tokens (see IClickTrackingTokenService), separate from
+    /// the other two so no token kind can stand in for another. Like <see cref="OpenTrackingSecret"/>, the Worker
+    /// mints these tokens (scheduled sends) and the API validates them, so both need the same value; rotating it
+    /// turns every tracked link already sent into a "link not found" page.</summary>
+    public string ClickTrackingSecret { get; init; } = string.Empty;
+
     /// <summary>Base URL of this API — used to build the per-recipient unsubscribe link embedded in
     /// campaign emails (<c>{ApiBaseUrl}/api/public/unsubscribe/{token}</c>).</summary>
     public string ApiBaseUrl { get; init; } = string.Empty;
