@@ -29,8 +29,23 @@ public interface IAnalyticsSeriesReader
         SeriesRange current, SeriesRange? previous, CancellationToken ct);
 
     /// <summary>Paid revenue and sales per product in the range, best first: at most <paramref name="limit"/> products
-    /// with revenue, the period's total revenue and the part of it beyond the listed products. One query.</summary>
-    Task<SeriesProductBreakdownRow> GetProductBreakdownAsync(int creatorId, SeriesRange range, int limit, CancellationToken ct);
+    /// with revenue, the period's total revenue, the part of it beyond the listed products, how many products had
+    /// revenue, and the rank of <paramref name="selectedProductId"/> wherever it is. One query.</summary>
+    Task<SeriesProductBreakdownRow> GetProductBreakdownAsync(
+        int creatorId, SeriesRange range, int limit, int? selectedProductId, CancellationToken ct);
+
+    /// <summary>The product's public id and name. Null when it isn't the creator's.</summary>
+    Task<SeriesProductNameRow?> GetProductNameAsync(int creatorId, Guid publicId, CancellationToken ct);
+
+    /// <summary>The creator's non-archived pages (of <paramref name="productId"/> when given) with their views, emails and
+    /// sales in the range, best first, at most <paramref name="limit"/>; pages without activity left out.</summary>
+    Task<List<SeriesPageRow>> GetTopPagesAsync(int creatorId, int? productId, SeriesRange range, int limit, CancellationToken ct);
+
+    /// <summary>How many non-archived pages the creator has (of <paramref name="productId"/> when given).</summary>
+    Task<int> CountPagesAsync(int creatorId, int? productId, CancellationToken ct);
+
+    /// <summary>The newest sign-up per email across the product's lead pages, newest first, and the number of such emails.</summary>
+    Task<(int Total, List<SeriesSignupRow> Signups)> GetProductSignupsAsync(int creatorId, int productId, int limit, CancellationToken ct);
 
     Task<SeriesProductExtrasRow> GetProductExtrasAsync(int creatorId, int productId, SeriesRange range, CancellationToken ct);
 
@@ -73,4 +88,15 @@ public sealed record SeriesProductRow(Guid PublicId, string Name, long Sales, lo
 
 /// <param name="TotalRevenueCents">All the creator's product revenue in the range.</param>
 /// <param name="OtherRevenueCents">What the listed <paramref name="Products"/> leave out.</param>
-public sealed record SeriesProductBreakdownRow(long TotalRevenueCents, List<SeriesProductRow> Products, long OtherRevenueCents);
+/// <param name="Selected">The selected product's row and rank; null when it had no revenue (or none was asked for).</param>
+public sealed record SeriesProductBreakdownRow(
+    long TotalRevenueCents, List<SeriesProductRow> Products, long OtherRevenueCents, int ProductsWithSales,
+    (SeriesProductRow Row, int Rank)? Selected);
+
+public sealed record SeriesProductNameRow(int Id, Guid PublicId, string Name);
+
+public sealed record SeriesPageRow(
+    Guid PublicId, string Title, string Slug, string Type, string Status, Guid? ProductPublicId, string? ProductName,
+    string? ProductThumbnailUrl, long Views, long Emails, long Sales, long RevenueCents);
+
+public sealed record SeriesSignupRow(string Email, DateTimeOffset CapturedAt, bool Unsubscribed, Guid LandingPagePublicId, string LandingPageTitle);

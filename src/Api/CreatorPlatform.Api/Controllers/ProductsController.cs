@@ -1,3 +1,5 @@
+using CreatorPlatform.Analytics.Application.Series;
+using CreatorPlatform.Analytics.Application.Services;
 using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Exceptions;
@@ -17,16 +19,35 @@ public sealed class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
     private readonly IOrderService _orderService;
+    private readonly IAnalyticsSeriesService _analyticsService;
     private readonly ICurrentUserContext _currentUserContext;
 
     public ProductsController(
         IProductService productService,
         IOrderService orderService,
+        IAnalyticsSeriesService analyticsService,
         ICurrentUserContext currentUserContext)
     {
         _productService = productService;
         _orderService = orderService;
+        _analyticsService = analyticsService;
         _currentUserContext = currentUserContext;
+    }
+
+    /// <summary>The product's newest sign-ups across the lead pages that give it away, one per email
+    /// (<paramref name="limit"/> 1–100, default 5), with how many people signed up in total.</summary>
+    [HttpGet("{productPublicId:guid}/signups")]
+    public async Task<ActionResult<ApiResponse<ProductSignupsDto>>> Signups(
+        string slug,
+        Guid productPublicId,
+        [FromQuery] int? limit,
+        CancellationToken ct)
+    {
+        var user = GetVerifiedUser();
+
+        var signups = await _analyticsService.GetProductSignupsAsync(slug, user.Id, productPublicId, limit, ct);
+
+        return Ok(ApiResponse<ProductSignupsDto>.Success(StatusCodes.Status200OK, "Sign-ups loaded.", signups));
     }
 
     [HttpGet]

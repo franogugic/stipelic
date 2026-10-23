@@ -89,12 +89,16 @@ public sealed record AnalyticsExtrasDto(
 /// <param name="Products">At most 20 products with revenue, sorted by revenue desc (ties by name).</param>
 /// <param name="TotalRevenueCents">Every product's revenue in the period, the listed ones and the rest.</param>
 /// <param name="OtherRevenueCents">Revenue of the products beyond <paramref name="Products"/> (0 when all are listed).</param>
+/// <param name="ProductsWithSales">Products with revenue in the period.</param>
+/// <param name="Selected">The product asked for with <c>productId</c>, wherever it ranks; null without one.</param>
 public sealed record AnalyticsProductBreakdownDto(
     string Period,
     AnalyticsRangeDto Range,
     string Currency,
     long TotalRevenueCents,
     List<AnalyticsProductRevenueDto> Products,
-    long OtherRevenueCents);
+    long OtherRevenueCents,
+    int ProductsWithSales,
+    AnalyticsSelectedProductDto? Selected);
 
 public sealed record AnalyticsProductRevenueDto(Guid PublicId, string Name, long RevenueCents, long Sales);

@@ -202,15 +202,16 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
     }
 
     public async Task<SeriesProductBreakdownRow> GetProductBreakdownAsync(
-        int creatorId, SeriesRange range, int limit, CancellationToken ct)
+        int creatorId, SeriesRange range, int limit, int? selectedProductId, CancellationToken ct)
     {
         var from = range.From;
         var to = range.To;
         // One pass over the creator's paid orders: revenue and sales per product (products without revenue, e.g.
-        // free ones, are left out), ranked, with the grand total on every row so the rest can be derived.
+        // free ones, are left out), ranked, with the grand total and the count on every row; the top rows plus the
+        // selected product wherever it ranks.
         var rows = await _context.Database.SqlQuery<ProductBreakdownRow>($"""
             WITH per_product AS (
-                SELECT pr."PublicId" AS "PublicId", pr."Name" AS "Name",
+                SELECT pr."Id" AS "ProductId", pr."PublicId" AS "PublicId", pr."Name" AS "Name",
                        COUNT(*)::bigint AS "Sales", SUM(o."AmountCents")::bigint AS "RevenueCents"
                 FROM orders.orders o
                 JOIN products.products pr ON pr."Id" = o."ProductId"
@@ -222,24 +223,121 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
             ),
             ranked AS (
                 SELECT p.*, ROW_NUMBER() OVER (ORDER BY p."RevenueCents" DESC, p."Name", p."PublicId") AS "Rank",
-                       (SUM(p."RevenueCents") OVER ())::bigint AS "Total"
+                       (SUM(p."RevenueCents") OVER ())::bigint AS "Total",
+                       (COUNT(*) OVER ())::int AS "Count"
                 FROM per_product p
             )
-            SELECT r."PublicId", r."Name", r."Sales", r."RevenueCents", r."Total" AS "TotalRevenueCents"
+            SELECT r."PublicId", r."Name", r."Sales", r."RevenueCents", r."Total" AS "TotalRevenueCents",
+                   r."Rank"::int AS "Rank", r."Count" AS "ProductsWithSales",
+                   (r."ProductId" = {selectedProductId}) IS TRUE AS "IsSelected"
             FROM ranked r
-            WHERE r."Rank" <= {limit}
+            WHERE r."Rank" <= {limit} OR r."ProductId" = {selectedProductId}
             ORDER BY r."Rank"
             """).AsNoTracking().ToListAsync(ct);
 
         if (rows.Count == 0)
-            return new SeriesProductBreakdownRow(0, [], 0);
+            return new SeriesProductBreakdownRow(0, [], 0, 0, null);
 
+        static SeriesProductRow Row(ProductBreakdownRow row) => new(row.PublicId, row.Name, row.Sales, row.RevenueCents);
         var total = rows[0].TotalRevenueCents;
-        var listed = rows.Sum(row => row.RevenueCents);
+        var listed = rows.Where(row => row.Rank <= limit).ToList();
+        var selected = rows.FirstOrDefault(row => row.IsSelected);
         return new SeriesProductBreakdownRow(
             total,
-            rows.Select(row => new SeriesProductRow(row.PublicId, row.Name, row.Sales, row.RevenueCents)).ToList(),
-            total - listed);
+            listed.Select(Row).ToList(),
+            total - listed.Sum(row => row.RevenueCents),
+            rows[0].ProductsWithSales,
+            selected is null ? null : (Row(selected), selected.Rank));
+    }
+
+    public async Task<SeriesProductNameRow?> GetProductNameAsync(int creatorId, Guid publicId, CancellationToken ct) =>
+        (await _context.Database.SqlQuery<SeriesProductNameRow>($"""
+            SELECT p."Id" AS "Id", p."PublicId" AS "PublicId", p."Name" AS "Name"
+            FROM products.products p
+            WHERE p."PublicId" = {publicId} AND p."CreatorId" = {creatorId}
+            """).AsNoTracking().ToListAsync(ct)).SingleOrDefault();
+
+    public async Task<List<SeriesPageRow>> GetTopPagesAsync(int creatorId, int? productId, SeriesRange range, int limit, CancellationToken ct)
+    {
+        var from = range.From;
+        var to = range.To;
+        // Per page, in the range: views, distinct emails, and Paid orders placed through it (counted by PaidAt). Each
+        // source is one grouped pass bounded by the page ids and the time range.
+        return await _context.Database.SqlQuery<SeriesPageRow>($"""
+            WITH pages AS (
+                SELECT lp."Id", lp."PublicId", lp."Title", lp."Slug", lp."Type", lp."Status",
+                       pr."PublicId" AS "ProductPublicId", pr."Name" AS "ProductName", pr."ThumbnailUrl" AS "ProductThumbnailUrl"
+                FROM landing_pages.landing_pages lp
+                LEFT JOIN products.products pr ON pr."Id" = lp."ProductId"
+                WHERE lp."CreatorId" = {creatorId} AND lp."Status" <> 'Archived'
+                  AND ({productId}::int IS NULL OR lp."ProductId" = {productId})
+            ),
+            views AS (
+                SELECT pv."LandingPageId", COUNT(*)::bigint AS "Views"
+                FROM analytics.page_views pv
+                WHERE pv."LandingPageId" IN (SELECT "Id" FROM pages)
+                  AND ({from}::timestamptz IS NULL OR pv."ViewedAt" >= {from}) AND pv."ViewedAt" < {to}
+                GROUP BY pv."LandingPageId"
+            ),
+            emails AS (
+                SELECT ec."LandingPageId", COUNT(DISTINCT ec."Email")::bigint AS "Emails"
+                FROM analytics.email_captures ec
+                WHERE ec."LandingPageId" IN (SELECT "Id" FROM pages)
+                  AND ({from}::timestamptz IS NULL OR ec."CapturedAt" >= {from}) AND ec."CapturedAt" < {to}
+                GROUP BY ec."LandingPageId"
+            ),
+            sales AS (
+                SELECT o."LandingPageId", COUNT(*)::bigint AS "Sales", SUM(o."AmountCents")::bigint AS "RevenueCents"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId} AND o."Status" = 'Paid' AND o."LandingPageId" IN (SELECT "Id" FROM pages)
+                  AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from})
+                  AND COALESCE(o."PaidAt", o."CreatedAt") < {to}
+                GROUP BY o."LandingPageId"
+            )
+            SELECT p."PublicId", p."Title", p."Slug", p."Type", p."Status", p."ProductPublicId", p."ProductName", p."ProductThumbnailUrl",
+                   COALESCE(v."Views", 0)::bigint AS "Views", COALESCE(e."Emails", 0)::bigint AS "Emails",
+                   COALESCE(s."Sales", 0)::bigint AS "Sales", COALESCE(s."RevenueCents", 0)::bigint AS "RevenueCents"
+            FROM pages p
+            LEFT JOIN views v ON v."LandingPageId" = p."Id"
+            LEFT JOIN emails e ON e."LandingPageId" = p."Id"
+            LEFT JOIN sales s ON s."LandingPageId" = p."Id"
+            WHERE v."Views" IS NOT NULL OR e."Emails" IS NOT NULL OR s."Sales" IS NOT NULL
+            ORDER BY COALESCE(s."RevenueCents", 0) DESC, COALESCE(e."Emails", 0) DESC, COALESCE(v."Views", 0) DESC, p."Title", p."PublicId"
+            LIMIT {limit}
+            """).AsNoTracking().ToListAsync(ct);
+    }
+
+    public async Task<int> CountPagesAsync(int creatorId, int? productId, CancellationToken ct) =>
+        (await _context.Database.SqlQuery<int>($"""
+            SELECT COUNT(*)::int AS "Value" FROM landing_pages.landing_pages lp
+            WHERE lp."CreatorId" = {creatorId} AND lp."Status" <> 'Archived'
+              AND ({productId}::int IS NULL OR lp."ProductId" = {productId})
+            """).ToListAsync(ct)).Single();
+
+    public async Task<(int Total, List<SeriesSignupRow> Signups)> GetProductSignupsAsync(
+        int creatorId, int productId, int limit, CancellationToken ct)
+    {
+        // Every capture on the product's lead pages (archived ones too), newest per email; the total is counted before
+        // the limit (window functions run before LIMIT).
+        var rows = await _context.Database.SqlQuery<SignupRow>($"""
+            WITH captures AS (
+                SELECT ec."Email", ec."CapturedAt", lp."PublicId" AS "LandingPagePublicId", lp."Title" AS "LandingPageTitle",
+                       ROW_NUMBER() OVER (PARTITION BY ec."Email" ORDER BY ec."CapturedAt" DESC, lp."Id") AS "Newest"
+                FROM analytics.email_captures ec
+                JOIN landing_pages.landing_pages lp ON lp."Id" = ec."LandingPageId"
+                WHERE lp."CreatorId" = {creatorId} AND lp."ProductId" = {productId} AND lp."Type" = 'LeadGen'
+            )
+            SELECT c."Email", c."CapturedAt", c."LandingPagePublicId", c."LandingPageTitle",
+                   EXISTS (SELECT 1 FROM marketing.unsubscribes u WHERE u."CreatorId" = {creatorId} AND u."Email" = c."Email") AS "Unsubscribed",
+                   (COUNT(*) OVER ())::int AS "Total"
+            FROM captures c
+            WHERE c."Newest" = 1
+            ORDER BY c."CapturedAt" DESC, c."Email"
+            LIMIT {limit}
+            """).AsNoTracking().ToListAsync(ct);
+
+        return (rows.Count == 0 ? 0 : rows[0].Total,
+            rows.Select(r => new SeriesSignupRow(r.Email, r.CapturedAt, r.Unsubscribed, r.LandingPagePublicId, r.LandingPageTitle)).ToList());
     }
 
     public async Task<SeriesProductExtrasRow> GetProductExtrasAsync(int creatorId, int productId, SeriesRange range, CancellationToken ct)
@@ -334,7 +432,11 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
 
     private sealed record DownloadTotalsRow(long Downloads, long PreviousDownloads);
 
-    private sealed record ProductBreakdownRow(Guid PublicId, string Name, long Sales, long RevenueCents, long TotalRevenueCents);
+    private sealed record ProductBreakdownRow(
+        Guid PublicId, string Name, long Sales, long RevenueCents, long TotalRevenueCents, int Rank, int ProductsWithSales, bool IsSelected);
+
+    private sealed record SignupRow(
+        string Email, DateTimeOffset CapturedAt, Guid LandingPagePublicId, string LandingPageTitle, bool Unsubscribed, int Total);
 
     private sealed record TotalsRow(
         long Views, long PreviousViews, long Sales, long RevenueCents, long PreviousSales, long PreviousRevenueCents);

@@ -287,11 +287,11 @@ public sealed class AnalyticsSeriesTests
 
     // ---- revenue by product (F6) -----------------------------------------------------------------------------
 
-    private async Task<AnalyticsProductBreakdownDto> BreakdownAsync(TestData.SeededCreator creator, string? period)
+    private async Task<AnalyticsProductBreakdownDto> BreakdownAsync(TestData.SeededCreator creator, string? period, Guid? productId = null)
     {
         await using var db = _fixture.CreateDbContext();
         return await new AnalyticsSeriesService(new AnalyticsSeriesReader(db))
-            .GetProductBreakdownAsync(creator.Slug, creator.OwnerUserId, period, CancellationToken.None);
+            .GetProductBreakdownAsync(creator.Slug, creator.OwnerUserId, period, productId, CancellationToken.None);
     }
 
     [Fact]
@@ -354,6 +354,131 @@ public sealed class AnalyticsSeriesTests
 
         Assert.Equal((0L, 0L), (breakdown.TotalRevenueCents, breakdown.OtherRevenueCents));
         Assert.Empty(breakdown.Products);
+    }
+
+    [Fact]
+    public async Task ASelectedProduct_IsRankedEvenBeyondTheTopTwenty_AndOneWithoutRevenueHasNoRank()
+    {
+        var (creator, productId, page) = await SeedCreatorWithPageAsync();
+        var products = new List<int> { productId };
+        for (var i = 1; i < 22; i++)
+            products.Add(await AddProductAsync(creator.CreatorId, $"Product {i:00}"));
+        var unsold = await AddProductAsync(creator.CreatorId, "Unsold");
+        for (var i = 0; i < products.Count; i++)
+            await AddOrderAsync(creator.CreatorId, products[i], page.Id, 1000 + i * 100, LocalNoon(0));   // products[0] is the weakest
+
+        var weakest = await BreakdownAsync(creator, "30d", await PublicIdAsync("products.products", productId));
+        var none = await BreakdownAsync(creator, "30d", await PublicIdAsync("products.products", unsold));
+        var plain = await BreakdownAsync(creator, "30d");
+
+        Assert.Equal(22, weakest.ProductsWithSales);
+        Assert.Equal(20, weakest.Products.Count);
+        Assert.Equal((22, 1000L, 1L), (weakest.Selected!.Rank!.Value, weakest.Selected.RevenueCents, weakest.Selected.Sales));
+        Assert.Equal(("Unsold", (int?)null, 0L), (none.Selected!.Name, none.Selected.Rank, none.Selected.RevenueCents));
+        Assert.Null(plain.Selected);
+        await Assert.ThrowsAsync<NotFoundException>(() => BreakdownAsync(creator, "30d", Guid.NewGuid()));
+    }
+
+    // ---- top pages and product sign-ups (R6.4) ---------------------------------------------------------------
+
+    private async Task<AnalyticsPagesDto> TopPagesAsync(TestData.SeededCreator creator, string? period, Guid? productId = null, int? limit = null)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return await new AnalyticsSeriesService(new AnalyticsSeriesReader(db))
+            .GetTopPagesAsync(creator.Slug, creator.OwnerUserId, period, productId, limit, CancellationToken.None);
+    }
+
+    private async Task<ProductSignupsDto> SignupsAsync(TestData.SeededCreator creator, Guid productId, int? limit = null)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return await new AnalyticsSeriesService(new AnalyticsSeriesReader(db))
+            .GetProductSignupsAsync(creator.Slug, creator.OwnerUserId, productId, limit, CancellationToken.None);
+    }
+
+    private async Task<Page> AddPageOfAsync(int creatorId, int productId, string title, string type, string status)
+    {
+        await using var db = _fixture.CreateDbContext();
+        var publicId = Guid.NewGuid();
+        var id = (await db.Database.SqlQuery<int>($"""
+            INSERT INTO landing_pages.landing_pages ("PublicId", "CreatorId", "ProductId", "Title", "Slug", "Type", "Status", "CreatedAt", "UpdatedAt")
+            VALUES ({publicId}, {creatorId}, {productId}, {title}, {$"p-{Guid.NewGuid():N}"[..20]}, {type}, {status}, now() - interval '90 days', now())
+            RETURNING "Id" AS "Value"
+            """).ToListAsync()).Single();
+        return new Page(id, publicId);
+    }
+
+    [Fact]
+    public async Task TopPages_RankByRevenueThenEmailsThenViews_InThePeriod_LeavingOutArchivedAndIdlePages()
+    {
+        var (creator, productId, seller) = await SeedCreatorWithPageAsync();      // "Page", Sales
+        var otherProductId = await AddProductAsync(creator.CreatorId, "Other");
+        var lead = await AddPageOfAsync(creator.CreatorId, otherProductId, "Lead", "LeadGen", "Published");
+        var viewed = await AddPageOfAsync(creator.CreatorId, otherProductId, "Viewed", "Sales", "Draft");
+        var archived = await AddPageOfAsync(creator.CreatorId, productId, "Archived", "Sales", "Archived");
+        await AddPageOfAsync(creator.CreatorId, productId, "Idle", "Sales", "Published");
+        var at = LocalNoon(-1);
+
+        await AddOrderAsync(creator.CreatorId, productId, seller.Id, 2900, at);
+        await AddOrderAsync(creator.CreatorId, productId, seller.Id, 9900, LocalNoon(-40));           // before the 30 days
+        await AddOrderAsync(creator.CreatorId, productId, seller.Id, 5000, at, status: "Refunded");    // not a sale
+        await AddViewAsync(seller.Id, at);
+        await AddCaptureAsync(lead.Id, otherProductId, "a@example.test", at);
+        await AddCaptureAsync(lead.Id, otherProductId, "b@example.test", at);
+        for (var i = 0; i < 5; i++)
+            await AddViewAsync(viewed.Id, at);
+        await AddOrderAsync(creator.CreatorId, productId, archived.Id, 99000, at);                     // archived: left out
+
+        var top = await TopPagesAsync(creator, null);   // default 30d
+
+        Assert.Equal(("30d", 4), (top.Period, top.PageCount));   // the archived page is not counted
+        Assert.Equal(["Page", "Lead", "Viewed"], top.Pages.Select(p => p.Title));
+        var first = top.Pages[0];
+        Assert.Equal((1L, 2900L, 1L, 0L), (first.Sales, first.RevenueCents, first.Views, first.Emails));
+        Assert.Equal(("Sales", "Published", "Product"), (first.Type, first.Status, first.ProductName));
+        Assert.Equal((2L, "LeadGen"), (top.Pages[1].Emails, top.Pages[1].Type));
+        Assert.Equal((5L, "Draft"), (top.Pages[2].Views, top.Pages[2].Status));
+
+        var limited = await TopPagesAsync(creator, "30d", limit: 1);
+        Assert.Equal(["Page"], limited.Pages.Select(p => p.Title));
+        var ofProduct = await TopPagesAsync(creator, "30d", await PublicIdAsync("products.products", otherProductId));
+        Assert.Equal(2, ofProduct.PageCount);
+        Assert.Equal(["Lead", "Viewed"], ofProduct.Pages.Select(p => p.Title));
+        var allTime = await TopPagesAsync(creator, "all");
+        Assert.Equal(2900L + 9900L, allTime.Pages[0].RevenueCents);
+
+        await Assert.ThrowsAsync<BadRequestException>(() => TopPagesAsync(creator, "30d", limit: 21));
+        await Assert.ThrowsAsync<NotFoundException>(() => TopPagesAsync(creator, "30d", Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task ProductSignups_AreTheNewestPerEmail_AcrossItsLeadPages_WithTheTotal()
+    {
+        var (creator, _, _) = await SeedCreatorWithPageAsync();
+        var guide = await AddProductAsync(creator.CreatorId, "Guide");
+        var first = await AddPageOfAsync(creator.CreatorId, guide, "First lead", "LeadGen", "Published");
+        var second = await AddPageOfAsync(creator.CreatorId, guide, "Second lead", "LeadGen", "Archived");   // archived still counts
+        var sales = await AddPageOfAsync(creator.CreatorId, guide, "Sales", "Sales", "Published");
+        await AddCaptureAsync(first.Id, guide, "ana@example.test", LocalNoon(-5));
+        await AddCaptureAsync(second.Id, guide, "ana@example.test", LocalNoon(-1));    // Ana's newest
+        await AddCaptureAsync(first.Id, guide, "bo@example.test", LocalNoon(-3));
+        await AddCaptureAsync(second.Id, guide, "cy@example.test", LocalNoon(-10));
+        await AddCaptureAsync(sales.Id, guide, "di@example.test", LocalNoon(0));        // not a lead page
+        await _data.UnsubscribeAsync(creator.CreatorId, "bo@example.test");
+        var guidePublicId = await PublicIdAsync("products.products", guide);
+
+        var signups = await SignupsAsync(creator, guidePublicId);
+        var two = await SignupsAsync(creator, guidePublicId, limit: 2);
+
+        Assert.Equal(3, signups.Total);
+        Assert.Equal(["ana@example.test", "bo@example.test", "cy@example.test"], signups.Signups.Select(s => s.Email));
+        Assert.Equal(("Second lead", second.PublicId, false), (signups.Signups[0].LandingPageTitle, signups.Signups[0].LandingPagePublicId, signups.Signups[0].Unsubscribed));
+        Assert.True(signups.Signups[1].Unsubscribed);
+        Assert.Equal((3, 2), (two.Total, two.Signups.Count));
+
+        var none = await SignupsAsync(creator, await PublicIdAsync("products.products", await AddProductAsync(creator.CreatorId, "No pages")));
+        Assert.Equal((0, 0), (none.Total, none.Signups.Count));
+        await Assert.ThrowsAsync<NotFoundException>(() => SignupsAsync(creator, Guid.NewGuid()));
+        await Assert.ThrowsAsync<BadRequestException>(() => SignupsAsync(creator, guidePublicId, limit: 0));
     }
 
     // ---- seeding ---------------------------------------------------------------------------------------------

@@ -14,15 +14,28 @@ public interface IAnalyticsSeriesService
     Task<AnalyticsSeriesDto> GetAsync(
         string slug, int ownerUserId, string? scope, Guid id, string? period, CancellationToken ct);
 
-    /// <summary>Paid revenue and sales per product for <paramref name="period"/> (default 30d).</summary>
+    /// <summary>Paid revenue and sales per product for <paramref name="period"/> (default 30d), with the rank of
+    /// <paramref name="productId"/> when given (404 when it isn't the caller's).</summary>
     Task<AnalyticsProductBreakdownDto> GetProductBreakdownAsync(
-        string slug, int ownerUserId, string? period, CancellationToken ct);
+        string slug, int ownerUserId, string? period, Guid? productId, CancellationToken ct);
+
+    /// <summary>The top pages of the period (default 30d), of <paramref name="productId"/> when given; <paramref name="limit"/>
+    /// 1–20 (default 5).</summary>
+    Task<AnalyticsPagesDto> GetTopPagesAsync(
+        string slug, int ownerUserId, string? period, Guid? productId, int? limit, CancellationToken ct);
+
+    /// <summary>The product's newest sign-ups (one per email); <paramref name="limit"/> 1–100 (default 5).</summary>
+    Task<ProductSignupsDto> GetProductSignupsAsync(string slug, int ownerUserId, Guid productId, int? limit, CancellationToken ct);
 }
 
 public sealed class AnalyticsSeriesService : IAnalyticsSeriesService
 {
     private const string BucketFormat = "yyyy-MM-dd'T'HH:mm";
     private const int MaxListedProducts = 20;
+    private const int DefaultTopPages = 5;
+    private const int MaxTopPages = 20;
+    private const int DefaultSignups = 5;
+    private const int MaxSignups = 100;
 
     private readonly IAnalyticsSeriesReader _reader;
 
@@ -106,17 +119,27 @@ public sealed class AnalyticsSeriesService : IAnalyticsSeriesService
     }
 
     public async Task<AnalyticsProductBreakdownDto> GetProductBreakdownAsync(
-        string slug, int ownerUserId, string? period, CancellationToken ct)
+        string slug, int ownerUserId, string? period, Guid? productId, CancellationToken ct)
     {
         var periodKey = ResolvePeriod(period, "30d");
 
         var creator = await _reader.GetCreatorAsync(slug, ownerUserId, ct)
             ?? throw new NotFoundException("Creator workspace not found.");
+        var product = productId is { } id
+            ? await _reader.GetProductNameAsync(creator.Id, id, ct) ?? throw new NotFoundException("Product not found.")
+            : null;
 
         var timezone = CreatorTimeZone.Resolve(creator.Timezone);
         var plan = AnalyticsPeriodPlan.Create(periodKey, DateTimeOffset.UtcNow, timezone, creator.CreatedAt);
         var read = await _reader.GetProductBreakdownAsync(
-            creator.Id, new SeriesRange(plan.TotalsFrom, plan.TotalsTo), MaxListedProducts, ct);
+            creator.Id, new SeriesRange(plan.TotalsFrom, plan.TotalsTo), MaxListedProducts, product?.Id, ct);
+
+        // A product without revenue in the period has no rank; it is still answered, with zeros.
+        var selected = product is null
+            ? null
+            : read.Selected is { } ranked
+                ? new AnalyticsSelectedProductDto(product.PublicId, product.Name, ranked.Row.RevenueCents, ranked.Row.Sales, ranked.Rank)
+                : new AnalyticsSelectedProductDto(product.PublicId, product.Name, 0, 0, null);
 
         return new AnalyticsProductBreakdownDto(
             periodKey,
@@ -124,7 +147,60 @@ public sealed class AnalyticsSeriesService : IAnalyticsSeriesService
             creator.Currency,
             read.TotalRevenueCents,
             read.Products.Select(p => new AnalyticsProductRevenueDto(p.PublicId, p.Name, p.RevenueCents, p.Sales)).ToList(),
-            read.OtherRevenueCents);
+            read.OtherRevenueCents,
+            read.ProductsWithSales,
+            selected);
+    }
+
+    public async Task<AnalyticsPagesDto> GetTopPagesAsync(
+        string slug, int ownerUserId, string? period, Guid? productId, int? limit, CancellationToken ct)
+    {
+        var periodKey = ResolvePeriod(period, "30d");
+        var take = ResolveLimit(limit, DefaultTopPages, MaxTopPages);
+
+        var creator = await _reader.GetCreatorAsync(slug, ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
+        var product = productId is { } id
+            ? await _reader.GetProductNameAsync(creator.Id, id, ct) ?? throw new NotFoundException("Product not found.")
+            : null;
+
+        var timezone = CreatorTimeZone.Resolve(creator.Timezone);
+        var plan = AnalyticsPeriodPlan.Create(periodKey, DateTimeOffset.UtcNow, timezone, creator.CreatedAt);
+        var pages = await _reader.GetTopPagesAsync(creator.Id, product?.Id, new SeriesRange(plan.TotalsFrom, plan.TotalsTo), take, ct);
+        var pageCount = await _reader.CountPagesAsync(creator.Id, product?.Id, ct);
+
+        return new AnalyticsPagesDto(
+            periodKey,
+            new AnalyticsRangeDto(plan.RangeFrom, plan.RangeTo),
+            creator.Currency,
+            pageCount,
+            pages.Select(p => new AnalyticsPageRowDto(
+                p.PublicId, p.Title, p.Slug, p.Type, p.Status, p.ProductPublicId, p.ProductName, p.ProductThumbnailUrl,
+                p.Views, p.Emails, p.Sales, p.RevenueCents)).ToList());
+    }
+
+    public async Task<ProductSignupsDto> GetProductSignupsAsync(
+        string slug, int ownerUserId, Guid productId, int? limit, CancellationToken ct)
+    {
+        var take = ResolveLimit(limit, DefaultSignups, MaxSignups);
+
+        var creator = await _reader.GetCreatorAsync(slug, ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
+        var product = await _reader.GetProductNameAsync(creator.Id, productId, ct) ?? throw new NotFoundException("Product not found.");
+
+        var (total, signups) = await _reader.GetProductSignupsAsync(creator.Id, product.Id, take, ct);
+
+        return new ProductSignupsDto(
+            total,
+            signups.Select(s => new ProductSignupDto(s.Email, s.CapturedAt, s.Unsubscribed, s.LandingPagePublicId, s.LandingPageTitle)).ToList());
+    }
+
+    private static int ResolveLimit(int? limit, int fallback, int max)
+    {
+        var value = limit ?? fallback;
+        if (value < 1 || value > max)
+            throw new BadRequestException($"Invalid limit. Valid values: 1 to {max}.");
+        return value;
     }
 
     private static string ResolvePeriod(string? period, string fallback)
