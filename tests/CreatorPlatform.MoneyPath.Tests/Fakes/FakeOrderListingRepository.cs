@@ -106,34 +106,19 @@ public sealed class FakeOrderListingRepository : IOrderRepository
 
 public sealed class FakeOrderListingHomeSummaryCache : IHomeSummaryCache
 {
-    public bool TryGet(int creatorId, out HomeSummaryDto? value)
-    {
-        value = null;
-        return false;
-    }
+    public ValueTask<HomeSummaryDto?> GetAsync(int creatorId, CancellationToken ct) => ValueTask.FromResult<HomeSummaryDto?>(null);
 
-    public void Set(int creatorId, HomeSummaryDto value)
-    {
-    }
+    public Task SetAsync(int creatorId, HomeSummaryDto value, CancellationToken ct) => Task.CompletedTask;
 
-    public void Remove(int creatorId)
-    {
-    }
+    public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
 }
 
 public sealed class FakeDashboardTrendsCache : IDashboardTrendsCache
 {
-    public bool TryGet(int creatorId, string range, out DashboardTrendsDto? value)
-    {
-        value = null;
-        return false;
-    }
+    public ValueTask<DashboardTrendsDto?> GetAsync(int creatorId, string range, CancellationToken ct) =>
+        ValueTask.FromResult<DashboardTrendsDto?>(null);
 
-    public void Set(int creatorId, string range, DashboardTrendsDto value)
-    {
-    }
+    public Task SetAsync(int creatorId, string range, DashboardTrendsDto value, CancellationToken ct) => Task.CompletedTask;
 
-    public void Remove(int creatorId)
-    {
-    }
+    public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
 }

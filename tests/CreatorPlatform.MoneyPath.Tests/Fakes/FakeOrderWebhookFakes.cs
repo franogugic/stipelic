@@ -138,17 +138,9 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
 
 public sealed class FakeHomeSummaryCache : IHomeSummaryCache
 {
-    public bool TryGet(int creatorId, out HomeSummaryDto? value)
-    {
-        value = null;
-        return false;
-    }
+    public ValueTask<HomeSummaryDto?> GetAsync(int creatorId, CancellationToken ct) => ValueTask.FromResult<HomeSummaryDto?>(null);
 
-    public void Set(int creatorId, HomeSummaryDto value)
-    {
-    }
+    public Task SetAsync(int creatorId, HomeSummaryDto value, CancellationToken ct) => Task.CompletedTask;
 
-    public void Remove(int creatorId)
-    {
-    }
+    public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
 }

@@ -1,4 +1,6 @@
 using System.Threading.RateLimiting;
+using CreatorPlatform.Api.Health;
+using CreatorPlatform.Api.Networking;
 
 namespace CreatorPlatform.Api.RateLimiting;
 
@@ -106,19 +108,30 @@ public static class RateLimitPolicies
 
     /// <summary>The global limiter's partition: per client IP, or no limit for the exempt paths.</summary>
     public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext) =>
-        httpContext.Request.Path.StartsWithSegments(OpenPixelPath, StringComparison.OrdinalIgnoreCase)
-            ? RateLimitPartition.GetNoLimiter("open-pixel")
-            : Partition(httpContext, Global);
+        GlobalPartition(httpContext, Global);
 
-    /// <summary>A fixed-window partition of <paramref name="policy"/> for the request's client IP.</summary>
-    public static RateLimitPartition<string> Partition(HttpContext httpContext, RateLimitPolicyDefinition policy) =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = policy.PermitLimit,
-                Window = policy.Window,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            });
+    /// <summary>As <see cref="GlobalPartition(HttpContext)"/>, with the global numbers given (tests use small ones).</summary>
+    public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext, RateLimitPolicyDefinition global)
+    {
+        var path = httpContext.Request.Path;
+
+        if (path.StartsWithSegments(OpenPixelPath, StringComparison.OrdinalIgnoreCase))
+            return RateLimitPartition.GetNoLimiter("open-pixel");
+
+        // Probes (container platform, uptime monitors) must never be throttled into reporting the API as down.
+        if (path.StartsWithSegments(HealthEndpoint.Path, StringComparison.OrdinalIgnoreCase))
+            return RateLimitPartition.GetNoLimiter("health");
+
+        return Partition(httpContext, global);
+    }
+
+    /// <summary>The fixed-window partition of <paramref name="policy"/> for the request's client IP, counted in Redis
+    /// (see <see cref="RedisFixedWindowRateLimiter"/>).</summary>
+    public static RateLimitPartition<string> Partition(HttpContext httpContext, RateLimitPolicyDefinition policy)
+    {
+        var limiters = httpContext.RequestServices.GetRequiredService<RedisRateLimiters>();
+        return RateLimitPartition.Get(
+            ClientIp.From(httpContext),
+            partition => limiters.Create(policy, partition));
+    }
 }

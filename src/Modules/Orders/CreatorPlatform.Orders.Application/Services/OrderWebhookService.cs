@@ -120,7 +120,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
         // Revenue / order count / recent transactions on the creator's home summary changed — drop the cache
         // so the dashboard recomputes on next read instead of serving up to 5 min stale numbers.
-        InvalidateHomeSummary(affectedCreatorId);
+        await InvalidateHomeSummaryAsync(affectedCreatorId);
     }
 
     public async Task HandleChargeRefundedAsync(OrderChargeRefundedDto data, CancellationToken ct)
@@ -163,12 +163,13 @@ public sealed class OrderWebhookService : IOrderWebhookService
         }, ct);
 
         // Refund lowers revenue on the creator's home summary — invalidate so it isn't stale.
-        InvalidateHomeSummary(affectedCreatorId);
+        await InvalidateHomeSummaryAsync(affectedCreatorId);
     }
 
-    private void InvalidateHomeSummary(int? creatorId)
+    // CancellationToken.None: the change is already committed, so an aborted request must not leave a stale summary.
+    private async Task InvalidateHomeSummaryAsync(int? creatorId)
     {
         if (creatorId is int id)
-            _homeSummaryCache.Remove(id);
+            await _homeSummaryCache.RemoveAsync(id, CancellationToken.None);
     }
 }

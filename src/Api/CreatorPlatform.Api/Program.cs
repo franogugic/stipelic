@@ -1,4 +1,6 @@
+using CreatorPlatform.Api.Health;
 using CreatorPlatform.Api.Middlewares;
+using CreatorPlatform.Api.Networking;
 using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Auth.Application.Options;
@@ -20,10 +22,10 @@ using CreatorPlatform.Products.Infrastructure;
 using CreatorPlatform.Media.Application.Options;
 using CreatorPlatform.Media.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
+using CreatorPlatform.Shared.Infrastructure.Redis;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
-using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -60,27 +62,8 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = ValidationErrorResponseFactory.Create;
 });
-builder.Services.AddMemoryCache();
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(RateLimitPolicies.GlobalPartition);
-    options.OnRejected = async (context, ct) =>
-    {
-        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-        context.HttpContext.Response.ContentType = "application/json";
-
-        await context.HttpContext.Response.WriteAsJsonAsync(new ApiErrorResponse
-        {
-            StatusCode = StatusCodes.Status429TooManyRequests,
-            Message = "Too many requests. Please try again later.",
-            Code = "RATE_LIMITED"
-        }, ct);
-    };
-
-    foreach (var policy in RateLimitPolicies.Catalog)
-        options.AddPolicy(policy.Name, httpContext => RateLimitPolicies.Partition(httpContext, policy));
-});
+builder.Services.AddTrustedProxies(builder.Configuration);
+builder.Services.AddPlatformRateLimiter();
 
 builder.Services.AddAuthInfrastructure();
 builder.Services.AddCreatorsInfrastructure();
@@ -95,7 +78,11 @@ builder.Services.AddAnalyticsInfrastructure();
 builder.Services.AddSingleton<CreatorPlatform.Creators.Application.Interfaces.ICreatorCacheInvalidator, CreatorPlatform.Api.Caching.CreatorCacheInvalidator>();
 builder.Services.AddOrdersInfrastructure();
 builder.Services.AddAccessInfrastructure();
-builder.Services.AddSingleton<LoginAttemptLimiter>();
+builder.Services.AddOptions<LoginAttemptLimiterOptions>();
+builder.Services.AddSingleton<InMemoryLoginAttemptLimiter>();
+builder.Services.AddSingleton<ILoginAttemptLimiter, RedisLoginAttemptLimiter>();
+builder.Services.AddRedis(builder.Configuration, builder.Environment);
+builder.Services.AddPlatformHealthChecks();
 
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 {
@@ -105,6 +92,9 @@ builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 });
 
 var app = builder.Build();
+
+// First: everything below (HTTPS redirection, rate limits, the login limiter) sees the client's address and scheme.
+app.UseTrustedForwardedHeaders();
 
 if (app.Configuration.GetValue<bool>("Database:AutoMigrate"))
 {
@@ -126,5 +116,6 @@ app.UseMiddleware<SessionAuthenticationMiddleware>();
 app.UseRateLimiter();
 
 app.MapControllers();
+app.MapPlatformHealthChecks();
 
 app.Run();

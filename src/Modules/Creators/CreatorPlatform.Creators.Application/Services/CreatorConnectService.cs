@@ -98,12 +98,12 @@ public sealed class CreatorConnectService : ICreatorConnectService
     /// <summary>Only called after the ownership check above, so the cache is keyed by the creator's internal id.</summary>
     private async Task<PayoutScheduleDto?> GetPayoutScheduleAsync(int creatorId, string accountId, CancellationToken ct)
     {
-        if (_payoutScheduleCache.TryGet(creatorId, out var cached) && cached is not null)
+        if (await _payoutScheduleCache.GetAsync(creatorId, ct) is { } cached)
             return cached;
 
         var schedule = await _connectAccountService.GetPayoutScheduleAsync(accountId, ct);
         if (schedule is not null)
-            _payoutScheduleCache.Set(creatorId, schedule);
+            await _payoutScheduleCache.SetAsync(creatorId, schedule, ct);
 
         return schedule;
     }
