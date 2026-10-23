@@ -29,6 +29,13 @@ public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionS
     public string? LastSuccessUrl { get; private set; }
     public int CallCount { get; private set; }
     public string? LastCustomerEmail { get; private set; }
+    public string? LastIdempotencyKey { get; private set; }
+
+    /// <summary>Runs when the session is created — lets a test look at what was saved before the Stripe call.</summary>
+    public Action? OnCreate { get; set; }
+
+    /// <summary>When set, creating the session throws it, as an unreachable Stripe would.</summary>
+    public Exception? Failure { get; set; }
 
     public Task<PaymentCheckoutSessionDto> CreateAsync(
         string productName,
@@ -45,6 +52,10 @@ public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionS
         string? thumbnailUrl = null)
     {
         CallCount++;
+        OnCreate?.Invoke();
+        if (Failure is not null)
+            throw Failure;
+        LastIdempotencyKey = idempotencyKey;
         LastCustomerEmail = customerEmail;
         LastApplicationFeeAmountCents = applicationFeeAmountCents;
         LastDestinationAccountId = destinationAccountId;
@@ -75,6 +86,9 @@ public sealed class FakeOrderRepository : IOrderRepository
         => Task.FromResult<Order?>(null);
 
     public Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct)
+        => Task.FromResult<Order?>(null);
+
+    public Task<Order?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
         => Task.FromResult<Order?>(null);
 
     public Task<List<OrderDto>> GetByCreatorSlugAsync(
@@ -121,7 +135,18 @@ public sealed class FakeOrderRepository : IOrderRepository
 
 public sealed class FakeOrdersUnitOfWork : IOrdersUnitOfWork
 {
-    public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+    public int SaveCount { get; private set; }
+
+    /// <summary>Makes the save with this 1-based number throw, as a failing database would.</summary>
+    public int? FailOnSaveNumber { get; set; }
+
+    public Task SaveChangesAsync(CancellationToken ct)
+    {
+        SaveCount++;
+        if (SaveCount == FailOnSaveNumber)
+            throw new InvalidOperationException("Simulated database failure.");
+        return Task.CompletedTask;
+    }
 
     public Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct) => operation();
 }

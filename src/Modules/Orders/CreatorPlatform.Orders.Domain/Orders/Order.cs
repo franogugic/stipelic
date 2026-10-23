@@ -21,7 +21,7 @@ public sealed class Order
         int platformFeeBasisPoints,
         int platformFeeCents,
         string payoutMode,
-        string stripeCheckoutSessionId,
+        string? stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
         PublicId = publicId;
@@ -52,7 +52,7 @@ public sealed class Order
         int platformFeeBasisPoints,
         int platformFeeCents,
         string payoutMode,
-        string stripeCheckoutSessionId,
+        string? stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
         return new Order(
@@ -70,6 +70,24 @@ public sealed class Order
             payoutMode,
             stripeCheckoutSessionId,
             createdAt);
+    }
+
+    /// <summary>Links the Stripe Checkout session created for this (already saved) Pending order. Repeating it with the
+    /// same session is a no-op; a second, different session for one order is a bug and throws.</summary>
+    public void AttachCheckoutSession(string stripeCheckoutSessionId, DateTimeOffset attachedAt)
+    {
+        if (string.IsNullOrWhiteSpace(stripeCheckoutSessionId))
+            throw new ArgumentException("A Checkout session id is required.", nameof(stripeCheckoutSessionId));
+
+        if (StripeCheckoutSessionId == stripeCheckoutSessionId)
+            return;
+
+        if (StripeCheckoutSessionId is not null)
+            throw new InvalidOperationException(
+                $"Order {PublicId} already has Checkout session {StripeCheckoutSessionId}; refusing {stripeCheckoutSessionId}.");
+
+        StripeCheckoutSessionId = stripeCheckoutSessionId;
+        UpdatedAt = attachedAt;
     }
 
     /// <summary>Stripe Checkout collects the buyer's email when the page didn't ask for it, so it arrives here.
@@ -154,7 +172,9 @@ public sealed class Order
     /// <summary>Snapshot of the creator's payout mode at purchase time ("StripeConnect" / "BankTransfer").</summary>
     public string PayoutMode { get; private set; } = string.Empty;
 
-    public string StripeCheckoutSessionId { get; private set; } = string.Empty;
+    /// <summary>Null only between saving the Pending order and creating its Checkout session — and for good when
+    /// creating the session failed (the order is then Failed).</summary>
+    public string? StripeCheckoutSessionId { get; private set; }
 
     public string? StripePaymentIntentId { get; private set; }
 

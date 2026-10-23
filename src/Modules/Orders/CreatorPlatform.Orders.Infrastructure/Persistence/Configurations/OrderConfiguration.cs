@@ -61,9 +61,10 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .HasMaxLength(30)
             .IsRequired();
 
+        // Nullable: the Pending order is saved before its Checkout session exists (the session's metadata carries
+        // the order's PublicId). Unique still holds — PostgreSQL treats NULLs as distinct.
         builder.Property(o => o.StripeCheckoutSessionId)
-            .HasMaxLength(255)
-            .IsRequired();
+            .HasMaxLength(255);
 
         builder.HasIndex(o => o.StripeCheckoutSessionId)
             .IsUnique();
@@ -99,6 +100,10 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.ToTable(t => t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0"));
         builder.ToTable(t => t.HasCheckConstraint("CK_orders_PlatformFeeCents_NonNegative", "\"PlatformFeeCents\" >= 0"));
+        // Only an order whose session was never stored can lack one: a paid or refunded order always has its session.
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_orders_Session_Unless_PendingOrFailed",
+            "\"StripeCheckoutSessionId\" IS NOT NULL OR \"Status\" IN ('Pending', 'Failed')"));
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_orders_RefundedCents_WithinAmount", "\"RefundedCents\" >= 0 AND \"RefundedCents\" <= \"AmountCents\""));
 

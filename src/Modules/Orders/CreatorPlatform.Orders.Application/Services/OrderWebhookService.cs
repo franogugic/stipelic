@@ -51,14 +51,9 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            var order = await _orderRepository.GetByStripeCheckoutSessionIdForUpdateAsync(data.SessionId, ct);
+            var order = await FindSaleOrderForUpdateAsync(data.SessionId, data.Metadata, "checkout.session.completed", ct);
             if (order is null)
-            {
-                _logger.LogInformation(
-                    "checkout.session.completed event does not match any order, ignoring. SessionId: {SessionId}",
-                    data.SessionId);
                 return;
-            }
 
             if (order.Status is OrderStatus.Paid or OrderStatus.Refunded)
             {
@@ -183,6 +178,50 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
         // Refund lowers revenue on the creator's home summary — invalidate so it isn't stale.
         await InvalidateHomeSummaryAsync(affectedCreatorId);
+    }
+
+    /// <summary>
+    /// The order a sale session belongs to, row locked: by the stored session id, else by the order's PublicId in the
+    /// session metadata (the order is saved before its session, and storing the session id on it may have failed) —
+    /// the session id is then stored. Null for a session that is not a product sale (a plan subscription's).
+    /// A sale session whose order is missing, or an order already tied to another session, throws: the event is
+    /// recorded as a webhook failure for an admin instead of being ignored.
+    /// </summary>
+    private async Task<Order?> FindSaleOrderForUpdateAsync(
+        string sessionId, IReadOnlyDictionary<string, string>? metadata, string eventType, CancellationToken ct)
+    {
+        var order = await _orderRepository.GetByStripeCheckoutSessionIdForUpdateAsync(sessionId, ct);
+        if (order is not null)
+            return order;
+
+        string? orderIdValue = null;
+        var hasOrderId = metadata is not null && metadata.TryGetValue(CheckoutSessionMetadata.OrderId, out orderIdValue);
+        var isSale = hasOrderId || (metadata?.ContainsKey(CheckoutSessionMetadata.ProductId) ?? false);
+        if (!isSale)
+        {
+            _logger.LogInformation(
+                "{EventType} is not for a product sale, ignoring. SessionId: {SessionId}", eventType, sessionId);
+            return null;
+        }
+
+        if (hasOrderId && Guid.TryParse(orderIdValue, out var orderPublicId))
+            order = await _orderRepository.GetByPublicIdForUpdateAsync(orderPublicId, ct);
+
+        if (order is null)
+        {
+            _logger.LogError(
+                "{EventType} for a product sale matches no order. SessionId: {SessionId}, OrderId: {OrderId}",
+                eventType, sessionId, orderIdValue);
+            throw new InvalidOperationException(
+                $"{eventType} for sale session {sessionId} matches no order (metadata orderId '{orderIdValue}').");
+        }
+
+        // Throws when the order already belongs to another session.
+        order.AttachCheckoutSession(sessionId, DateTimeOffset.UtcNow);
+        _logger.LogInformation(
+            "Checkout session linked to its order from the session metadata. OrderId: {OrderId}, SessionId: {SessionId}",
+            order.PublicId, sessionId);
+        return order;
     }
 
     /// <summary>The charge's cumulative refund in the order's currency. The charge may be in the buyer's currency

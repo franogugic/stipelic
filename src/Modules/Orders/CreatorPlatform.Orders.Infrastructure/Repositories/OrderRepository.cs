@@ -50,6 +50,18 @@ public sealed class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<Order?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
+    {
+        return await _context
+            .Set<Order>()
+            .FromSqlInterpolated($"""
+                SELECT * FROM orders.orders
+                WHERE "PublicId" = {publicId}
+                FOR UPDATE
+                """)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
     {
         return await _context

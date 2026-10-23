@@ -163,7 +163,8 @@ public sealed class StripeWebhooksController : ControllerBase
                             webhookEvent.CheckoutSessionCompleted.SessionId,
                             webhookEvent.CheckoutSessionCompleted.StripePaymentIntentId,
                             webhookEvent.CheckoutSessionCompleted.CustomerEmail,
-                            webhookEvent.CheckoutSessionCompleted.CustomerName),
+                            webhookEvent.CheckoutSessionCompleted.CustomerName,
+                            webhookEvent.CheckoutSessionCompleted.Metadata),
                         ct);
                 break;
 

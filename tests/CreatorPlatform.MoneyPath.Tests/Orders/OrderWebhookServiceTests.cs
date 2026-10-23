@@ -275,4 +275,72 @@ public class OrderWebhookServiceTests
         Assert.Equal((OrderStatus.Paid, 400), (order.Status, order.RefundedCents));
         Assert.Empty(ledger.Entries);
     }
+
+    // ---- B2: the order exists before its session ------------------------------------------------------------------
+
+    private static Order PendingOrderWithoutSession() => Order.Create(
+        creatorId: 1, productId: 2, landingPageId: 3, email: "buyer@example.com", name: null, amountCents: 1000, Currency.Eur,
+        platformFeeBasisPoints: 500, platformFeeCents: 50, payoutMode: nameof(PayoutMode.BankTransfer),
+        stripeCheckoutSessionId: null, DateTimeOffset.UtcNow);
+
+    private static Dictionary<string, string> SaleMetadata(Guid orderPublicId) => new()
+    {
+        [CheckoutSessionMetadata.OrderId] = orderPublicId.ToString(),
+        [CheckoutSessionMetadata.ProductId] = "2",
+    };
+
+    [Fact]
+    public async Task ACompletedSession_WhoseIdWasNeverStored_FindsItsOrderByTheMetadata_AndLinksIt()
+    {
+        var order = PendingOrderWithoutSession();
+        var (service, _, ledger, grants, outbox) = BuildServiceWithDelivery(order);
+
+        await service.HandleCheckoutSessionCompletedAsync(
+            new OrderCheckoutCompletedDto("cs_late", "pi_1", Metadata: SaleMetadata(order.PublicId)), CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Paid, order.Status);
+        Assert.Equal("cs_late", order.StripeCheckoutSessionId);
+        Assert.Equal(2, ledger.Entries.Count);
+        Assert.Single(grants.ByOrderId);
+        Assert.Equal(1, outbox.OrderAccessQueuedCount);
+    }
+
+    [Fact]
+    public async Task ACompletedSaleSession_WithNoOrder_Throws_SoTheEventIsRecordedAsAFailure()
+    {
+        var order = PendingOrderWithoutSession();
+        var (service, _, ledger) = BuildService(order);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.HandleCheckoutSessionCompletedAsync(
+            new OrderCheckoutCompletedDto("cs_lost", "pi_1", Metadata: SaleMetadata(Guid.NewGuid())), CancellationToken.None));
+
+        Assert.Equal(OrderStatus.Pending, order.Status);
+        Assert.Empty(ledger.Entries);
+    }
+
+    [Fact]
+    public async Task ACompletedSession_ForAnOrderTiedToAnotherSession_Throws()
+    {
+        var order = BuildOrder(PayoutMode.BankTransfer, sessionId: "cs_first");
+        var (service, _, _) = BuildService(order);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.HandleCheckoutSessionCompletedAsync(
+            new OrderCheckoutCompletedDto("cs_second", "pi_1", Metadata: SaleMetadata(order.PublicId)), CancellationToken.None));
+
+        Assert.Equal(OrderStatus.Pending, order.Status);
+    }
+
+    [Fact]
+    public async Task ACompletedPlanSubscriptionSession_IsNotASale_AndIsIgnored()
+    {
+        var order = PendingOrderWithoutSession();
+        var (service, _, ledger) = BuildService(order);
+
+        await service.HandleCheckoutSessionCompletedAsync(
+            new OrderCheckoutCompletedDto("cs_plan", null, Metadata: new Dictionary<string, string> { ["creatorId"] = "1", ["subscriptionId"] = "9" }),
+            CancellationToken.None);
+
+        Assert.Equal(OrderStatus.Pending, order.Status);
+        Assert.Empty(ledger.Entries);
+    }
 }

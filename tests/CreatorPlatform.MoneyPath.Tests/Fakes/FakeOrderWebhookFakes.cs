@@ -21,7 +21,10 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
         => Task.FromResult(Order);
 
     public Task<Order?> GetByStripeCheckoutSessionIdForUpdateAsync(string stripeCheckoutSessionId, CancellationToken ct)
-        => Task.FromResult(Order);
+        => Task.FromResult(Order?.StripeCheckoutSessionId == stripeCheckoutSessionId ? Order : null);
+
+    public Task<Order?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
+        => Task.FromResult(Order?.PublicId == publicId ? Order : null);
 
     public Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
         => Task.FromResult(Order);
