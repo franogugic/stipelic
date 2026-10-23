@@ -173,6 +173,7 @@ public sealed class PartialRefundTests
         await using var transaction = await db.Database.BeginTransactionAsync();
         // The state before the migration: no refunded amount anywhere. Rolled back with the transaction.
         await db.Database.ExecuteSqlRawAsync("""ALTER TABLE orders.orders DROP CONSTRAINT "CK_orders_RefundedCents_WithinAmount" """);
+        await db.Database.ExecuteSqlRawAsync("""ALTER TABLE orders.orders DROP CONSTRAINT "CK_orders_RefundedCents_MatchStatus" """);
         await db.Database.ExecuteSqlRawAsync("""ALTER TABLE payouts.ledger_entries DROP CONSTRAINT "CK_ledger_entries_RefundedToCents_OnRefundsOnly" """);
         await db.Database.ExecuteSqlAsync($"""UPDATE orders.orders SET "RefundedCents" = 0 WHERE "Id" = {orderId}""");
         await db.Database.ExecuteSqlAsync($"""UPDATE payouts.ledger_entries SET "RefundedToCents" = NULL WHERE "OrderId" = {orderId}""");

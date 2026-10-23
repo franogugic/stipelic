@@ -81,9 +81,9 @@ public sealed class HomeSummaryBoardTests
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "AmountCents", "Currency", "Status",
                                        "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
-                                       "CreatedAt", "PaidAt", "UpdatedAt")
+                                       "CreatedAt", "PaidAt", "UpdatedAt", "RefundedCents")
             VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {email}, {amountCents}, 'Eur', {status},
-                    1000, 100, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {at}, {paidAt}, {at})
+                    1000, 100, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {at}, {paidAt}, {at}, {(status == "Refunded" ? amountCents : 0)})
             """);
     }
 }

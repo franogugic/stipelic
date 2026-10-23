@@ -137,7 +137,7 @@ public sealed class OrderRepository : IOrderRepository
                 x.DownloadCount ?? 0,
                 x.LastDownloadedAt,
                 x.CountedAt,
-                x.o.Status == OrderStatus.Refunded ? x.o.UpdatedAt : null,
+                x.o.RefundedCents > 0 ? x.o.UpdatedAt : null,
                 x.o.RefundedCents))
             .ToListAsync(ct);
     }
@@ -280,11 +280,11 @@ public sealed class OrderRepository : IOrderRepository
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "PaidOrderCount",
                 COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPaidAmountCents",
                 COALESCE(SUM(o."KeptPlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
-                (COUNT(o."Id") FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
+                (COUNT(o."Id") FILTER (WHERE o."RefundedCents" > 0))::int AS "RefundedOrderCount",
                 COUNT(o."Id")::int AS "TotalOrderCount",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Pending'))::int AS "PendingOrderCount",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Failed'))::int AS "FailedOrderCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Refunded'), 0)::int AS "RefundedAmountCents",
+                COALESCE(SUM(o."RefundedCents"), 0)::int AS "RefundedAmountCents",
                 MAX(c."DefaultCurrency") FILTER (WHERE o."Id" IS NOT NULL) AS "Currency"
             FROM creators.creators c
             LEFT JOIN orders.orders o ON o."CreatorId" = c."Id"
@@ -314,17 +314,25 @@ public sealed class OrderRepository : IOrderRepository
         var previousFrom = plan.PreviousTotalsFrom;
         var previousTo = plan.PreviousTotalsTo;
 
-        // One pass over the creator's orders (the (CreatorId, …) indexes), a FILTER per figure and window. Every count
-        // uses the counted date: PaidAt (else CreatedAt) for Paid, the refund time (UpdatedAt) for Refunded, CreatedAt
-        // for Pending and Failed — the same rule as the orders list.
+        // One pass over the creator's orders (the (CreatorId, …) indexes), a FILTER per figure and window. Order
+        // counts use the counted date: PaidAt (else CreatedAt) for Paid, the refund time (UpdatedAt) for Refunded,
+        // CreatedAt for Pending and Failed — the same rule as the orders list. Refunds — full or partial — are rows of
+        // their own at the order's latest refund time (UpdatedAt): the refunded amount sums RefundedCents, the count is
+        // "orders with a refund". Approximation: an order refunded in two parts in different periods counts both parts
+        // in the later one. A partly refunded order therefore counts as Paid at PaidAt and as a refund at UpdatedAt.
         var rows = await _context.Database.SqlQuery<PeriodTotalsRow>($"""
             WITH counted AS (
-                SELECT o."Status", o."AmountCents", o."KeptAmountCents", o."KeptPlatformFeeCents",
+                SELECT 'order' AS "Kind", o."Status", o."KeptAmountCents", o."KeptPlatformFeeCents", 0 AS "RefundedCents",
                        CASE o."Status" WHEN 'Paid' THEN COALESCE(o."PaidAt", o."CreatedAt")
                                        WHEN 'Refunded' THEN o."UpdatedAt"
                                        ELSE o."CreatedAt" END AS "At"
                 FROM orders.orders o
                 WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId})
+                UNION ALL
+                SELECT 'refund', o."Status", 0, 0, o."RefundedCents", o."UpdatedAt"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId})
+                  AND o."RefundedCents" > 0
             ),
             windows AS (
                 SELECT 'current' AS "Window", {from}::timestamptz AS "From", {to}::timestamptz AS "To"
@@ -332,13 +340,13 @@ public sealed class OrderRepository : IOrderRepository
                 SELECT 'previous', {previousFrom}::timestamptz, {previousTo}::timestamptz WHERE {previousTo}::timestamptz IS NOT NULL
             )
             SELECT w."Window",
-                (COUNT(*) FILTER (WHERE c."Status" = 'Paid'))::int AS "PaidOrderCount",
-                COALESCE(SUM(c."KeptAmountCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPaidAmountCents",
-                COALESCE(SUM(c."KeptPlatformFeeCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPlatformFeeCents",
-                (COUNT(*) FILTER (WHERE c."Status" = 'Refunded'))::int AS "RefundedOrderCount",
-                COALESCE(SUM(c."AmountCents") FILTER (WHERE c."Status" = 'Refunded'), 0)::bigint AS "RefundedAmountCents",
-                (COUNT(*) FILTER (WHERE c."Status" = 'Pending'))::int AS "PendingOrderCount",
-                (COUNT(*) FILTER (WHERE c."Status" = 'Failed'))::int AS "FailedOrderCount"
+                (COUNT(*) FILTER (WHERE c."Kind" = 'order' AND c."Status" = 'Paid'))::int AS "PaidOrderCount",
+                COALESCE(SUM(c."KeptAmountCents") FILTER (WHERE c."Kind" = 'order' AND c."Status" = 'Paid'), 0)::bigint AS "TotalPaidAmountCents",
+                COALESCE(SUM(c."KeptPlatformFeeCents") FILTER (WHERE c."Kind" = 'order' AND c."Status" = 'Paid'), 0)::bigint AS "TotalPlatformFeeCents",
+                (COUNT(*) FILTER (WHERE c."Kind" = 'refund'))::int AS "RefundedOrderCount",
+                COALESCE(SUM(c."RefundedCents") FILTER (WHERE c."Kind" = 'refund'), 0)::bigint AS "RefundedAmountCents",
+                (COUNT(*) FILTER (WHERE c."Kind" = 'order' AND c."Status" = 'Pending'))::int AS "PendingOrderCount",
+                (COUNT(*) FILTER (WHERE c."Kind" = 'order' AND c."Status" = 'Failed'))::int AS "FailedOrderCount"
             FROM windows w
             LEFT JOIN counted c ON (w."From" IS NULL OR c."At" >= w."From") AND c."At" < w."To"
             GROUP BY w."Window"
@@ -350,8 +358,8 @@ public sealed class OrderRepository : IOrderRepository
         var totals = Totals(rows.Single(row => row.Window == "current"));
         var previous = rows.SingleOrDefault(row => row.Window == "previous") is { } previousRow ? Totals(previousRow) : null;
 
-        // The buckets: one grouped pass for paid orders (by when they were paid) and one for refunds (by the refund's
-        // time), each binned with width_bucket over the plan's local bucket starts (see AnalyticsSeriesReader).
+        // The buckets: one grouped pass for paid orders (by when they were paid) and one for refunds, full or partial
+        // (by the order's latest refund time), each binned with width_bucket over the plan's local bucket starts (see AnalyticsSeriesReader).
         var starts = plan.Buckets;
         var edges = AnalyticsPeriodPlan.ToEdges(starts);
         var bucketsFrom = plan.TotalsFrom ?? plan.BucketsFrom;
@@ -368,10 +376,10 @@ public sealed class OrderRepository : IOrderRepository
             UNION ALL
             SELECT 'refunded' AS "Kind",
                    width_bucket(extract(epoch FROM (o."UpdatedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
-                   COALESCE(SUM(o."AmountCents"), 0)::bigint, 0::bigint,
+                   COALESCE(SUM(o."RefundedCents"), 0)::bigint, 0::bigint,
                    COUNT(*)::int
             FROM orders.orders o
-            WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId}) AND o."Status" = 'Refunded'
+            WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId}) AND o."RefundedCents" > 0
               AND o."UpdatedAt" >= {bucketsFrom} AND o."UpdatedAt" < {to}
             GROUP BY 2
             """).AsNoTracking().ToListAsync(ct);
@@ -413,7 +421,7 @@ public sealed class OrderRepository : IOrderRepository
                     interval '1 month') AS m
             ),
             local_orders AS (
-                SELECT o."Status", o."KeptAmountCents", o."KeptPlatformFeeCents",
+                SELECT o."Status", o."KeptAmountCents", o."KeptPlatformFeeCents", o."RefundedCents",
                        date_trunc('month', COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}) AS "PaidMonth",
                        date_trunc('month', o."UpdatedAt" AT TIME ZONE {timezone}) AS "UpdatedMonth"
                 FROM orders.orders o
@@ -422,7 +430,7 @@ public sealed class OrderRepository : IOrderRepository
             SELECT to_char(m."MonthStart", 'YYYY-MM') AS "Month",
                    COALESCE(SUM(lo."KeptAmountCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "GrossCents",
                    COALESCE(SUM(lo."KeptPlatformFeeCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "FeeCents",
-                   (COUNT(*) FILTER (WHERE lo."Status" = 'Refunded' AND lo."UpdatedMonth" = m."MonthStart"))::int AS "RefundedCount"
+                   (COUNT(*) FILTER (WHERE lo."RefundedCents" > 0 AND lo."UpdatedMonth" = m."MonthStart"))::int AS "RefundedCount"
             FROM months m
             LEFT JOIN local_orders lo ON lo."PaidMonth" = m."MonthStart" OR lo."UpdatedMonth" = m."MonthStart"
             GROUP BY m."MonthStart"
@@ -727,15 +735,16 @@ public sealed class OrderRepository : IOrderRepository
 
     private sealed record BoardFigures(List<int> MonthlyPaidOrderCounts, int CustomerCount, int RefundedOrderCount, int RefundedAmountCents);
 
-    /// <summary>The dashboard's "sales at a glance" board: customers and refunds over all time, and paid orders per
+    /// <summary>The dashboard's "sales at a glance" board: customers and refunds (orders with a refund, full or partial,
+    /// and the refunded amount) over all time, and paid orders per
     /// month in the creator's timezone (for the average order this month vs last month).</summary>
     private async Task<BoardFigures> GetBoardFiguresAsync(int creatorId, string timezone, CancellationToken ct)
     {
         var totals = (await _context.Database.SqlQuery<BoardTotalsRow>($"""
             SELECT
                 (COUNT(DISTINCT lower(o."Email")) FILTER (WHERE o."Status" = 'Paid'))::int AS "CustomerCount",
-                (COUNT(*) FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Refunded'), 0)::int AS "RefundedAmountCents"
+                (COUNT(*) FILTER (WHERE o."RefundedCents" > 0))::int AS "RefundedOrderCount",
+                COALESCE(SUM(o."RefundedCents"), 0)::int AS "RefundedAmountCents"
             FROM orders.orders o
             WHERE o."CreatorId" = {creatorId}
             """).AsNoTracking().ToListAsync(ct)).Single();

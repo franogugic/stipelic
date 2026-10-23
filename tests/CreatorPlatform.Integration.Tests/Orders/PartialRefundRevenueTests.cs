@@ -7,6 +7,7 @@ using CreatorPlatform.Orders.Infrastructure.Repositories;
 using CreatorPlatform.Products.Infrastructure.Services;
 using CreatorPlatform.Shared.Application.Analytics;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace CreatorPlatform.Integration.Tests.Orders;
 
@@ -15,6 +16,8 @@ namespace CreatorPlatform.Integration.Tests.Orders;
 /// period board and its buckets, the home summary (totals, trends, top product, recent orders), a page's sales, product
 /// revenue, the analytics series, product and page breakdowns — and its fee keeps only its share (as the ledger's fee
 /// refund). The orders list and CSV show the refund and what the order keeps. A fully refunded order stays out of revenue.
+/// The refund figures count partial refunds too: the refunded amount sums RefundedCents and the count is "orders with a
+/// refund", at the order's latest refund time.
 /// </summary>
 [Collection(PostgresCollection.Name)]
 public sealed class PartialRefundRevenueTests
@@ -109,7 +112,6 @@ public sealed class PartialRefundRevenueTests
         Assert.Equal((2, (int)Revenue, (int)Fees, (int)(Revenue - Fees)),
             (summary.PaidOrderCount, summary.TotalPaidAmountCents, summary.TotalPlatformFeeCents, summary.NetAmountCents));
         Assert.Equal((Revenue, Fees), (summary.MonthlyTrend.Sum(m => m.GrossCents), summary.MonthlyTrend.Sum(m => m.FeeCents)));
-        Assert.Equal((1, 1500), (summary.RefundedOrderCount, summary.RefundedAmountCents));
 
         var plan = AnalyticsPeriodPlan.Create("30d", DateTimeOffset.UtcNow, Zagreb, DateTimeOffset.UtcNow.AddDays(-400));
         var period = await orders.GetPeriodSummaryAsync(seeded.Creator.CreatorId, Zagreb, plan, None);
@@ -180,5 +182,89 @@ public sealed class PartialRefundRevenueTests
 
         var pages = await analytics.GetTopPagesAsync(slug, owner, "30d", null, null, None);
         Assert.Equal(Revenue, Assert.Single(pages.Pages).RevenueCents);
+    }
+
+    // ---- Refund figures: full and partial refunds ------------------------------------------------------------------
+
+    private const long RefundedCents = 1000 + 1500;   // A's partial refund and C's full one
+
+    [Fact]
+    public async Task TheRefundFigures_CountPartialRefunds_AsOrdersWithARefund()
+    {
+        var seeded = await SeedAsync();
+        await using var db = _fixture.CreateDbContext();
+        var orders = new OrderRepository(db);
+
+        var summary = await orders.GetSummaryByCreatorSlugAsync(seeded.Creator.Slug, seeded.Creator.OwnerUserId, None);
+        Assert.Equal((2, (int)RefundedCents), (summary.RefundedOrderCount, summary.RefundedAmountCents));
+        Assert.Equal(2, summary.MonthlyTrend.Sum(m => m.RefundedCount));
+
+        var plan = AnalyticsPeriodPlan.Create("30d", DateTimeOffset.UtcNow, Zagreb, DateTimeOffset.UtcNow.AddDays(-400));
+        var period = await orders.GetPeriodSummaryAsync(seeded.Creator.CreatorId, Zagreb, plan, None);
+        Assert.Equal((2, RefundedCents), (period.Totals.RefundedOrderCount, period.Totals.RefundedAmountCents));
+        Assert.Equal((2, 0, 0), (period.Totals.PaidOrderCount, period.Totals.PendingOrderCount, period.Totals.FailedOrderCount));
+        Assert.Equal((2, RefundedCents), (period.Buckets.Values.Sum(b => b.RefundedCount), period.Buckets.Values.Sum(b => b.RefundedCents)));
+
+        var home = await orders.GetHomeSummaryByCreatorIdAsync(seeded.Creator.CreatorId, None);
+        Assert.Equal((2, (int)RefundedCents), (home.RefundedOrderCount, home.RefundedAmountCents));
+
+        var rows = await orders.GetByCreatorSlugAsync(
+            seeded.Creator.Slug, seeded.Creator.OwnerUserId, new OrderListFilter(null, null, null, null, null), null, 50, None);
+        var partly = Assert.Single(rows, o => o.PublicId == seeded.PartlyRefundedOrder);
+        Assert.NotNull(partly.RefundedAt);
+        Assert.Null(Assert.Single(rows, o => o.Status == "Paid" && o.RefundedCents == 0).RefundedAt);
+    }
+
+    [Fact]
+    public async Task TheAnalytics_CountPartialRefunds()
+    {
+        var seeded = await SeedAsync();
+        await using var db = _fixture.CreateDbContext();
+        var analytics = new AnalyticsSeriesService(new AnalyticsSeriesReader(db));
+        var (slug, owner) = (seeded.Creator.Slug, seeded.Creator.OwnerUserId);
+
+        var workspace = await analytics.GetAsync(slug, owner, "workspace", Guid.Empty, "30d", None);
+        Assert.Equal((2, RefundedCents), (workspace.Extras!.RefundCount, workspace.Extras.RefundedCents));
+
+        var product = await analytics.GetAsync(slug, owner, "product", seeded.ProductPublicId, "30d", None);
+        Assert.Equal((2, RefundedCents), (product.Product!.RefundCount, product.Product.RefundedCents));
+        Assert.Equal((2, RefundedCents), (product.Extras!.RefundCount, product.Extras.RefundedCents));
+    }
+
+    [Fact]
+    public async Task APartialRefund_CountsAtTheRefundTime_NotWhenTheOrderWasPaid()
+    {
+        var seeded = await SeedAsync();
+        var paidAt = DateTimeOffset.UtcNow.AddDays(-40);
+        await using (var db = _fixture.CreateDbContext())
+            await db.Database.ExecuteSqlAsync($"""
+                UPDATE orders.orders SET "CreatedAt" = {paidAt}, "PaidAt" = {paidAt}, "UpdatedAt" = now() - interval '3 hours'
+                WHERE "PublicId" = {seeded.PartlyRefundedOrder}
+                """);
+
+        await using var read = _fixture.CreateDbContext();
+        var plan = AnalyticsPeriodPlan.Create("30d", DateTimeOffset.UtcNow, Zagreb, DateTimeOffset.UtcNow.AddDays(-400));
+        var period = await new OrderRepository(read).GetPeriodSummaryAsync(seeded.Creator.CreatorId, Zagreb, plan, None);
+
+        // Paid 40 days ago: its revenue is outside the 30 days; its refund (3 hours ago) is inside.
+        Assert.Equal((1, 2000L), (period.Totals.PaidOrderCount, period.Totals.TotalPaidAmountCents));
+        Assert.Equal((2, RefundedCents), (period.Totals.RefundedOrderCount, period.Totals.RefundedAmountCents));
+    }
+
+    [Fact]
+    public async Task TheDatabase_RefusesARefundedOrderNotRefundedInFull_AndARefundOnAnUnpaidOrder()
+    {
+        var seeded = await SeedAsync();
+        await using var db = _fixture.CreateDbContext();
+
+        var partialRefunded = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlAsync($"""
+            UPDATE orders.orders SET "RefundedCents" = 100 WHERE "CreatorId" = {seeded.Creator.CreatorId} AND "Status" = 'Refunded'
+            """));
+        Assert.Equal("CK_orders_RefundedCents_MatchStatus", partialRefunded.ConstraintName);
+
+        var pending = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlAsync($"""
+            UPDATE orders.orders SET "Status" = 'Pending' WHERE "PublicId" = {seeded.PartlyRefundedOrder}
+            """));
+        Assert.Equal("CK_orders_RefundedCents_MatchStatus", pending.ConstraintName);
     }
 }

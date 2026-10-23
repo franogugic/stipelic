@@ -344,12 +344,13 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
     {
         var from = range.From;
         var to = range.To;
-        // Refunds by the time they happened (a refunded order's UpdatedAt); revenue by when it was paid.
+        // Refunds, full or partial, by the order's latest refund time (UpdatedAt) — two partial refunds in different
+        // periods count in the later one; revenue by when it was paid.
         return (await _context.Database.SqlQuery<SeriesProductExtrasRow>($"""
             SELECT
-                (COUNT(*) FILTER (WHERE o."ProductId" = {productId} AND o."Status" = 'Refunded'
+                (COUNT(*) FILTER (WHERE o."ProductId" = {productId} AND o."RefundedCents" > 0
                     AND ({from}::timestamptz IS NULL OR o."UpdatedAt" >= {from}) AND o."UpdatedAt" < {to}))::int AS "RefundCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."ProductId" = {productId} AND o."Status" = 'Refunded'
+                COALESCE(SUM(o."RefundedCents") FILTER (WHERE o."ProductId" = {productId} AND o."RefundedCents" > 0
                     AND ({from}::timestamptz IS NULL OR o."UpdatedAt" >= {from}) AND o."UpdatedAt" < {to}), 0)::bigint AS "RefundedCents",
                 COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid'
                     AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from})
@@ -367,10 +368,11 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
         var previousFrom = previous?.From;
         var previousTo = previous?.To;
 
-        // Orders: refunds by refund time (UpdatedAt); buyers by lower(email) of Paid orders, counted by PaidAt.
+        // Orders: refunds, full or partial, by the order's latest refund time (UpdatedAt; see GetProductExtrasAsync);
+        // buyers by lower(email) of Paid orders, counted by PaidAt.
         var orders = (await _context.Database.SqlQuery<OrderExtrasRow>($"""
             WITH scoped AS (
-                SELECT o."Status", o."AmountCents", o."UpdatedAt", lower(o."Email") AS "Buyer", COALESCE(o."PaidAt", o."CreatedAt") AS "At"
+                SELECT o."Status", o."RefundedCents", o."UpdatedAt", lower(o."Email") AS "Buyer", COALESCE(o."PaidAt", o."CreatedAt") AS "At"
                 FROM orders.orders o
                 WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId})
                   AND o."Status" IN ('Paid', 'Refunded')
@@ -380,9 +382,9 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
                 SELECT DISTINCT p."Buyer" FROM paid p WHERE ({from}::timestamptz IS NULL OR p."At" >= {from}) AND p."At" < {to}
             )
             SELECT
-                (SELECT COUNT(*) FROM scoped s WHERE s."Status" = 'Refunded'
+                (SELECT COUNT(*) FROM scoped s WHERE s."RefundedCents" > 0
                     AND ({from}::timestamptz IS NULL OR s."UpdatedAt" >= {from}) AND s."UpdatedAt" < {to})::int AS "RefundCount",
-                (SELECT COALESCE(SUM(s."AmountCents"), 0) FROM scoped s WHERE s."Status" = 'Refunded'
+                (SELECT COALESCE(SUM(s."RefundedCents"), 0) FROM scoped s WHERE s."RefundedCents" > 0
                     AND ({from}::timestamptz IS NULL OR s."UpdatedAt" >= {from}) AND s."UpdatedAt" < {to})::bigint AS "RefundedCents",
                 (SELECT COUNT(*) FROM current_buyers)::int AS "Customers",
                 (SELECT COUNT(DISTINCT p."Buyer") FROM paid p

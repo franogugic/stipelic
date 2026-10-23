@@ -115,6 +115,12 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_orders_Session_Unless_PendingOrFailed",
             "\"StripeCheckoutSessionId\" IS NOT NULL OR \"Status\" IN ('Pending', 'Failed')"));
+        // A full refund refunds the whole amount; only a paid (or refunded) order can carry a refund. Refund figures sum
+        // RefundedCents, so this keeps them exact.
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_orders_RefundedCents_MatchStatus",
+            "(\"Status\" <> 'Refunded' OR \"RefundedCents\" = \"AmountCents\") " +
+            "AND (\"RefundedCents\" = 0 OR \"Status\" IN ('Paid', 'Refunded'))"));
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_orders_RefundedCents_WithinAmount", "\"RefundedCents\" >= 0 AND \"RefundedCents\" <= \"AmountCents\""));
 

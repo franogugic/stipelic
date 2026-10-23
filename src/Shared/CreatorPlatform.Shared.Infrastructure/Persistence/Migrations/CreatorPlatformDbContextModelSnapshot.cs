@@ -1829,6 +1829,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_orders_PlatformFeeCents_NonNegative", "\"PlatformFeeCents\" >= 0");
 
+                            t.HasCheckConstraint("CK_orders_RefundedCents_MatchStatus", "(\"Status\" <> 'Refunded' OR \"RefundedCents\" = \"AmountCents\") AND (\"RefundedCents\" = 0 OR \"Status\" IN ('Paid', 'Refunded'))");
+
                             t.HasCheckConstraint("CK_orders_RefundedCents_WithinAmount", "\"RefundedCents\" >= 0 AND \"RefundedCents\" <= \"AmountCents\"");
 
                             t.HasCheckConstraint("CK_orders_Session_Unless_PendingOrFailed", "\"StripeCheckoutSessionId\" IS NOT NULL OR \"Status\" IN ('Pending', 'Failed')");

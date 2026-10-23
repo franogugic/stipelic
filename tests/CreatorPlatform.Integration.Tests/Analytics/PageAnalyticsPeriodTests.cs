@@ -123,9 +123,10 @@ public sealed class PageAnalyticsPeriodTests
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "LandingPageId", "Email", "AmountCents", "Currency",
                                        "Status", "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode",
-                                       "StripeCheckoutSessionId", "CreatedAt", "PaidAt", "UpdatedAt")
+                                       "StripeCheckoutSessionId", "CreatedAt", "PaidAt", "UpdatedAt", "RefundedCents")
             VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {landingPageId}, {TestData.UniqueEmail("buyer")}, {amountCents},
-                    'Eur', {status}, 0, 0, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {paidAt}, {createdAt})
+                    'Eur', {status}, 0, 0, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {paidAt}, {createdAt},
+                    {(status == "Refunded" ? amountCents : 0)})
             """);
     }
 
