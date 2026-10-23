@@ -5,6 +5,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Maintenance;
 /// <summary>Fails the Worker's start on retention values that would delete live data or never clean up.</summary>
 public sealed class MaintenanceOptionsValidator : IValidateOptions<MaintenanceOptions>
 {
+    public const int MinStalePendingOrderHours = 24;
+
     public ValidateOptionsResult Validate(string? name, MaintenanceOptions options)
     {
         var failures = new List<string>();
@@ -21,6 +23,9 @@ public sealed class MaintenanceOptionsValidator : IValidateOptions<MaintenanceOp
             failures.Add("Maintenance:ExpiredAuthRecordRetentionDays must be between 1 and 3650.");
         if (options.AbandonedUploadMinutes is < 30 or > 10_080)
             failures.Add("Maintenance:AbandonedUploadMinutes must be between 30 and 10080.");
+        if (options.StalePendingOrderHours is < MinStalePendingOrderHours or > 720)
+            failures.Add($"Maintenance:StalePendingOrderHours must be between {MinStalePendingOrderHours} (a Stripe Checkout " +
+                         "session can be paid until it expires, 24 h after creation by default) and 720.");
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

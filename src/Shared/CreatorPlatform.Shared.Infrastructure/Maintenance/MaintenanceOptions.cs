@@ -27,6 +27,10 @@ public sealed class MaintenanceOptions
     /// outlast the upload URL (<c>Media:SasExpiryMinutes</c>) by a margin; the Worker checks it at start.</summary>
     public int AbandonedUploadMinutes { get; set; } = 60;
 
+    /// <summary>A checkout still Pending this long after it started becomes Failed. At least 24 h: a Stripe Checkout
+    /// session can be paid until it expires, 24 h after creation by default.</summary>
+    public int StalePendingOrderHours { get; set; } = 24;
+
     public TimeSpan Interval => TimeSpan.FromMinutes(IntervalMinutes);
 
     public TimeSpan StartDelay => TimeSpan.FromSeconds(StartDelaySeconds);

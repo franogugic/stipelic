@@ -12,6 +12,7 @@ using CreatorPlatform.Marketing.Infrastructure.Services;
 using CreatorPlatform.Auth.Infrastructure.Maintenance;
 using CreatorPlatform.Email.Infrastructure.Maintenance;
 using CreatorPlatform.Media.Infrastructure.Maintenance;
+using CreatorPlatform.Orders.Infrastructure.Maintenance;
 using CreatorPlatform.Shared.Infrastructure.Maintenance;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -64,6 +65,7 @@ builder.Services.AddMaintenance(builder.Configuration);
 builder.Services.AddEmailMaintenanceTasks();
 builder.Services.AddAuthMaintenanceTasks();
 builder.Services.AddMediaMaintenanceTasks(builder.Configuration);
+builder.Services.AddOrdersMaintenanceTasks();
 
 builder.Services.AddHostedService<EmailOutboxWorker>();
 builder.Services.AddHostedService<ScheduledCampaignDispatchWorker>();

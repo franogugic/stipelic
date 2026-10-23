@@ -72,6 +72,7 @@ logs its count at Information; a job that fails logs an Error and is retried on 
 | `sent-email-bodies` | Drops the HTML and text bodies of mail sent more than 30 days ago; the row (status, dates, recipient) stays. Failed mail keeps its body (it can be resent). | `SentEmailBodyRetentionDays` = 30 |
 | `expired-auth-records` | Deletes sessions and one-time tokens 30 days after they expired; sessions also 30 days after they were revoked. | `ExpiredAuthRecordRetentionDays` = 30 |
 | `abandoned-uploads` | Deletes uploads never confirmed within 60 minutes, with their blobs (public images by URL, product documents in the private container by path). A blob that cannot be deleted keeps its row and is retried; the run then logs an Error. Needs the `Media__*` settings, which the Worker reads from the shared `luma.env`. | `AbandonedUploadMinutes` = 60, at least `Media:SasExpiryMinutes` + 15 |
+| `stale-pending-orders` | Marks checkouts still Pending 24 hours after they started as Failed (their Stripe session has expired by then). A payment that still arrives later is booked normally: the webhook pays a Failed order. An order paid while the job runs stays Paid. | `StalePendingOrderHours` = 24, at least 24 |
 
 Also: `Enabled` (true), `IntervalMinutes` (60), `StartDelaySeconds` (60), `BatchSize` (1000). Invalid values stop the
 Worker at start. Override any of them in `luma.env`, e.g. `Maintenance__IntervalMinutes=30`.
