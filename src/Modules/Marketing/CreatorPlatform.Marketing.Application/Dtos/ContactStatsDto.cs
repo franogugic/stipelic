@@ -41,11 +41,12 @@ public sealed record ContactGrowthPointDto(string Month, int Total);
 /// counted once on each.</param>
 public sealed record ContactSourceCountDto(Guid LandingPagePublicId, string Title, int Count);
 
-/// <summary>The subscriber overview with the growth chart cut to one period — the answer of
-/// <c>GET contacts/stats?period=</c>. The headline counts and <paramref name="Sources"/> are the same all-time figures
-/// as in <see cref="ContactStatsDto"/>; <paramref name="Buckets"/> replaces its <c>Growth</c> and <c>Monthly</c>.</summary>
+/// <summary>The subscriber overview of one period — the answer of <c>GET contacts/stats?period=</c>. The headline counts
+/// (<paramref name="Total"/>, <paramref name="Active"/>, …) stay all-time; the rest is the period's (R6.6).</summary>
 /// <param name="ImportedThisMonth">As in <see cref="ContactStatsDto"/> — all-time figures, not cut to the period.</param>
 /// <param name="Imported">As in <see cref="ContactStatsDto"/> — all-time figures, not cut to the period.</param>
+/// <param name="Sources">Who joined in the period, each contact once, at the source of its first capture (a page, or an
+/// import); the rows add up to <paramref name="Joined"/>.</param>
 /// <param name="Period">"today" | "7d" | "15d" | "30d" | "2m" | "3m" | "6m" | "all".</param>
 /// <param name="Step">"hour" | "day" | "week" | "month" — the bucket size.</param>
 /// <param name="Timezone">The IANA zone the buckets are in.</param>
@@ -53,25 +54,46 @@ public sealed record ContactSourceCountDto(Guid LandingPagePublicId, string Titl
 /// <param name="Buckets">Oldest first, zero-filled: every hour so far for "today", every day, 7-day weeks for 2m / 3m and
 /// months for 6m (anchored at the window's first day, the day after the same date N months ago), or the last 12 months
 /// for "all".</param>
+/// <param name="PreviousRange">The window before; null for "all".</param>
+/// <param name="StartTotal">Contacts in the directory when the period started (first captured before
+/// <paramref name="Range"/>.From; deleted contacts not counted); 0 for "all".</param>
+/// <param name="Joined">New contacts in the period.</param>
+/// <param name="UnsubscribedInPeriod">Opt-outs recorded in the period (also of contacts deleted since).</param>
+/// <param name="ImportedInPeriod">Of <paramref name="Joined"/>, contacts a CSV import created.</param>
+/// <param name="Previous">The same three for <paramref name="PreviousRange"/>; null for "all".</param>
 public sealed record ContactPeriodStatsDto(
     int Total,
     int Active,
     int NewThisMonth,
     int Unsubscribed,
-    List<ContactSourceCountDto> Sources,
+    List<ContactPeriodSourceDto> Sources,
     string Period,
     string Step,
     string Timezone,
     ContactPeriodRangeDto Range,
     List<ContactBucketDto> Buckets,
     int ImportedThisMonth,
-    int Imported);
+    int Imported,
+    ContactPeriodRangeDto? PreviousRange,
+    int StartTotal,
+    int Joined,
+    int UnsubscribedInPeriod,
+    int ImportedInPeriod,
+    ContactPeriodPreviousDto? Previous);
 
 public sealed record ContactPeriodRangeDto(DateTimeOffset From, DateTimeOffset To);
+
+public sealed record ContactPeriodPreviousDto(int Joined, int Unsubscribed, int Imported);
+
+/// <param name="Kind">"page" | "import".</param>
+/// <param name="LandingPagePublicId">The page; null for the import row.</param>
+/// <param name="Title">The page title; "Import" for the import row.</param>
+public sealed record ContactPeriodSourceDto(string Kind, Guid? LandingPagePublicId, string Title, int Count);
 
 /// <param name="Start">The bucket's local start, "yyyy-MM-ddTHH:mm" in the stats' timezone.</param>
 /// <param name="Joined">Contacts first captured in the bucket (deleted contacts are no longer counted).</param>
 /// <param name="Unsubscribed">Opt-outs recorded in the bucket (kept even when the contact was deleted).</param>
 /// <param name="Total">Contacts first captured before the bucket ended — includes everyone captured before the period
 /// started, so the series is the running size of the directory.</param>
-public sealed record ContactBucketDto(string Start, int Joined, int Unsubscribed, int Total);
+/// <param name="Imported">Of <paramref name="Joined"/>, contacts a CSV import created (R6.6).</param>
+public sealed record ContactBucketDto(string Start, int Joined, int Unsubscribed, int Total, int Imported = 0);

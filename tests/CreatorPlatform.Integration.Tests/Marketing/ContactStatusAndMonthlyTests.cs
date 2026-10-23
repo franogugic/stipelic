@@ -1,3 +1,4 @@
+using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Creators.Infrastructure.Services;
 using CreatorPlatform.Integration.Tests.Infrastructure;
 using CreatorPlatform.Marketing.Application.Services;
@@ -164,6 +165,101 @@ public sealed class ContactStatusAndMonthlyTests
         Assert.Single(await ListAsync(creator, "unsubscribed"));
         // The per-month series is event-based: all three opt-outs of this creator are still in it.
         Assert.Equal(3, stats.Monthly.Sum(m => m.Unsubscribed));
+    }
+
+    // ---- R6.6: the period's start, previous window, imports and where people joined ---------------------------------
+
+    private async Task<int> AddPageAsync(int creatorId, string title)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return (await db.Database.SqlQuery<int>($"""
+            INSERT INTO landing_pages.landing_pages ("PublicId", "CreatorId", "Title", "Slug", "Type", "Status", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {creatorId}, {title}, {$"p-{Guid.NewGuid():N}"}, 'LeadGen', 'Published', now(), now())
+            RETURNING "Id" AS "Value"
+            """).ToListAsync()).Single();
+    }
+
+    private async Task<int> AddImportAsync(int creatorId, int userId)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return (await db.Database.SqlQuery<int>($"""
+            INSERT INTO marketing.contact_imports ("PublicId", "CreatorId", "UserId", "FileName", "RowCount", "ImportedCount", "ExistingCount",
+                                                   "DuplicateCount", "UnsubscribedCount", "InvalidCount", "ConsentVersion", "ConsentAttestedAt", "CreatedAt")
+            VALUES ({Guid.NewGuid()}, {creatorId}, {userId}, 'list.csv', 2, 2, 0, 0, 0, 0, 'contacts-import-v1', now(), now())
+            RETURNING "Id" AS "Value"
+            """).ToListAsync()).Single();
+    }
+
+    /// <summary>A contact whose capture history is <paramref name="pages"/> (first source first), or one an import created.</summary>
+    private async Task AddSourcedContactAsync(int creatorId, string email, DateTimeOffset at, int[] pages, int? importId = null)
+    {
+        await using var db = _fixture.CreateDbContext();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO marketing.contact_summaries ("CreatorId", "Email", "FirstCapturedAt", "LastCapturedAt", "SourceLandingPageIds", "ImportId", "ImportedAt")
+            VALUES ({creatorId}, {email}, {at}, {at}, {pages}, {importId}, {(importId is null ? null : at)})
+            """);
+    }
+
+    [Fact]
+    public async Task APeriod_HasItsStart_ItsJoinedUnsubscribedAndImported_AndThePreviousWindow()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        await SetTimezoneAsync(creator.CreatorId, Zagreb);
+        var page = await AddPageAsync(creator.CreatorId, "Guide");
+        var import = await AddImportAsync(creator.CreatorId, creator.OwnerUserId);
+        await AddSourcedContactAsync(creator.CreatorId, "old@example.test", LocalNoon(-40), [page]);         // before both windows
+        await AddSourcedContactAsync(creator.CreatorId, "prev@example.test", LocalNoon(-10), [page]);        // the previous 7 days
+        await AddSourcedContactAsync(creator.CreatorId, "prev-imp@example.test", LocalNoon(-9), [], import);
+        await AddSourcedContactAsync(creator.CreatorId, "a@example.test", LocalNoon(-2), [page]);
+        await AddSourcedContactAsync(creator.CreatorId, "b@example.test", LocalNoon(-1), [], import);
+        await AddSourcedContactAsync(creator.CreatorId, "c@example.test", LocalNoon(0), [], import);
+        await AddUnsubscribeAsync(creator.CreatorId, "old@example.test", LocalNoon(-1));
+        await AddUnsubscribeAsync(creator.CreatorId, "prev@example.test", LocalNoon(-8));
+        await AddUnsubscribeAsync(creator.CreatorId, "gone@example.test", LocalNoon(-3));                    // a deleted contact's opt-out
+
+        var stats = await WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, creator.OwnerUserId, "7d", CancellationToken.None));
+
+        Assert.Equal(3, stats.StartTotal);                                                 // old, prev, prev-imp
+        Assert.Equal((3, 2, 2), (stats.Joined, stats.UnsubscribedInPeriod, stats.ImportedInPeriod));
+        Assert.Equal(new ContactPeriodPreviousDto(2, 1, 1), stats.Previous);
+        Assert.Equal(stats.Range.From, stats.PreviousRange!.To);
+        Assert.Equal((stats.Joined, stats.ImportedInPeriod, stats.UnsubscribedInPeriod),
+            (stats.Buckets.Sum(b => b.Joined), stats.Buckets.Sum(b => b.Imported), stats.Buckets.Sum(b => b.Unsubscribed)));
+        Assert.Equal(1, stats.Buckets[^1].Imported);                                       // c, today
+        Assert.Equal(stats.StartTotal + stats.Joined, stats.Buckets[^1].Total);
+
+        var all = await WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, creator.OwnerUserId, "all", CancellationToken.None));
+        Assert.Equal((0, 6, (ContactPeriodPreviousDto?)null), (all.StartTotal, all.Joined, all.Previous));
+        Assert.Null(all.PreviousRange);
+    }
+
+    [Fact]
+    public async Task WhereTheyJoined_CountsEachContactOnceAtItsFirstSource_ImportIncluded_AddingUpToJoined()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        await SetTimezoneAsync(creator.CreatorId, Zagreb);
+        var guide = await AddPageAsync(creator.CreatorId, "Guide");
+        var course = await AddPageAsync(creator.CreatorId, "Course");
+        var import = await AddImportAsync(creator.CreatorId, creator.OwnerUserId);
+        await AddSourcedContactAsync(creator.CreatorId, "a@example.test", LocalNoon(-1), [guide, course]);   // first came through the guide
+        await AddSourcedContactAsync(creator.CreatorId, "b@example.test", LocalNoon(-2), [course, guide]);
+        await AddSourcedContactAsync(creator.CreatorId, "c@example.test", LocalNoon(-3), [course]);
+        await AddSourcedContactAsync(creator.CreatorId, "d@example.test", LocalNoon(-1), [guide], import);   // imported, then signed up
+        await AddSourcedContactAsync(creator.CreatorId, "e@example.test", LocalNoon(-1), [], import);
+        await AddSourcedContactAsync(creator.CreatorId, "f@example.test", LocalNoon(-1), [], import);
+        await AddSourcedContactAsync(creator.CreatorId, "old@example.test", LocalNoon(-30), [guide]);         // before the 7 days
+
+        var stats = await WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, creator.OwnerUserId, "7d", CancellationToken.None));
+
+        Assert.Equal(
+            [("import", "Import", 3), ("page", "Course", 2), ("page", "Guide", 1)],
+            stats.Sources.Select(x => (x.Kind, x.Title, x.Count)));
+        Assert.Null(stats.Sources[0].LandingPagePublicId);
+        Assert.NotNull(stats.Sources[1].LandingPagePublicId);
+        Assert.Equal(stats.Joined, stats.Sources.Sum(x => x.Count));
+
+        var allTime = await WithServiceAsync(s => s.GetStatsAsync(creator.Slug, creator.OwnerUserId, CancellationToken.None));
+        Assert.Equal(4, allTime.Sources.Single(x => x.Title == "Guide").Count);   // the call without a period still counts every page a contact has
     }
 
     private async Task SetTimezoneAsync(int creatorId, string timezone)

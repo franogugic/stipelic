@@ -28,7 +28,17 @@ public enum ContactStatusFilter
     Unsubscribed
 }
 
-public sealed record ContactBucketRow(int Joined, int Unsubscribed);
+/// <param name="Imported">Of <paramref name="Joined"/>, contacts a CSV import created.</param>
+public sealed record ContactBucketRow(int Joined, int Unsubscribed, int Imported = 0);
+
+/// <summary>A period's subscriber totals (R6.6): the directory at its start, and joined / unsubscribed / imported in it and in
+/// the window before (0 when there is none).</summary>
+public sealed record ContactPeriodTotalsRow(
+    int StartTotal, int Joined, int Unsubscribed, int Imported, int PreviousJoined, int PreviousUnsubscribed, int PreviousImported);
+
+/// <summary>Who joined in a period, by the source of their first capture (R6.6): a page, or an import
+/// (<paramref name="LandingPagePublicId"/> null).</summary>
+public sealed record ContactPeriodSourceRow(Guid? LandingPagePublicId, string? Title, int Count);
 
 public sealed record ContactSourceCountRow(Guid LandingPagePublicId, string Title, int Count);
 
@@ -74,6 +84,16 @@ public interface IContactsRepository
 
     /// <summary>Contacts first captured before <paramref name="before"/> (and still in the directory).</summary>
     Task<int> CountCapturedBeforeAsync(int creatorId, DateTimeOffset before, CancellationToken ct);
+
+    /// <summary>One pass over the creator's contacts and opt-outs: the directory at <paramref name="from"/> (0 for all time),
+    /// and joined / unsubscribed / imported in [<paramref name="from"/>, <paramref name="to"/>) and in the previous
+    /// window (when given).</summary>
+    Task<ContactPeriodTotalsRow> GetPeriodTotalsAsync(
+        int creatorId, DateTimeOffset? from, DateTimeOffset to, DateTimeOffset? previousFrom, DateTimeOffset? previousTo, CancellationToken ct);
+
+    /// <summary>The contacts that joined in [<paramref name="from"/>, <paramref name="to"/>), each counted once at the
+    /// source of its first capture (an imported contact at the import), most first.</summary>
+    Task<List<ContactPeriodSourceRow>> GetPeriodSourcesAsync(int creatorId, DateTimeOffset? from, DateTimeOffset to, CancellationToken ct);
 
     /// <summary>Deletes the contact's summary row and every capture of <paramref name="email"/> (already
     /// normalised) on this creator's landing pages. Never touches unsubscribes or campaign recipients. False —

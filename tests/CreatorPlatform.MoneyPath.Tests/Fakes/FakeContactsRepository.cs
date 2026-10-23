@@ -50,6 +50,17 @@ public sealed class FakeContactsRepository : IContactsRepository
         int creatorId, string timezone, IReadOnlyList<DateTime> bucketStarts, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
         => Task.FromResult(new Dictionary<DateTime, ContactBucketRow>());
 
+    public ContactPeriodTotalsRow PeriodTotals { get; set; } = new(0, 0, 0, 0, 0, 0, 0);
+
+    public Task<ContactPeriodTotalsRow> GetPeriodTotalsAsync(
+        int creatorId, DateTimeOffset? from, DateTimeOffset to, DateTimeOffset? previousFrom, DateTimeOffset? previousTo, CancellationToken ct)
+        => Task.FromResult(PeriodTotals);
+
+    public List<ContactPeriodSourceRow> PeriodSources { get; set; } = [];
+
+    public Task<List<ContactPeriodSourceRow>> GetPeriodSourcesAsync(int creatorId, DateTimeOffset? from, DateTimeOffset to, CancellationToken ct)
+        => Task.FromResult(PeriodSources);
+
     public Task<int> CountCapturedBeforeAsync(int creatorId, DateTimeOffset before, CancellationToken ct) => Task.FromResult(0);
 
     public Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct)

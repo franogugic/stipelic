@@ -10,6 +10,9 @@ namespace CreatorPlatform.Marketing.Application.Services;
 
 public sealed class ContactsService : IContactsService
 {
+    /// <summary>The title of the import row in a period's "Where they joined".</summary>
+    public const string ImportSourceTitle = "Import";
+
     private const int DefaultLimit = 50;
     private const int MaxLimit = 100;
     private const int GrowthMonths = 12;
@@ -170,10 +173,12 @@ public sealed class ContactsService : IContactsService
 
         // Sequential on purpose: the queries share one scoped DbContext, which allows no concurrent use.
         var counts = await _contactsRepository.GetStatsCountsAsync(context.CreatorId, currentMonthStart, ct);
-        var sources = await _contactsRepository.GetSourceCountsAsync(context.CreatorId, ct);
+        var sources = await _contactsRepository.GetPeriodSourcesAsync(context.CreatorId, plan.TotalsFrom, plan.TotalsTo, ct);
         var read = await _contactsRepository.GetBucketsAsync(
             context.CreatorId, context.Timezone, plan.Buckets, bucketsFrom, plan.TotalsTo, ct);
         var before = await _contactsRepository.CountCapturedBeforeAsync(context.CreatorId, bucketsFrom, ct);
+        var totals = await _contactsRepository.GetPeriodTotalsAsync(
+            context.CreatorId, plan.TotalsFrom, plan.TotalsTo, plan.PreviousTotalsFrom, plan.PreviousTotalsTo, ct);
 
         var running = before;
         var buckets = new List<ContactBucketDto>(plan.Buckets.Count);
@@ -181,7 +186,7 @@ public sealed class ContactsService : IContactsService
         {
             var values = read.GetValueOrDefault(start) ?? new ContactBucketRow(0, 0);
             running += values.Joined;
-            buckets.Add(new ContactBucketDto(start.ToString("yyyy-MM-dd'T'HH:mm"), values.Joined, values.Unsubscribed, running));
+            buckets.Add(new ContactBucketDto(start.ToString("yyyy-MM-dd'T'HH:mm"), values.Joined, values.Unsubscribed, running, values.Imported));
         }
 
         return new ContactPeriodStatsDto(
@@ -189,14 +194,25 @@ public sealed class ContactsService : IContactsService
             counts.Active,
             counts.NewThisMonth,
             counts.Unsubscribed,
-            sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList(),
+            sources.Select(s => s.LandingPagePublicId is { } pageId
+                    ? new ContactPeriodSourceDto("page", pageId, s.Title ?? string.Empty, s.Count)
+                    : new ContactPeriodSourceDto("import", null, ImportSourceTitle, s.Count))
+                .ToList(),
             periodKey,
             plan.Step,
             context.Timezone,
             new ContactPeriodRangeDto(plan.RangeFrom, plan.RangeTo),
             buckets,
             counts.ImportedThisMonth,
-            counts.Imported);
+            counts.Imported,
+            plan.PreviousTotalsFrom is { } previousFrom ? new ContactPeriodRangeDto(previousFrom, plan.PreviousRangeTo!.Value) : null,
+            totals.StartTotal,
+            totals.Joined,
+            totals.Unsubscribed,
+            totals.Imported,
+            plan.PreviousTotalsFrom is null
+                ? null
+                : new ContactPeriodPreviousDto(totals.PreviousJoined, totals.PreviousUnsubscribed, totals.PreviousImported));
     }
 
     public async Task DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
