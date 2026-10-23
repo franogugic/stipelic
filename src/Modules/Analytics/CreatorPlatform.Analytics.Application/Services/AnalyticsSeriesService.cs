@@ -128,11 +128,11 @@ public sealed class AnalyticsSeriesService : IAnalyticsSeriesService
     private static List<AnalyticsBucketDto> Fill(IReadOnlyList<DateTime> starts, Dictionary<DateTime, SeriesValues> values) =>
         starts.Select(start =>
         {
-            var v = values.GetValueOrDefault(start) ?? new SeriesValues(0, 0, 0, 0);
-            return new AnalyticsBucketDto(start.ToString(BucketFormat), v.Views, v.Emails, v.Sales, v.RevenueCents);
+            var v = values.GetValueOrDefault(start) ?? new SeriesValues(0, 0, 0, 0, 0);
+            return new AnalyticsBucketDto(start.ToString(BucketFormat), v.Views, v.Emails, v.Sales, v.RevenueCents, v.Downloads);
         }).ToList();
 
-    private static AnalyticsTotalsDto ToTotals(SeriesValues v) => new(v.Views, v.Emails, v.Sales, v.RevenueCents);
+    private static AnalyticsTotalsDto ToTotals(SeriesValues v) => new(v.Views, v.Emails, v.Sales, v.RevenueCents, v.Downloads);
 
     private static AnalyticsBestMonthDto BestMonth(List<AnalyticsBucketDto> months)
     {
@@ -143,6 +143,7 @@ public sealed class AnalyticsSeriesService : IAnalyticsSeriesService
             return metric(best) > 0 ? new AnalyticsMonthValueDto(best.Start[..7], metric(best)) : null;
         }
 
-        return new AnalyticsBestMonthDto(Best(m => m.Views), Best(m => m.Emails), Best(m => m.Sales), Best(m => m.RevenueCents));
+        return new AnalyticsBestMonthDto(
+            Best(m => m.Views), Best(m => m.Emails), Best(m => m.Sales), Best(m => m.RevenueCents), Best(m => m.Downloads));
     }
 }

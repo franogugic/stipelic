@@ -2058,6 +2058,43 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Access.DownloadEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("CreatorId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("DownloadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("GrantId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("LandingPageId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GrantId");
+
+                    b.HasIndex("CreatorId", "DownloadedAt");
+
+                    b.HasIndex("LandingPageId", "DownloadedAt")
+                        .HasFilter("\"LandingPageId\" IS NOT NULL");
+
+                    b.HasIndex("ProductId", "DownloadedAt");
+
+                    b.ToTable("download_events", "products");
+                });
+
             modelBuilder.Entity("CreatorPlatform.Products.Domain.Products.Product", b =>
                 {
                     b.Property<int>("Id")
@@ -2518,6 +2555,32 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CreatorPlatform.Products.Domain.Products.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Access.DownloadEvent", b =>
+                {
+                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CreatorPlatform.Products.Domain.Access.AccessGrant", null)
+                        .WithMany()
+                        .HasForeignKey("GrantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CreatorPlatform.LandingPages.Domain.LandingPages.LandingPage", null)
+                        .WithMany()
+                        .HasForeignKey("LandingPageId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("CreatorPlatform.Products.Domain.Products.Product", null)
                         .WithMany()

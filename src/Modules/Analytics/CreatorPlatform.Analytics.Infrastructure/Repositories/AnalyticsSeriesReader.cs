@@ -103,6 +103,27 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
             GROUP BY 1
             """).AsNoTracking().ToListAsync(ct);
 
+        // Downloads (R6.2 events): a product's links, the links that came from a page, or every link of the workspace.
+        var downloads = await _context.Database.SqlQuery<BucketRow>($"""
+            SELECT width_bucket(extract(epoch FROM (de."DownloadedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket", COUNT(*)::bigint AS "Value", 0::bigint AS "Extra"
+            FROM products.download_events de
+            WHERE ({orderPageId}::int IS NULL OR de."LandingPageId" = {orderPageId})
+              AND ({orderProductId}::int IS NULL OR de."ProductId" = {orderProductId})
+              AND ({orderCreatorId}::int IS NULL OR de."CreatorId" = {orderCreatorId})
+              AND de."DownloadedAt" >= {from} AND de."DownloadedAt" < {to}
+            GROUP BY 1
+            """).AsNoTracking().ToListAsync(ct);
+
+        var downloadTotals = (await _context.Database.SqlQuery<DownloadTotalsRow>($"""
+            SELECT
+                (COUNT(*) FILTER (WHERE ({currentFrom}::timestamptz IS NULL OR de."DownloadedAt" >= {currentFrom}) AND de."DownloadedAt" < {currentTo}))::bigint AS "Downloads",
+                (COUNT(*) FILTER (WHERE {previousFrom}::timestamptz IS NOT NULL AND de."DownloadedAt" >= {previousFrom} AND de."DownloadedAt" < {previousTo}))::bigint AS "PreviousDownloads"
+            FROM products.download_events de
+            WHERE ({orderPageId}::int IS NULL OR de."LandingPageId" = {orderPageId})
+              AND ({orderProductId}::int IS NULL OR de."ProductId" = {orderProductId})
+              AND ({orderCreatorId}::int IS NULL OR de."CreatorId" = {orderCreatorId})
+            """).AsNoTracking().ToListAsync(ct)).Single();
+
         var totals = (await _context.Database.SqlQuery<TotalsRow>($"""
             SELECT
                 (SELECT COUNT(*) FILTER (WHERE ({currentFrom}::timestamptz IS NULL OR pv."ViewedAt" >= {currentFrom}) AND pv."ViewedAt" < {currentTo})
@@ -132,7 +153,7 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
         // width_bucket numbers the bins from 1; 0 would be an event before the first start, which the range filter
         // above already excludes.
         var buckets = new Dictionary<DateTime, SeriesValues>();
-        SeriesValues At(DateTime key) => buckets.GetValueOrDefault(key) ?? new SeriesValues(0, 0, 0, 0);
+        SeriesValues At(DateTime key) => buckets.GetValueOrDefault(key) ?? new SeriesValues(0, 0, 0, 0, 0);
         DateTime? Start(BucketRow row) => row.Bucket >= 1 && row.Bucket <= bucketStarts.Count ? bucketStarts[row.Bucket - 1] : null;
         foreach (var row in views)
             if (Start(row) is { } key) buckets[key] = At(key) with { Views = row.Value };
@@ -140,11 +161,16 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
             if (Start(row) is { } key) buckets[key] = At(key) with { Emails = row.Value };
         foreach (var row in sales)
             if (Start(row) is { } key) buckets[key] = At(key) with { Sales = row.Value, RevenueCents = row.Extra };
+        foreach (var row in downloads)
+            if (Start(row) is { } key) buckets[key] = At(key) with { Downloads = row.Value };
 
         return new SeriesReadResult(
             buckets,
-            new SeriesValues(totals.Views, emailTotals.Emails, totals.Sales, totals.RevenueCents),
-            previous is null ? null : new SeriesValues(totals.PreviousViews, emailTotals.PreviousEmails, totals.PreviousSales, totals.PreviousRevenueCents));
+            new SeriesValues(totals.Views, emailTotals.Emails, totals.Sales, totals.RevenueCents, downloadTotals.Downloads),
+            previous is null
+                ? null
+                : new SeriesValues(totals.PreviousViews, emailTotals.PreviousEmails, totals.PreviousSales, totals.PreviousRevenueCents,
+                    downloadTotals.PreviousDownloads));
     }
 
     private async Task<EmailTotalsRow> ReadEmailTotalsAsync(
@@ -239,6 +265,8 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
     private sealed record BucketRow(int Bucket, long Value, long Extra);
 
     private sealed record EmailTotalsRow(long Emails, long PreviousEmails);
+
+    private sealed record DownloadTotalsRow(long Downloads, long PreviousDownloads);
 
     private sealed record ProductBreakdownRow(Guid PublicId, string Name, long Sales, long RevenueCents, long TotalRevenueCents);
 

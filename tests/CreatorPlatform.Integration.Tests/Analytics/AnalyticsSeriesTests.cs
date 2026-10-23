@@ -65,8 +65,8 @@ public sealed class AnalyticsSeriesTests
         var series = await SeriesAsync(creator, "page", page.PublicId, "7d");
 
         Assert.Equal(("day", Zagreb, 7, 7), (series.Step, series.Timezone, series.Buckets.Count, series.PreviousBuckets!.Count));
-        Assert.Equal(new AnalyticsTotalsDto(1, 1, 2, 3900), series.Totals);
-        Assert.Equal(new AnalyticsTotalsDto(1, 0, 1, 500), series.PreviousTotals);
+        Assert.Equal(new AnalyticsTotalsDto(1, 1, 2, 3900, 0), series.Totals);
+        Assert.Equal(new AnalyticsTotalsDto(1, 0, 1, 500, 0), series.PreviousTotals);
         var today = series.Buckets[^1];
         Assert.Equal(LocalDay(midnight), today.Start);
         Assert.Equal((1L, 1L, 1L, 2900L), (today.Views, today.Emails, today.Sales, today.RevenueCents));
@@ -135,7 +135,7 @@ public sealed class AnalyticsSeriesTests
 
         var series = await SeriesAsync(creator, "product", (await PublicIdAsync("products.products", productId)), "30d");
 
-        Assert.Equal(new AnalyticsTotalsDto(2, 2, 1, 3000), series.Totals);
+        Assert.Equal(new AnalyticsTotalsDto(2, 2, 1, 3000, 0), series.Totals);
         Assert.Equal(new AnalyticsProductExtrasDto(1, 1500, 4000), series.Product);
     }
 
@@ -266,8 +266,8 @@ public sealed class AnalyticsSeriesTests
         var series = await SeriesAsync(creator, "workspace", Guid.Empty, "30d");
 
         Assert.Equal(("workspace", "day", 30), (series.Scope, series.Step, series.Buckets.Count));
-        Assert.Equal(new AnalyticsTotalsDto(3, 2, 3, 4500), series.Totals);
-        Assert.Equal(new AnalyticsTotalsDto(0, 1, 0, 0), series.PreviousTotals);        // old@ joined 40 days ago
+        Assert.Equal(new AnalyticsTotalsDto(3, 2, 3, 4500, 0), series.Totals);
+        Assert.Equal(new AnalyticsTotalsDto(0, 1, 0, 0, 0), series.PreviousTotals);        // old@ joined 40 days ago
         Assert.Equal((2L, 1L, 1L, 3000L), (series.Buckets[^1].Views, series.Buckets[^1].Emails, series.Buckets[^1].Sales, series.Buckets[^1].RevenueCents));
         Assert.Equal(1L, series.Buckets[^4].Emails);                                     // iva@, three days ago
         Assert.Null(series.Product);

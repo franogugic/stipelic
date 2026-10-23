@@ -41,16 +41,20 @@ public sealed record AnalyticsRangeDto(DateTimeOffset From, DateTimeOffset To);
 /// contacts, counted in the bucket their first capture falls in.</param>
 /// <param name="Sales">Paid orders, by PaidAt (else CreatedAt).</param>
 /// <param name="RevenueCents">Their AmountCents.</param>
-public sealed record AnalyticsTotalsDto(long Views, long Emails, long Sales, long RevenueCents);
+/// <param name="Downloads">Download requests through personal links, on the day they happen (repeats included; none before
+/// the R6.2 release): the product's links for a product, the links that came from the page for a page, every link for
+/// the workspace.</param>
+public sealed record AnalyticsTotalsDto(long Views, long Emails, long Sales, long RevenueCents, long Downloads);
 
 /// <param name="Start">The bucket's local start, "yyyy-MM-ddTHH:mm" in <see cref="AnalyticsSeriesDto.Timezone"/>.</param>
-public sealed record AnalyticsBucketDto(string Start, long Views, long Emails, long Sales, long RevenueCents);
+public sealed record AnalyticsBucketDto(string Start, long Views, long Emails, long Sales, long RevenueCents, long Downloads);
 
 public sealed record AnalyticsBestMonthDto(
     AnalyticsMonthValueDto? Views,
     AnalyticsMonthValueDto? Emails,
     AnalyticsMonthValueDto? Sales,
-    AnalyticsMonthValueDto? Revenue);
+    AnalyticsMonthValueDto? Revenue,
+    AnalyticsMonthValueDto? Downloads);
 
 /// <param name="Month">"yyyy-MM" (local).</param>
 public sealed record AnalyticsMonthValueDto(string Month, long Value);

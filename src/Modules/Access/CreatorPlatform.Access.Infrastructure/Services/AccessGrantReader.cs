@@ -42,17 +42,30 @@ public sealed class AccessGrantReader : IAccessGrantReader
 
     public async Task<AccessDownloadTarget?> RecordDownloadAsync(string token, DateTimeOffset downloadedAt, CancellationToken ct)
     {
-        // One statement: the count and the file come from the same row lock, and a revoked link is never counted.
+        // One statement: the count, the download event (R6.2) and the file come from the same row lock, so a revoked
+        // link or a product without a file is never counted. The event keeps the page the link came from.
         var rows = await _context.Database.SqlQuery<AccessDownloadTarget>($"""
-            UPDATE products.access_grants g
-            SET "DownloadCount" = g."DownloadCount" + 1,
-                "LastDownloadedAt" = {downloadedAt}
-            FROM products.products p
-            WHERE g."Token" = {token}
-              AND g."RevokedAt" IS NULL
-              AND p."Id" = g."ProductId"
-              AND p."FileBlobPath" IS NOT NULL
-            RETURNING p."FileBlobPath" AS "BlobPath", p."FileName" AS "FileName", p."FileContentType" AS "ContentType"
+            WITH bumped AS (
+                UPDATE products.access_grants g
+                SET "DownloadCount" = g."DownloadCount" + 1,
+                    "LastDownloadedAt" = {downloadedAt}
+                FROM products.products p
+                WHERE g."Token" = {token}
+                  AND g."RevokedAt" IS NULL
+                  AND p."Id" = g."ProductId"
+                  AND p."FileBlobPath" IS NOT NULL
+                RETURNING g."Id" AS "GrantId", g."CreatorId", g."ProductId", g."OrderId", g."EmailCaptureId",
+                          p."FileBlobPath", p."FileName", p."FileContentType"
+            ),
+            logged AS (
+                INSERT INTO products.download_events ("GrantId", "CreatorId", "ProductId", "LandingPageId", "DownloadedAt")
+                SELECT b."GrantId", b."CreatorId", b."ProductId", COALESCE(o."LandingPageId", ec."LandingPageId"), {downloadedAt}
+                FROM bumped b
+                LEFT JOIN orders.orders o ON o."Id" = b."OrderId"
+                LEFT JOIN analytics.email_captures ec ON ec."Id" = b."EmailCaptureId"
+            )
+            SELECT b."FileBlobPath" AS "BlobPath", b."FileName" AS "FileName", b."FileContentType" AS "ContentType"
+            FROM bumped b
             """).ToListAsync(ct);
 
         return rows.SingleOrDefault();

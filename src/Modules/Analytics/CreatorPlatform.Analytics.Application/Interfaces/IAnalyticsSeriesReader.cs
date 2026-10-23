@@ -48,7 +48,9 @@ public sealed record SeriesTarget(
 
 public sealed record SeriesRange(DateTimeOffset? From, DateTimeOffset To);
 
-public sealed record SeriesValues(long Views, long Emails, long Sales, long RevenueCents);
+/// <param name="Downloads">Download requests through personal links (R6.2 events): the product's links for a product,
+/// links that came from the page for a page, every link for a workspace.</param>
+public sealed record SeriesValues(long Views, long Emails, long Sales, long RevenueCents, long Downloads);
 
 public sealed record SeriesReadResult(
     Dictionary<DateTime, SeriesValues> Buckets,
