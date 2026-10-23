@@ -28,8 +28,9 @@ public sealed class MaintenanceOptions
     public int AbandonedUploadMinutes { get; set; } = 60;
 
     /// <summary>A checkout still Pending this long after it started becomes Failed. At least 24 h: a Stripe Checkout
-    /// session can be paid until it expires, 24 h after creation by default.</summary>
-    public int StalePendingOrderHours { get; set; } = 24;
+    /// session can be paid until it expires, 24 h after creation by default. The default adds an hour, because the order
+    /// can be created a moment before its session.</summary>
+    public int StalePendingOrderHours { get; set; } = 25;
 
     public TimeSpan Interval => TimeSpan.FromMinutes(IntervalMinutes);
 

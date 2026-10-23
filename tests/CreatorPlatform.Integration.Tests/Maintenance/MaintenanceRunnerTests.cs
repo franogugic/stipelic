@@ -152,5 +152,6 @@ public sealed class MaintenanceRunnerTests
         var options = provider.GetRequiredService<IOptions<MaintenanceOptions>>().Value;
 
         Assert.Equal((true, 60, 30, 30), (options.Enabled, options.IntervalMinutes, options.SentEmailBodyRetentionDays, options.ExpiredAuthRecordRetentionDays));
+        Assert.Equal((60, 25), (options.AbandonedUploadMinutes, options.StalePendingOrderHours));
     }
 }

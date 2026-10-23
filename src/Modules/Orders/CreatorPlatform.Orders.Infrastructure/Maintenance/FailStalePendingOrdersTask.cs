@@ -9,7 +9,7 @@ namespace CreatorPlatform.Orders.Infrastructure.Maintenance;
 /// <summary>
 /// Marks checkouts that never completed as <see cref="OrderStatus.Failed"/>: orders still
 /// <see cref="OrderStatus.Pending"/> <see cref="MaintenanceOptions.StalePendingOrderHours"/> after they were created. By
-/// then their Stripe Checkout session has expired (24 h by default), so the buyer can no longer pay it. The webhook for
+/// then their Stripe Checkout session has expired (24 h by default; the default age adds an hour), so the buyer can no longer pay it. The webhook for
 /// <c>checkout.session.expired</c> does the same sooner when Stripe delivers it; this job catches the rest.
 ///
 /// Nothing is lost if a payment does arrive later (e.g. a delayed webhook retry): <c>checkout.session.completed</c> pays any

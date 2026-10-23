@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace CreatorPlatform.Integration.Tests.Maintenance;
 
-/// <summary>B4 (job part): checkouts still Pending after 24 h become Failed; younger, paid and refunded orders are never
+/// <summary>B4 (job part): checkouts still Pending after 25 h (the default) become Failed; younger, paid and refunded orders are never
 /// touched, and an order paid while the job runs stays Paid.</summary>
 [Collection(PostgresCollection.Name)]
 public sealed class FailStalePendingOrdersTaskTests
@@ -61,17 +61,17 @@ public sealed class FailStalePendingOrdersTaskTests
         new(_postgres.CreateDbContext(), Options.Create(new MaintenanceOptions { BatchSize = batchSize }));
 
     [Fact]
-    public async Task CheckoutsPendingForOverADay_BecomeFailed_InBatches_AndNothingElseChanges()
+    public async Task CheckoutsPendingForOver25Hours_BecomeFailed_InBatches_AndNothingElseChanges()
     {
         var creator = await _data.CreateCreatorAsync();
         var productId = await CreateProductAsync(creator.CreatorId);
         var stale = new[]
         {
-            await CreateOrderAsync(creator.CreatorId, productId, "Pending", Now.AddHours(-25)),
+            await CreateOrderAsync(creator.CreatorId, productId, "Pending", Now.AddHours(-26)),
             await CreateOrderAsync(creator.CreatorId, productId, "Pending", Now.AddDays(-3)),
             await CreateOrderAsync(creator.CreatorId, productId, "Pending", Now.AddDays(-40)),
         };
-        var young = await CreateOrderAsync(creator.CreatorId, productId, "Pending", Now.AddHours(-23));
+        var young = await CreateOrderAsync(creator.CreatorId, productId, "Pending", Now.AddHours(-24));   // session just expired: the hour of margin
         var paid = await CreateOrderAsync(creator.CreatorId, productId, "Paid", Now.AddDays(-3));
         var refunded = await CreateOrderAsync(creator.CreatorId, productId, "Refunded", Now.AddDays(-3));
 
