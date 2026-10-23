@@ -19,19 +19,13 @@ public sealed class PublicLandingPagesController : ControllerBase
     public const string PageNotFoundCode = "PAGE_NOT_FOUND";
 
     private const string VisitorCookieName = "lp_visitor_id";
-    private static readonly CookieOptions VisitorCookieOptions = new()
-    {
-        HttpOnly = false,
-        Secure = false,
-        SameSite = SameSiteMode.Lax,
-        MaxAge = TimeSpan.FromDays(365)
-    };
 
     private readonly IPublicLandingPageService _publicLandingPageService;
     private readonly IPageViewService _pageViewService;
     private readonly IEmailCaptureService _emailCaptureService;
     private readonly IOrderCheckoutService _orderCheckoutService;
     private readonly CaptureEmailRateLimiter _captureEmailRateLimiter;
+    private readonly IHostEnvironment _environment;
     private readonly ILogger<PublicLandingPagesController> _logger;
 
     public PublicLandingPagesController(
@@ -40,6 +34,7 @@ public sealed class PublicLandingPagesController : ControllerBase
         IEmailCaptureService emailCaptureService,
         IOrderCheckoutService orderCheckoutService,
         CaptureEmailRateLimiter captureEmailRateLimiter,
+        IHostEnvironment environment,
         ILogger<PublicLandingPagesController> logger)
     {
         _publicLandingPageService = publicLandingPageService;
@@ -47,6 +42,7 @@ public sealed class PublicLandingPagesController : ControllerBase
         _emailCaptureService = emailCaptureService;
         _orderCheckoutService = orderCheckoutService;
         _captureEmailRateLimiter = captureEmailRateLimiter;
+        _environment = environment;
         _logger = logger;
     }
 
@@ -66,7 +62,7 @@ public sealed class PublicLandingPagesController : ControllerBase
             });
 
         var visitorId = ResolveVisitorId();
-        Response.Cookies.Append(VisitorCookieName, visitorId.ToString(), VisitorCookieOptions);
+        Response.Cookies.Append(VisitorCookieName, visitorId.ToString(), VisitorCookieOptions(_environment));
 
         await _pageViewService.RecordAsync(page.Id, visitorId, ct);
 
@@ -127,6 +123,16 @@ public sealed class PublicLandingPagesController : ControllerBase
             "Checkout session created.",
             result));
     }
+
+    /// <summary>The anonymous page-view visitor id: readable by the page script, a year long, and sent only over HTTPS
+    /// outside Development (the dev server is plain http).</summary>
+    public static CookieOptions VisitorCookieOptions(IHostEnvironment environment) => new()
+    {
+        HttpOnly = false,
+        Secure = !environment.IsDevelopment(),
+        SameSite = SameSiteMode.Lax,
+        MaxAge = TimeSpan.FromDays(365)
+    };
 
     private Guid ResolveVisitorId()
     {

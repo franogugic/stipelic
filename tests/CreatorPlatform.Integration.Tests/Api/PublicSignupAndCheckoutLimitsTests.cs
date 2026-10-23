@@ -13,6 +13,8 @@ using CreatorPlatform.Shared.Application.Analytics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CreatorPlatform.Integration.Tests.Api;
@@ -109,7 +111,8 @@ public sealed class PublicSignupAndCheckoutLimitsTests
     }
 
     private static PublicLandingPagesController Controller(CaptureEmailRateLimiter limiter, RecordingCaptures captures) =>
-        new(new OnePage(), new NoPageViews(), captures, new NoCheckout(), limiter, NullLogger<PublicLandingPagesController>.Instance)
+        new(new OnePage(), new NoPageViews(), captures, new NoCheckout(), limiter,
+            new HostingEnvironment { EnvironmentName = Environments.Production }, NullLogger<PublicLandingPagesController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
