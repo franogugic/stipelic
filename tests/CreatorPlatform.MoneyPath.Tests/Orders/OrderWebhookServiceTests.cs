@@ -76,7 +76,7 @@ public class OrderWebhookServiceTests
         var order = BuildOrder(PayoutMode.BankTransfer);
         var (service, orderRepository, ledgerRepository) = BuildService(order);
 
-        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
 
         Assert.Equal(OrderStatus.Paid, orderRepository.Order!.Status);
         Assert.Equal(2, ledgerRepository.Entries.Count);
@@ -88,7 +88,7 @@ public class OrderWebhookServiceTests
         var order = BuildOrder(PayoutMode.BankTransfer, platformFeeCents: 0);
         var (service, _, ledgerRepository) = BuildService(order);
 
-        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
 
         Assert.Single(ledgerRepository.Entries);
     }
@@ -99,7 +99,7 @@ public class OrderWebhookServiceTests
         var order = BuildOrder(PayoutMode.StripeConnect);
         var (service, orderRepository, ledgerRepository) = BuildService(order);
 
-        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
 
         Assert.Equal(OrderStatus.Paid, orderRepository.Order!.Status);
         Assert.Empty(ledgerRepository.Entries);
@@ -110,7 +110,7 @@ public class OrderWebhookServiceTests
     {
         var order = BuildOrder(PayoutMode.BankTransfer);
         var (service, _, ledgerRepository) = BuildService(order);
-        var data = new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1");
+        var data = new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1");
 
         await service.HandleCheckoutSessionCompletedAsync(data, CancellationToken.None);
         await service.HandleCheckoutSessionCompletedAsync(data, CancellationToken.None);
@@ -154,7 +154,7 @@ public class OrderWebhookServiceTests
     {
         var order = BuildOrder(PayoutMode.StripeConnect);
         var (service, _, _, grants, outbox) = BuildServiceWithDelivery(order);
-        var completed = new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1");
+        var completed = new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1");
 
         await service.HandleCheckoutSessionCompletedAsync(completed, CancellationToken.None);
         await service.HandleCheckoutSessionCompletedAsync(completed, CancellationToken.None);
@@ -172,7 +172,7 @@ public class OrderWebhookServiceTests
     {
         var order = BuildOrder(PayoutMode.BankTransfer);
         var (service, _, _, grants, _) = BuildServiceWithDelivery(order);
-        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
 
         var refund = FullRefund();
         await service.HandleChargeRefundedAsync(refund, CancellationToken.None);
@@ -191,7 +191,7 @@ public class OrderWebhookServiceTests
     {
         var order = BuildOrder(payoutMode, amountCents, platformFeeCents);
         var (service, _, ledger, grants, _) = BuildServiceWithDelivery(order);
-        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
         return (service, order, ledger, grants);
     }
 

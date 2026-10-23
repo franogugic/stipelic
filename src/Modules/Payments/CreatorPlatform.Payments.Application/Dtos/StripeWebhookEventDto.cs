@@ -1,9 +1,13 @@
 namespace CreatorPlatform.Payments.Application.Dtos;
 
-public sealed class StripeWebhookEventDto
+public sealed record StripeWebhookEventDto
 {
     public required string EventId { get; init; }
     public required string EventType { get; init; }
+
+    /// <summary>The event's <c>account</c>: the connected account it came from, null for the platform's own events.</summary>
+    public string? ConnectedAccountId { get; init; }
+
     public CheckoutSessionCompletedData? CheckoutSessionCompleted { get; init; }
     public CheckoutSessionExpiredData? CheckoutSessionExpired { get; init; }
     public SubscriptionChangedData? SubscriptionChanged { get; init; }

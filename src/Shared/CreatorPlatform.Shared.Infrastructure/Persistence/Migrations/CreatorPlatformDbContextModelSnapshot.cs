@@ -1833,6 +1833,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ErrorMessage")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1849,6 +1852,14 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsResolved")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("LastFailedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone");
@@ -1869,9 +1880,12 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.HasIndex("IsResolved", "OccurredAt");
+                    b.HasIndex("IsResolved", "LastFailedAt");
 
-                    b.ToTable("webhook_failures", "payments");
+                    b.ToTable("webhook_failures", "payments", t =>
+                        {
+                            t.HasCheckConstraint("CK_webhook_failures_Attempts_Positive", "\"Attempts\" >= 1");
+                        });
                 });
 
             modelBuilder.Entity("CreatorPlatform.Payouts.Domain.Payouts.LedgerEntry", b =>

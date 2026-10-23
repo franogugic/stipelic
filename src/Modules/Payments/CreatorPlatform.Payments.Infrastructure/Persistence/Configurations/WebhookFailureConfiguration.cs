@@ -10,6 +10,8 @@ public sealed class WebhookFailureConfiguration : IEntityTypeConfiguration<Webho
     {
         builder.ToTable("webhook_failures", "payments");
 
+        builder.ToTable(t => t.HasCheckConstraint("CK_webhook_failures_Attempts_Positive", "\"Attempts\" >= 1"));
+
         builder.HasKey(f => f.Id);
 
         builder.Property(f => f.Id)
@@ -33,13 +35,24 @@ public sealed class WebhookFailureConfiguration : IEntityTypeConfiguration<Webho
         builder.Property(f => f.ErrorMessage)
             .IsRequired();
 
+        builder.Property(f => f.Kind)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
         builder.Property(f => f.OccurredAt)
+            .IsRequired();
+
+        builder.Property(f => f.LastFailedAt)
+            .IsRequired();
+
+        builder.Property(f => f.Attempts)
             .IsRequired();
 
         builder.Property(f => f.IsResolved)
             .IsRequired();
 
         builder.HasIndex(f => f.EventId);
-        builder.HasIndex(f => new { f.IsResolved, f.OccurredAt });
+        builder.HasIndex(f => new { f.IsResolved, f.LastFailedAt });
     }
 }

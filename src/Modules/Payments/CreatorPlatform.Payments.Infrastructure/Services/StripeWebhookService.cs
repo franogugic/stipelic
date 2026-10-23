@@ -60,7 +60,30 @@ public sealed class StripeWebhookService : IStripeWebhookService
             stripeEvent.Id,
             stripeEvent.Type);
 
-        return stripeEvent.Type switch
+        return Map(stripeEvent);
+    }
+
+    public StripeWebhookEventDto Parse(string payload)
+    {
+        Event stripeEvent;
+        try
+        {
+            stripeEvent = EventUtility.ParseEvent(payload, throwOnApiVersionMismatch: false);
+        }
+        catch (Exception exception) when (exception is StripeException or Newtonsoft.Json.JsonException or ArgumentException)
+        {
+            throw new BadRequestException("The stored payload is not a Stripe event.");
+        }
+
+        if (string.IsNullOrWhiteSpace(stripeEvent.Id) || string.IsNullOrWhiteSpace(stripeEvent.Type))
+            throw new BadRequestException("The stored payload is not a Stripe event.");
+
+        return Map(stripeEvent);
+    }
+
+    private StripeWebhookEventDto Map(Event stripeEvent)
+    {
+        var mapped = stripeEvent.Type switch
         {
             StripeEventTypes.CheckoutSessionCompleted => MapCheckoutSessionCompleted(stripeEvent),
             StripeEventTypes.CheckoutSessionExpired => MapCheckoutSessionExpired(stripeEvent),
@@ -76,6 +99,9 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 EventType = stripeEvent.Type
             }
         };
+
+        // Set only on events from a connected account (the Connect endpoint) — how a replay picks its dispatcher.
+        return mapped with { ConnectedAccountId = stripeEvent.Account };
     }
 
     private static StripeWebhookEventDto MapCheckoutSessionCompleted(Event stripeEvent)
