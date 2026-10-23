@@ -1251,6 +1251,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("ClickTracked")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1306,6 +1311,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int?>("TemplateId")
                         .HasColumnType("integer");
 
+                    b.Property<int>("UniqueClickCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<int>("UniqueOpenCount")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -1340,6 +1350,82 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<short>("Position")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("TotalClickCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("UniqueClickCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId", "Url")
+                        .IsUnique();
+
+                    b.ToTable("campaign_links", "marketing", t =>
+                        {
+                            t.HasCheckConstraint("CK_campaign_links_Label_Matches_Kind", "(\"Kind\" = 'Button' AND \"Label\" IS NOT NULL) OR (\"Kind\" = 'Text' AND \"Label\" IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLinkClick", b =>
+                {
+                    b.Property<int>("LinkId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RecipientId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ClickCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("FirstClickedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastClickedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("LinkId", "RecipientId");
+
+                    b.HasIndex("RecipientId");
+
+                    b.ToTable("campaign_link_clicks", "marketing");
+                });
+
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignRecipient", b =>
                 {
                     b.Property<int>("Id")
@@ -1358,6 +1444,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
+
+                    b.Property<DateTimeOffset?>("FirstClickedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset?>("FirstOpenedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2119,6 +2208,30 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLink", b =>
+                {
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLinkClick", b =>
+                {
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.CampaignLink", null)
+                        .WithMany()
+                        .HasForeignKey("LinkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.CampaignRecipient", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CreatorPlatform.Marketing.Domain.Campaigns.CampaignRecipient", b =>

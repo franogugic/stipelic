@@ -21,4 +21,6 @@ public sealed record CampaignDetailDto(
     Guid? SourceCampaignPublicId,
     int? ResendRound,
     CampaignSourceDto? Source,
-    NonOpenerResendDto NonOpenerResend);
+    NonOpenerResendDto NonOpenerResend,
+    bool ClickTracked,
+    CampaignClicksDto Clicks);

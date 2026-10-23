@@ -27,6 +27,8 @@ public sealed class CampaignRecipientConfiguration : IEntityTypeConfiguration<Ca
 
         builder.Property(r => r.FirstOpenedAt);
 
+        builder.Property(r => r.FirstClickedAt);
+
         builder.HasIndex(r => new { r.CampaignId, r.Email })
             .IsUnique();
 

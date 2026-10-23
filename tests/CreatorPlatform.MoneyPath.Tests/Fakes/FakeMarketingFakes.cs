@@ -342,3 +342,38 @@ public sealed class FakeCampaignProgressProvider : ICampaignProgressProvider
         return Task.FromResult(FailedCountByCampaign.GetValueOrDefault(campaignPublicId, 0));
     }
 }
+
+/// <summary>Assigns ids when links are added, like the real repository after the flush (the send pipeline embeds
+/// them in the tracked URLs).</summary>
+public sealed class FakeCampaignLinkRepository : ICampaignLinkRepository
+{
+    private static readonly PropertyInfo IdProperty = typeof(CampaignLink).GetProperty(nameof(CampaignLink.Id))!;
+
+    private int _nextId = 1;
+
+    public List<CampaignLink> Links { get; } = [];
+
+    public Task AddRangeAsync(IEnumerable<CampaignLink> links, CancellationToken ct)
+    {
+        foreach (var link in links)
+        {
+            IdProperty.SetValue(link, _nextId++);
+            Links.Add(link);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<List<CampaignLink>> GetByCampaignIdAsync(int campaignId, CancellationToken ct)
+        => Task.FromResult(Links.Where(l => l.CampaignId == campaignId).OrderBy(l => l.Position).ToList());
+
+    public Task<Dictionary<int, int>> GetLinkCountsAsync(IReadOnlyCollection<int> campaignIds, CancellationToken ct)
+        => Task.FromResult(Links.Where(l => campaignIds.Contains(l.CampaignId))
+            .GroupBy(l => l.CampaignId)
+            .ToDictionary(g => g.Key, g => g.Count()));
+
+    public Task<string?> GetTargetUrlAsync(int recipientId, int linkId, CancellationToken ct)
+        => Task.FromResult(Links.FirstOrDefault(l => l.Id == linkId)?.Url);
+
+    public Task RecordClickAsync(int recipientId, int linkId, CancellationToken ct) => Task.CompletedTask;
+}

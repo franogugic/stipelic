@@ -39,6 +39,7 @@ public sealed class ResendFailedTests
         {
             UnsubscribeTokenSecret = "test-secret-value-1234567890",
             OpenTrackingSecret = "test-open-secret-value-1234567890",
+            ClickTrackingSecret = "test-click-secret-value-1234567890",
             ApiBaseUrl = "http://localhost:5000",
             FrontendBaseUrl = "https://app.luma.test",
         };
@@ -55,6 +56,8 @@ public sealed class ResendFailedTests
             new OpenTrackingTokenService(Options.Create(marketing)),
             new CampaignProgressProvider(db),
             new MarketingUnitOfWork(db),
+            new ClickTrackingTokenService(Options.Create(marketing)),
+            new CampaignLinkRepository(db),
             NullLogger<CampaignSendService>.Instance));
     }
 

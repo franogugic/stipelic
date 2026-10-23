@@ -16,4 +16,7 @@ public sealed record CampaignListItemDto(
     int UniqueOpenCount,
     Guid? SourceCampaignPublicId,
     int? ResendRound,
-    CampaignSourceDto? Source);
+    CampaignSourceDto? Source,
+    bool ClickTracked,
+    int LinkCount,
+    int UniqueClickCount);

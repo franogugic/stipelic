@@ -32,6 +32,8 @@ public sealed class CampaignSendService : ICampaignSendService
     private readonly IEmailOutboxService _emailOutboxService;
     private readonly IUnsubscribeTokenService _unsubscribeTokenService;
     private readonly IOpenTrackingTokenService _openTrackingTokenService;
+    private readonly IClickTrackingTokenService _clickTrackingTokenService;
+    private readonly ICampaignLinkRepository _linkRepository;
     private readonly ICampaignProgressProvider _progressProvider;
     private readonly IMarketingUnitOfWork _unitOfWork;
     private readonly ILogger<CampaignSendService> _logger;
@@ -51,6 +53,8 @@ public sealed class CampaignSendService : ICampaignSendService
         IOpenTrackingTokenService openTrackingTokenService,
         ICampaignProgressProvider progressProvider,
         IMarketingUnitOfWork unitOfWork,
+        IClickTrackingTokenService clickTrackingTokenService,
+        ICampaignLinkRepository linkRepository,
         ILogger<CampaignSendService> logger)
     {
         _creatorContextProvider = creatorContextProvider;
@@ -63,11 +67,13 @@ public sealed class CampaignSendService : ICampaignSendService
         _emailOutboxService = emailOutboxService;
         _unsubscribeTokenService = unsubscribeTokenService;
         _openTrackingTokenService = openTrackingTokenService;
+        _clickTrackingTokenService = clickTrackingTokenService;
+        _linkRepository = linkRepository;
         _progressProvider = progressProvider;
         _unitOfWork = unitOfWork;
         _logger = logger;
         _targets = new CampaignAudienceTargets(creatorContextProvider, campaignRepository);
-        _detailBuilder = new CampaignDetailBuilder(creatorContextProvider, campaignRepository, audienceService, progressProvider);
+        _detailBuilder = new CampaignDetailBuilder(creatorContextProvider, campaignRepository, audienceService, progressProvider, linkRepository);
     }
 
     public async Task<CampaignDetailDto> SendAsync(string slug, int ownerUserId, SendCampaignRequestDto request, CancellationToken ct)
@@ -378,12 +384,6 @@ public sealed class CampaignSendService : ICampaignSendService
     private async Task CreateRecipientsAndQueueOutboxAsync(
         Campaign campaign, List<string> emails, MarketingCreatorContext context, DateTimeOffset now, CancellationToken ct)
     {
-        var recipients = emails.Select(email => CampaignRecipient.Create(campaign.Id, email, now)).ToList();
-        await _recipientRepository.AddRangeAsync(recipients, ct);
-
-        // Flush again so each recipient gets its own DB-generated Id — CorrelationKey embeds that id.
-        await _unitOfWork.SaveChangesAsync(ct);
-
         var replyTo = context.SupportEmail ?? context.OwnerEmail;
         var rendered = _renderer.Render(
             campaign.Subject,
@@ -395,6 +395,19 @@ public sealed class CampaignSendService : ICampaignSendService
             context.PrimaryColor,
             context.SupportEmail);
 
+        // The campaign's links, once per campaign; each recipient gets its own tracked URL for each of them.
+        var links = rendered.Links
+            .Select(link => (Rendered: link, Entity: CampaignLink.Create(campaign.Id, link.Position, link.Url, link.Kind, link.Label, now)))
+            .ToList();
+        await _linkRepository.AddRangeAsync(links.Select(link => link.Entity), ct);
+
+        var recipients = emails.Select(email => CampaignRecipient.Create(campaign.Id, email, now)).ToList();
+        await _recipientRepository.AddRangeAsync(recipients, ct);
+
+        // Flush again so each recipient and link gets its DB-generated Id — the CorrelationKey and the tracked
+        // URLs embed them.
+        await _unitOfWork.SaveChangesAsync(ct);
+
         foreach (var recipient in recipients)
         {
             // The link in the body opens the branded page (a GET never unsubscribes, so link scanners can't); the
@@ -404,13 +417,23 @@ public sealed class CampaignSendService : ICampaignSendService
             var openPixelUrl = _openTrackingTokenService.BuildPixelUrl(recipient.Id);
             var correlationKey = $"{campaign.PublicId}:{recipient.Id}";
 
+            var htmlBody = rendered.HtmlBody
+                .Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl)
+                .Replace("{{OPEN_PIXEL_URL}}", openPixelUrl);
+            var plainTextBody = rendered.PlainTextBody.Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl);
+
+            foreach (var (link, entity) in links)
+            {
+                var trackedUrl = _clickTrackingTokenService.BuildTrackedUrl(recipient.Id, entity.Id);
+                htmlBody = htmlBody.Replace(link.Placeholder, trackedUrl);
+                plainTextBody = plainTextBody.Replace(link.Placeholder, trackedUrl);
+            }
+
             await _emailOutboxService.QueueCampaignAsync(
                 recipient.Email,
                 rendered.Subject,
-                rendered.HtmlBody
-                    .Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl)
-                    .Replace("{{OPEN_PIXEL_URL}}", openPixelUrl),
-                rendered.PlainTextBody.Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl),
+                htmlBody,
+                plainTextBody,
                 replyTo,
                 oneClickUnsubscribeUrl,
                 correlationKey,

@@ -26,7 +26,8 @@ public sealed class CampaignService : ICampaignService
         IAudienceService audienceService,
         ICreatorUsageService usageService,
         ICampaignRepository campaignRepository,
-        ICampaignProgressProvider progressProvider)
+        ICampaignProgressProvider progressProvider,
+        ICampaignLinkRepository linkRepository)
     {
         _creatorContextProvider = creatorContextProvider;
         _audienceService = audienceService;
@@ -34,7 +35,7 @@ public sealed class CampaignService : ICampaignService
         _campaignRepository = campaignRepository;
         _progressProvider = progressProvider;
         _targets = new CampaignAudienceTargets(creatorContextProvider, campaignRepository);
-        _detailBuilder = new CampaignDetailBuilder(creatorContextProvider, campaignRepository, audienceService, progressProvider);
+        _detailBuilder = new CampaignDetailBuilder(creatorContextProvider, campaignRepository, audienceService, progressProvider, linkRepository);
     }
 
     public async Task<AudiencePreviewDto> GetAudiencePreviewAsync(

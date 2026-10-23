@@ -70,6 +70,8 @@ builder.Services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
 builder.Services.AddSingleton<ICampaignEmailRenderer, CampaignEmailRenderer>();
 builder.Services.AddSingleton<IUnsubscribeTokenService, UnsubscribeTokenService>();
 builder.Services.AddSingleton<IOpenTrackingTokenService, OpenTrackingTokenService>();
+builder.Services.AddSingleton<IClickTrackingTokenService, ClickTrackingTokenService>();
+builder.Services.AddScoped<ICampaignLinkRepository, CampaignLinkRepository>();
 builder.Services.AddScoped<ICampaignSendService, CampaignSendService>();
 
 builder.Services.AddHostedService<EmailOutboxWorker>();

@@ -12,17 +12,20 @@ internal sealed class CampaignDetailBuilder
     private readonly ICampaignRepository _campaignRepository;
     private readonly IAudienceService _audienceService;
     private readonly ICampaignProgressProvider _progressProvider;
+    private readonly ICampaignLinkRepository _linkRepository;
 
     public CampaignDetailBuilder(
         ICreatorContextProvider creatorContextProvider,
         ICampaignRepository campaignRepository,
         IAudienceService audienceService,
-        ICampaignProgressProvider progressProvider)
+        ICampaignProgressProvider progressProvider,
+        ICampaignLinkRepository linkRepository)
     {
         _creatorContextProvider = creatorContextProvider;
         _campaignRepository = campaignRepository;
         _audienceService = audienceService;
         _progressProvider = progressProvider;
+        _linkRepository = linkRepository;
     }
 
     public async Task<CampaignDetailDto> BuildDetailAsync(Campaign campaign, CancellationToken ct)
@@ -40,6 +43,7 @@ internal sealed class CampaignDetailBuilder
 
         var nonOpenerResend = await BuildNonOpenerResendAsync(campaign, resends, progress, ct);
         var own = progress[campaign.PublicId];
+        var clicks = BuildClicks(campaign, await _linkRepository.GetByCampaignIdAsync(campaign.Id, ct), own.SentCount);
 
         return new CampaignDetailDto(
             campaign.PublicId,
@@ -62,7 +66,9 @@ internal sealed class CampaignDetailBuilder
             source?.PublicId,
             campaign.ResendRound,
             source is null ? null : new CampaignSourceDto(source.PublicId, source.Subject),
-            nonOpenerResend);
+            nonOpenerResend,
+            campaign.ClickTracked,
+            clicks);
     }
 
     public async Task<List<CampaignListItemDto>> BuildListAsync(IReadOnlyList<Campaign> campaigns, CancellationToken ct)
@@ -78,6 +84,7 @@ internal sealed class CampaignDetailBuilder
         var productPublicIds = await _creatorContextProvider.GetProductPublicIdsAsync(productIds, ct);
         var sources = sourceIds.Count == 0 ? [] : await _campaignRepository.GetSourceSummariesAsync(sourceIds, ct);
         var progress = await _progressProvider.GetProgressAsync(campaigns.Select(c => c.PublicId).ToList(), ct);
+        var linkCounts = await _linkRepository.GetLinkCountsAsync(campaigns.Select(c => c.Id).ToList(), ct);
 
         return campaigns.Select(campaign =>
         {
@@ -105,8 +112,29 @@ internal sealed class CampaignDetailBuilder
                 campaign.UniqueOpenCount,
                 source?.PublicId,
                 campaign.ResendRound,
-                source is null ? null : new CampaignSourceDto(source.PublicId, source.Subject));
+                source is null ? null : new CampaignSourceDto(source.PublicId, source.Subject),
+                campaign.ClickTracked,
+                linkCounts.GetValueOrDefault(campaign.Id),
+                campaign.UniqueClickCount);
         }).ToList();
+    }
+
+    /// <summary>Unique clickers ÷ delivered, like the open rate. A send from before click tracking has no links and
+    /// zero counts (its <see cref="Campaign.ClickTracked"/> is false).</summary>
+    private static CampaignClicksDto BuildClicks(Campaign campaign, List<CampaignLink> links, int deliveredCount)
+    {
+        var clickRate = deliveredCount > 0
+            ? Math.Round((double)campaign.UniqueClickCount / deliveredCount, 4)
+            : 0;
+
+        return new CampaignClicksDto(
+            campaign.UniqueClickCount,
+            links.Sum(link => link.TotalClickCount),
+            clickRate,
+            links
+                .Select(link => new CampaignLinkStatsDto(
+                    link.Url, link.Position, link.Kind.ToString(), link.Label, link.UniqueClickCount, link.TotalClickCount))
+                .ToList());
     }
 
     /// <summary>The resends hang off an original only; a resend or an unsent campaign has none to show.</summary>

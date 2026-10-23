@@ -106,6 +106,11 @@ public static class RateLimitPolicies
     // is an idempotent UPDATE that changes nothing.
     private const string OpenPixelPath = "/api/public/o";
 
+    // Tracked links in campaign emails are exempt for the same reason: corporate link scanners and mail gateways
+    // click through shared IPs, and a rejection would answer JSON instead of the redirect. A forged token is
+    // rejected by its HMAC before any database query.
+    private const string TrackedLinkPath = "/api/public/c";
+
     /// <summary>The global limiter's partition: per client IP, or no limit for the exempt paths.</summary>
     public static RateLimitPartition<string> GlobalPartition(HttpContext httpContext) =>
         GlobalPartition(httpContext, Global);
@@ -117,6 +122,9 @@ public static class RateLimitPolicies
 
         if (path.StartsWithSegments(OpenPixelPath, StringComparison.OrdinalIgnoreCase))
             return RateLimitPartition.GetNoLimiter("open-pixel");
+
+        if (path.StartsWithSegments(TrackedLinkPath, StringComparison.OrdinalIgnoreCase))
+            return RateLimitPartition.GetNoLimiter("tracked-link");
 
         // Probes (container platform, uptime monitors) must never be throttled into reporting the API as down.
         if (path.StartsWithSegments(HealthEndpoint.Path, StringComparison.OrdinalIgnoreCase))

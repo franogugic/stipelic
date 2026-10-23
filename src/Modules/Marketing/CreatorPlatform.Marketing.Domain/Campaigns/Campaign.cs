@@ -54,6 +54,8 @@ public sealed class Campaign
         UpdatedAt = createdAt;
         SourceCampaignId = sourceCampaignId;
         ResendRound = resendRound;
+        // An immediate send creates its tracked links in the same transaction.
+        ClickTracked = status == CampaignStatus.Queued;
     }
 
     /// <summary>Snapshots the template's current content (read by the caller just before this call) and
@@ -182,6 +184,8 @@ public sealed class Campaign
         RecipientCount = recipientCount;
         QueuedAt = queuedAt;
         UpdatedAt = queuedAt;
+        // The dispatch creates the tracked links, whenever the send was scheduled.
+        ClickTracked = true;
     }
 
     /// <summary>Dispatch of a scheduled send failed (no recipients, limit reached, etc.) — same
@@ -286,6 +290,14 @@ public sealed class Campaign
     /// raw SQL, in the same statement that stamps <see cref="CampaignRecipient.FirstOpenedAt"/>, so it
     /// never drifts from the recipient rows.</summary>
     public int UniqueOpenCount { get; private set; }
+
+    /// <summary>Recipients who clicked at least one tracked link — incremented only by the click endpoint's raw SQL,
+    /// in the same statement that stamps <see cref="CampaignRecipient.FirstClickedAt"/>.</summary>
+    public int UniqueClickCount { get; private set; }
+
+    /// <summary>True once the send created its tracked links (every send since click tracking, F2.1). False for
+    /// sends from before it and for a scheduled send not dispatched yet — "not tracked" rather than "no links".</summary>
+    public bool ClickTracked { get; private set; }
 
     /// <summary>Failure reason, set only by <see cref="MarkFailed"/> — null for every other status.</summary>
     public string? Note { get; private set; }

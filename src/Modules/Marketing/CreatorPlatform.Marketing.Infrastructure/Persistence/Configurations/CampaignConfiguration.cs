@@ -74,6 +74,15 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
             .HasDefaultValue(0)
             .IsRequired();
 
+        builder.Property(c => c.UniqueClickCount)
+            .HasDefaultValue(0)
+            .IsRequired();
+
+        // Existing rows are sends from before click tracking: false. Every new send sets it explicitly.
+        builder.Property(c => c.ClickTracked)
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(c => c.Note)
             .HasMaxLength(500);
 

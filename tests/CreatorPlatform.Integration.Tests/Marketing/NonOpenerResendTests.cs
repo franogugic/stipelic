@@ -55,6 +55,7 @@ public sealed class NonOpenerResendTests
     {
         UnsubscribeTokenSecret = "test-secret-value-1234567890",
         OpenTrackingSecret = "test-open-secret-value-1234567890",
+        ClickTrackingSecret = "test-click-secret-value-1234567890",
         ApiBaseUrl = "http://localhost:5000",
         FrontendBaseUrl = "https://app.luma.test",
     };
@@ -75,6 +76,8 @@ public sealed class NonOpenerResendTests
             new OpenTrackingTokenService(Options.Create(Marketing)),
             new CampaignProgressProvider(db),
             new MarketingUnitOfWork(db),
+            new ClickTrackingTokenService(Options.Create(Marketing)),
+            new CampaignLinkRepository(db),
             NullLogger<CampaignSendService>.Instance));
     }
 
@@ -86,7 +89,8 @@ public sealed class NonOpenerResendTests
             new AudienceService(db),
             new CreatorUsageService(db),
             new CampaignRepository(db),
-            new CampaignProgressProvider(db)));
+            new CampaignProgressProvider(db),
+            new CampaignLinkRepository(db)));
     }
 
     private Task<CampaignDetailDto> ResendAsync(
