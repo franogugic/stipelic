@@ -13,4 +13,7 @@ public sealed record CampaignListItemDto(
     DateTimeOffset CreatedAt,
     int SentCount,
     int FailedCount,
-    int UniqueOpenCount);
+    int UniqueOpenCount,
+    Guid? SourceCampaignPublicId,
+    int? ResendRound,
+    CampaignSourceDto? Source);

@@ -245,4 +245,22 @@ public class CampaignTests
         campaign.Cancel(Now);
         return campaign;
     }
+
+    [Fact]
+    public void ANonOpenerResend_NeedsItsSourceAndARoundBetweenOneAndFive()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        var resend = Campaign.CreateQueued(1, null, "Again", "Body", null, null, CampaignAudienceType.CampaignNonOpeners, null, null, 3, now, 7, 2);
+
+        Assert.Equal((7, 2, true), (resend.SourceCampaignId!.Value, resend.ResendRound!.Value, resend.IsNonOpenerResend));
+        Assert.Throws<ArgumentException>(() =>
+            Campaign.CreateQueued(1, null, "Again", "Body", null, null, CampaignAudienceType.CampaignNonOpeners, null, null, 3, now));
+        Assert.Throws<ArgumentException>(() =>
+            Campaign.CreateQueued(1, null, "Again", "Body", null, null, CampaignAudienceType.CampaignNonOpeners, 5, null, 3, now, 7, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Campaign.CreateQueued(1, null, "Again", "Body", null, null, CampaignAudienceType.CampaignNonOpeners, null, null, 3, now, 7, 6));
+        Assert.Throws<ArgumentException>(() =>
+            Campaign.CreateQueued(1, null, "Hi", "Body", null, null, CampaignAudienceType.All, null, null, 3, now, 7, 1));
+    }
 }

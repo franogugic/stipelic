@@ -1284,8 +1284,14 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int>("RecipientCount")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("ResendRound")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset?>("ScheduledAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("SourceCampaignId")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1317,6 +1323,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasIndex("PublicId")
                         .IsUnique();
 
+                    b.HasIndex("SourceCampaignId")
+                        .HasFilter("\"SourceCampaignId\" IS NOT NULL");
+
                     b.HasIndex("TemplateId");
 
                     b.HasIndex("CreatorId", "CreatedAt");
@@ -1325,7 +1334,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.ToTable("campaigns", "marketing", t =>
                         {
-                            t.HasCheckConstraint("CK_campaigns_Audience_Matches_Fk", "(\"AudienceType\" = 'LandingPage' AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
+                            t.HasCheckConstraint("CK_campaigns_Audience_Matches_Fk", "(\"AudienceType\" = 'LandingPage' AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL AND \"SourceCampaignId\" IS NULL) OR (\"AudienceType\" = 'CampaignNonOpeners' AND \"SourceCampaignId\" IS NOT NULL AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_campaigns_ResendRound", "(\"SourceCampaignId\" IS NULL AND \"ResendRound\" IS NULL) OR (\"SourceCampaignId\" IS NOT NULL AND \"ResendRound\" BETWEEN 1 AND 5)");
                         });
                 });
 
@@ -2097,6 +2108,11 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasOne("CreatorPlatform.Products.Domain.Products.Product", null)
                         .WithMany()
                         .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CreatorPlatform.Marketing.Domain.Campaigns.Campaign", null)
+                        .WithMany()
+                        .HasForeignKey("SourceCampaignId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("CreatorPlatform.Marketing.Domain.Templates.EmailTemplate", null)

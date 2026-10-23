@@ -61,11 +61,11 @@ public sealed class FakeAudienceService : IAudienceService
     public int GetAudienceEmailsCallCount { get; private set; }
 
     public Task<int> GetAudienceCountAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId, CancellationToken ct)
         => Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll().Count : Count);
 
     public Task<List<string>> GetAudienceEmailsAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId, CancellationToken ct)
     {
         GetAudienceEmailsCallCount++;
         return Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll() : Emails);
@@ -82,8 +82,13 @@ public sealed class FakeAudienceService : IAudienceService
     /// <summary>Faithful in-memory keyset reimplementation over <see cref="PageableEmails"/> — sorts
     /// ordinally, slices strictly after <paramref name="afterEmail"/>, fetches one extra row to compute
     /// <c>HasMore</c>, exactly like the real query.</summary>
+    public (int OpenedAny, int OpenedThroughResends) NonOpenerReach { get; set; }
+
+    public Task<(int OpenedAny, int OpenedThroughResends)> GetNonOpenerReachAsync(int originalCampaignId, CancellationToken ct)
+        => Task.FromResult(NonOpenerReach);
+
     public Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId,
         string? afterEmail, int limit, CancellationToken ct)
     {
         GetPageCalls.Add((audienceType, landingPageId, productId, creatorId, afterEmail, limit));
@@ -165,6 +170,25 @@ public sealed class FakeCampaignRepository : ICampaignRepository
     /// tracked EF query would after SaveChanges.</summary>
     public Task<Campaign?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
         => Task.FromResult(Campaigns.FirstOrDefault(c => c.PublicId == publicId));
+
+    public List<int> LockedCampaignIds { get; } = [];
+
+    public Task LockForUpdateAsync(int campaignId, CancellationToken ct)
+    {
+        LockedCampaignIds.Add(campaignId);
+        return Task.CompletedTask;
+    }
+
+    public Task<List<Campaign>> GetResendsAsync(int originalCampaignId, CancellationToken ct)
+        => Task.FromResult(Campaigns
+            .Where(c => c.SourceCampaignId == originalCampaignId)
+            .OrderBy(c => c.CreatedAt)
+            .ToList());
+
+    public Task<Dictionary<int, CampaignSourceSummary>> GetSourceSummariesAsync(IReadOnlyCollection<int> campaignIds, CancellationToken ct)
+        => Task.FromResult(Campaigns
+            .Where(c => campaignIds.Contains(c.Id))
+            .ToDictionary(c => c.Id, c => new CampaignSourceSummary(c.PublicId, c.Subject)));
 
     public Task<List<Campaign>> GetRecentByCreatorIdAsync(int creatorId, int take, CancellationToken ct)
         => Task.FromResult(Campaigns
