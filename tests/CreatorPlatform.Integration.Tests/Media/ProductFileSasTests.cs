@@ -8,7 +8,7 @@ namespace CreatorPlatform.Integration.Tests.Media;
 
 /// <summary>F8.1: the signed URLs of the private container, generated offline with the storage emulator's well-known
 /// account key. A download URL reads one blob for ten minutes and makes the browser save it under the product's file
-/// name; an upload URL can only write.</summary>
+/// name; an upload URL can only create its blob, never overwrite it (S3).</summary>
 public sealed class ProductFileSasTests
 {
     private static readonly AzureProductFileStorage Storage = new(
@@ -33,11 +33,11 @@ public sealed class ProductFileSasTests
     }
 
     [Fact]
-    public void AnUploadUrl_CanOnlyCreateAndWrite()
+    public void AnUploadUrl_CanOnlyCreate_NeverOverwrite()
     {
         var url = Storage.GenerateUploadSasUri("ProductFile/1/abc.pdf", TimeSpan.FromMinutes(15));
 
-        Assert.Equal("cw", HttpUtility.ParseQueryString(url.Query)["sp"]);
+        Assert.Equal("c", HttpUtility.ParseQueryString(url.Query)["sp"]);
     }
 
     [Theory]

@@ -16,6 +16,8 @@ public sealed class MediaOptionsValidator : IValidateOptions<MediaOptions>
             failures.Add("Media:ProductFileMaxSizeBytes must be between 1 byte and 1 GB.");
         if (options.SasExpiryMinutes is < 1 or > 60)
             failures.Add("Media:SasExpiryMinutes must be between 1 and 60.");
+        if (options.DailyUploadLimit < 1)
+            failures.Add("Media:DailyUploadLimit must be positive.");
         if (options.DownloadUrlExpiryMinutes is < 1 or > 60)
             failures.Add("Media:DownloadUrlExpiryMinutes must be between 1 and 60.");
         if (options.ProductFileContentTypes.Length == 0)

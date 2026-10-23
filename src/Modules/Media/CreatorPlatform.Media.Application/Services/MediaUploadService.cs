@@ -11,6 +11,7 @@ public sealed class MediaUploadService : IMediaUploadService
 {
     public const string FileRejectedCode = "FILE_REJECTED";
     public const string FileNameRequiredCode = "FILE_NAME_REQUIRED";
+    public const string UploadLimitReachedCode = "UPLOAD_LIMIT_REACHED";
     private const int MaxFileNameLength = 255;
 
     private readonly IBlobReferenceRepository _repository;
@@ -49,6 +50,18 @@ public sealed class MediaUploadService : IMediaUploadService
         // A product file's name may come now or with the confirm; one given now must be a real name.
         var name = isProductFile && fileName is not null ? NormalizeFileName(fileName) : null;
         var now = DateTimeOffset.UtcNow;
+
+        // The daily budget: every link can put a blob in storage. A soft limit — two requests racing at the edge may
+        // both pass; the per-IP RequestMediaUpload rate limit bounds that.
+        var issued = await _repository.CountIssuedSinceAsync(creatorId, now.AddDays(-1), ct);
+        if (issued >= _options.DailyUploadLimit)
+        {
+            throw new ConflictException(
+                $"Upload limit reached: at most {_options.DailyUploadLimit} uploads in 24 hours. Try again later.",
+                UploadLimitReachedCode,
+                new { used = issued, limit = _options.DailyUploadLimit });
+        }
+
         var extension = isProductFile ? ProductFileSignatures.ExtensionFor(contentType) : ExtensionFor(contentType);
         var blobPath = $"{purpose}/{creatorId}/{Guid.NewGuid()}.{extension}";
         var expiry = TimeSpan.FromMinutes(_options.SasExpiryMinutes);

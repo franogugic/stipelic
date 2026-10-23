@@ -14,6 +14,10 @@ public sealed class MediaOptions
 
     public int SasExpiryMinutes { get; init; } = 15;
 
+    /// <summary>Upload links one creator may request in any 24 hours, images and product files together — each link can
+    /// put a blob in storage, confirmed or not.</summary>
+    public int DailyUploadLimit { get; init; } = 200;
+
     public string[] AllowedContentTypes { get; init; } = ["image/jpeg", "image/png", "image/webp"];
 
     /// <summary>The container for product documents. Must be private (no anonymous access): files are only ever read
