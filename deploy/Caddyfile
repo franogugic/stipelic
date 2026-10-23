@@ -1,0 +1,34 @@
+# Edge proxy (draft). One origin for the web app and the API, so the session cookie stays first-party (SameSite=Lax)
+# and the SPA calls /api on its own origin (VITE_API_BASE_URL empty). Caddy gets and renews the certificate itself.
+#
+# X-Forwarded-For: Caddy ignores what a client sends and sets the connection's address (no trusted_proxies here), so
+# the API (ForwardedHeaders:KnownProxies = this container, ForwardLimit = 1) sees the real client IP.
+{
+	email {$ACME_EMAIL}
+}
+
+{$LUMA_DOMAIN} {
+	encode zstd gzip
+
+	# Defaults for every response; "?" keeps a header the API set itself (PR 1 adds the API's own).
+	header {
+		?Strict-Transport-Security "max-age=31536000"
+		?X-Content-Type-Options "nosniff"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@api path /api/* /webhooks/stripe /webhooks/stripe/* /health
+	handle @api {
+		reverse_proxy api:8080 {
+			# Active check: while /health answers 503 (database down) requests fail fast with 503 instead of waiting.
+			health_uri /health
+			health_interval 10s
+			health_timeout 5s
+		}
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+}
