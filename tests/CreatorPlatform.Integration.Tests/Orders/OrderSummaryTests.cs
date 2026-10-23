@@ -99,12 +99,7 @@ public sealed class OrderSummaryTests
         return (context, await repository.GetPeriodSummaryAsync(context.CreatorId, context.Timezone, plan, CancellationToken.None), plan);
     }
 
-    private static DateTimeOffset LocalNoon(int days)
-    {
-        var zone = TimeZoneInfo.FindSystemTimeZoneById(Zagreb);
-        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).Date.AddDays(days).AddHours(12);
-        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
-    }
+    private static DateTimeOffset LocalNoon(int days) => LocalClock.Noon(TimeZoneInfo.FindSystemTimeZoneById(Zagreb), days);
 
     [Fact]
     public async Task APeriod_CountsOnlyItsOwnOrders_PaidByPaidAt_RefundsByRefundTime_OthersByCreation()
@@ -262,7 +257,7 @@ public sealed class OrderSummaryTests
         await AddOrderAsync(creator.CreatorId, productId, "Refunded", 800, 80, LocalNoon(-30), LocalNoon(-30), LocalNoon(-9));    // refunded before
         await AddOrderAsync(creator.CreatorId, productId, "Pending", 1000, 100, null, LocalNoon(-1).AddHours(-1));
         await AddOrderAsync(creator.CreatorId, productId, "Pending", 1000, 100, null, LocalNoon(-12));
-        await AddOrderAsync(creator.CreatorId, productId, "Failed", 1000, 100, null, LocalNoon(0).AddMinutes(-5));
+        await AddOrderAsync(creator.CreatorId, productId, "Failed", 1000, 100, null, LocalClock.Noon(TimeZoneInfo.FindSystemTimeZoneById(Zagreb), 0, TimeSpan.FromMinutes(5)));
         return (creator, productId);
     }
 

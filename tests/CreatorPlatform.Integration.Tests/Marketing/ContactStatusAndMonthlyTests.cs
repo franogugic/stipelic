@@ -84,12 +84,7 @@ public sealed class ContactStatusAndMonthlyTests
         Assert.Equal((3, 2), (monthly.Sum(m => m.Joined), monthly.Sum(m => m.Unsubscribed)));
     }
 
-    private static DateTimeOffset LocalNoon(int days)
-    {
-        var zone = TimeZoneInfo.FindSystemTimeZoneById(Zagreb);
-        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).Date.AddDays(days).AddHours(12);
-        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
-    }
+    private static DateTimeOffset LocalNoon(int days) => LocalClock.Noon(TimeZoneInfo.FindSystemTimeZoneById(Zagreb), days);
 
     [Fact]
     public async Task APeriod_GivesJoinedUnsubscribedAndTheRunningTotalPerBucket()

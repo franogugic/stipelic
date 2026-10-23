@@ -38,11 +38,7 @@ public sealed class DownloadEventsTests
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, Zone), TimeSpan.Zero);
     }
 
-    private static DateTimeOffset LocalNoon(int days)
-    {
-        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date.AddDays(days).AddHours(12);
-        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, Zone), TimeSpan.Zero);
-    }
+    private static DateTimeOffset LocalNoon(int days) => LocalClock.Noon(Zone, days);
 
     private async Task<T> ScalarAsync<T>(FormattableString sql)
     {
@@ -155,7 +151,7 @@ public sealed class DownloadEventsTests
         var s = await SeedAsync();
 
         Assert.True(await DownloadAsync(s.SignupToken, LocalNoon(0)));
-        Assert.True(await DownloadAsync(s.SignupToken, LocalNoon(0).AddMinutes(5)));   // a repeat counts too
+        Assert.True(await DownloadAsync(s.SignupToken, LocalClock.Noon(Zone, 0, TimeSpan.FromMinutes(5))));   // a repeat counts too
         Assert.True(await DownloadAsync(s.SalesToken, LocalNoon(-1)));
         Assert.True(await DownloadAsync(s.DirectToken, LocalNoon(-2)));
         Assert.False(await DownloadAsync(s.RefundedToken, LocalNoon(0)));
@@ -204,7 +200,7 @@ public sealed class DownloadEventsTests
     {
         var s = await SeedAsync();
         await DownloadAsync(s.SignupToken, LocalNoon(0));
-        await DownloadAsync(s.SignupToken, LocalNoon(0).AddMinutes(1));
+        await DownloadAsync(s.SignupToken, LocalClock.Noon(Zone, 0, TimeSpan.FromMinutes(1)));
 
         var series = await SeriesAsync(s.Creator, "product", s.FreeProduct, "all");
 
