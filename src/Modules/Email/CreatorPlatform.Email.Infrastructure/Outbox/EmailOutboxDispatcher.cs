@@ -36,6 +36,14 @@ public sealed class EmailOutboxDispatcher(
 {
     public const int MaxRetryCount = 3;
 
+    /// <summary>A transactional email (order access, lead magnet, verification, password reset, email change, payout) that
+    /// will never arrive: logged at Error with this event, for alerting. Carries the purpose and the correlation key (the
+    /// order, sign-up, user or payout it belongs to), never the address.</summary>
+    public static readonly EventId TransactionalEmailFailed = new(7101, nameof(TransactionalEmailFailed));
+
+    /// <summary>A campaign email that will never arrive: Warning, since bounces within a list are expected.</summary>
+    public static readonly EventId CampaignEmailFailed = new(7102, nameof(CampaignEmailFailed));
+
     private const int ThrottledStatusCode = 429;
     private static readonly TimeSpan MinIdle = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan MaxRetryAfter = TimeSpan.FromHours(1);
@@ -227,9 +235,14 @@ public sealed class EmailOutboxDispatcher(
             return Outcome.Retrying;
         }
 
-        logger.LogError(exception,
-            "Email outbox message {MessageId} ({Purpose}) permanently failed after {RetryCount} attempt(s).",
-            message.Id, message.Purpose, message.RetryCount);
+        if (message.IsTransactional)
+            logger.LogError(TransactionalEmailFailed, exception,
+                "Transactional email permanently failed: {Purpose} for {CorrelationKey} (message {MessageId}) after {RetryCount} attempt(s). The recipient did not get it.",
+                message.Purpose, message.CorrelationKey, message.Id, message.RetryCount);
+        else
+            logger.LogWarning(CampaignEmailFailed, exception,
+                "Campaign email permanently failed: {CorrelationKey} (message {MessageId}) after {RetryCount} attempt(s).",
+                message.CorrelationKey, message.Id, message.RetryCount);
 
         // The purpose's side effect (e.g. refunding a campaign's usage counter) commits or rolls back with the status.
         await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);

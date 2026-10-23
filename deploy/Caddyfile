@@ -25,6 +25,10 @@
 			health_uri /health
 			health_interval 10s
 			health_timeout 5s
+			# The API answers 400 to a Host header outside AllowedHosts; without this the probe would send "api:8080".
+			health_headers {
+				Host {$LUMA_DOMAIN}
+			}
 		}
 	}
 

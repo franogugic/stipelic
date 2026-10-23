@@ -88,8 +88,11 @@ messages come back after `ProcessingLeaseMinutes`. On a stop, the Worker finishe
 - **Throttling (429) or the provider unreachable:** this Worker pauses all sending until `Retry-After` (else
   `Email:ThrottleBackoffMinutes`); the message keeps its place and does not use one of its 3 retries.
 - **Bounces after acceptance** are not seen by the outbox (ACS reports them through its delivery events, later work).
-- Logs: one Information line per pass (claimed, sent, deferred, failed); each failure at Warning; a permanent failure at
-  Error.
+- Logs: one Information line per pass (claimed, sent, deferred, failed); each failed attempt at Warning.
+- **A transactional email that failed for good** (3 attempts) is logged at **Error** with the event
+  `TransactionalEmailFailed` (id 7101), its purpose and the order, sign-up, user or payout it belongs to, never the
+  address. Chapter 10 alerts on it: an order-access email that never arrived means a buyer without their file. A campaign
+  email that failed for good is a Warning (`CampaignEmailFailed`, 7102): bounces within a list are expected.
 
 ## Maintenance (the Worker's cleanup)
 
@@ -103,6 +106,23 @@ logs its count at Information; a job that fails logs an Error and is retried on 
 | `expired-auth-records` | Deletes sessions and one-time tokens 30 days after they expired; sessions also 30 days after they were revoked. | `ExpiredAuthRecordRetentionDays` = 30 |
 | `abandoned-uploads` | Deletes uploads never confirmed within 60 minutes, with their blobs (public images by URL, product documents in the private container by path). A blob that cannot be deleted keeps its row and is retried; the run then logs an Error. Needs the `Media__*` settings, which the Worker reads from the shared `luma.env`. | `AbandonedUploadMinutes` = 60, at least `Media:SasExpiryMinutes` + 15 |
 | `stale-pending-orders` | Marks checkouts still Pending 25 hours after they started as Failed (their Stripe session expired after 24 hours; the extra hour covers an order created just before its session). A payment that still arrives later is booked normally: the webhook pays a Failed order. An order paid while the job runs stays Paid. | `StalePendingOrderHours` = 25, at least 24 |
+
+**Before the first run on a database with existing data** (not needed for an empty production database): images saved
+before PR 1 could point at an upload that was never confirmed, and `abandoned-uploads` would delete it. This must
+return no rows:
+
+```sql
+SELECT b."Id", b."CreatorId", b."Purpose", b."CreatedAt"
+FROM media.blob_references AS b
+WHERE b."Status" = 'Pending'
+  AND b."CreatedAt" < now() - interval '60 minutes'
+  AND (EXISTS (SELECT 1 FROM products.products AS p WHERE p."ThumbnailUrl" = b."BlobUrl")
+       OR EXISTS (SELECT 1 FROM creators.creator_settings AS s WHERE s."LogoUrl" = b."BlobUrl")
+       OR EXISTS (SELECT 1 FROM landing_pages.landing_page_sections AS ls WHERE strpos(ls."ContentJson"::text, b."BlobUrl") > 0));
+```
+
+If it returns rows, mark those uploads confirmed first (`UPDATE media.blob_references SET "Status" = 'Confirmed',
+"ConfirmedAt" = now() WHERE "Id" IN (...)`), or start the Worker with `Maintenance__Enabled=false` until they are.
 
 Also: `Enabled` (true), `IntervalMinutes` (60), `StartDelaySeconds` (60), `BatchSize` (1000). Invalid values stop the
 Worker at start. Override any of them in `luma.env`, e.g. `Maintenance__IntervalMinutes=30`.
@@ -145,6 +165,23 @@ console logs. Everything else is in `luma.env` (template: `luma.env.example`, th
   override it, or links in sent emails go to localhost.
 - The Marketing secrets must be the same for the API and the Worker. One `luma.env` for both makes sure of it.
 - Passwords that go into connection strings: hex only. A `;` or `,` would break the connection string.
+
+**Hosts, CORS and the session cookie (PR 1).**
+
+- `AllowedHosts`: the host names the API answers to, separated by `;` (e.g. `example.com`). Any other `Host` header gets
+  400. That includes the edge proxy's `/health` probe; the `Caddyfile` makes the probe send `Host: <LUMA_DOMAIN>`. If you
+  change that, add the probe's host to `AllowedHosts`, or the proxy marks the API down.
+- `Cors__AllowedOrigins__0`: the web app's https origin (`https://example.com`). In Development only localhost is allowed.
+- The session cookie is `SameSite=Lax`, so the web app and the API must share one registrable domain. This stack serves
+  both from one origin.
+- State-changing API calls need the header `X-Requested-With: luma` (the SPA sends it). A manual admin call with curl
+  must add it, or it is refused:
+
+  ```bash
+  curl -X POST -H "X-Requested-With: luma" -b "creator_platform_session=<cookie>" https://example.com/api/admin/...
+  ```
+
+  Exempt: `/webhooks/stripe*`, `/api/public/**` and the one-click unsubscribe POST.
 
 **Stripe (live mode).** Two webhook endpoints, each with its own signing secret in `luma.env`:
 
