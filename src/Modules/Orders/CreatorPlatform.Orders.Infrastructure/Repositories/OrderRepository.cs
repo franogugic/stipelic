@@ -19,6 +19,8 @@ public sealed class OrderRepository : IOrderRepository
 {
     private readonly CreatorPlatformDbContext _context;
 
+    private const string EmailSendsLimitKey = "max_email_sends_per_month";
+
     public OrderRepository(CreatorPlatformDbContext context)
     {
         _context = context;
@@ -496,6 +498,19 @@ public sealed class OrderRepository : IOrderRepository
             .ToList();
     }
 
+    public async Task<int> GetEmailsSentThisMonthAsync(int creatorId, CancellationToken ct)
+    {
+        // Same calendar-month boundary as UsagePeriodResolver.Resolve(CalendarMonth, now) (UTC) — so this reads the
+        // same counter row ICreatorUsageService writes to.
+        var now = DateTimeOffset.UtcNow;
+        var usageMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        return await _context.Set<CreatorUsageCounter>()
+            .AsNoTracking()
+            .Where(c => c.CreatorId == creatorId && c.UsageKey == EmailSendsLimitKey && c.PeriodStart == usageMonthStart)
+            .Select(c => (int?)c.UsedValue)
+            .FirstOrDefaultAsync(ct) ?? 0;
+    }
+
     public async Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
     {
         var creator = await _context.Set<Creator>()
@@ -518,7 +533,6 @@ public sealed class OrderRepository : IOrderRepository
         var trendStart = CreatorTimeZone.ToInstant(firstTrendDay, timezone);
         var thisLocalMonth = new DateTime(local.Year, local.Month, 1);
         var monthStart = CreatorTimeZone.ToInstant(thisLocalMonth, timezone);
-        var usageMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
 
         var orderStats = await _context.Set<Order>()
             .AsNoTracking()
@@ -590,7 +604,6 @@ public sealed class OrderRepository : IOrderRepository
 
         var topProduct = topRow is null ? null : new TopProductDto(topRow.Name, topRow.Total);
 
-        const string emailSendsLimitKey = "max_email_sends_per_month";
 
         var emailsMonthlyLimit = await (
             from cs in _context.Set<CreatorSubscription>().AsNoTracking()
@@ -598,17 +611,11 @@ public sealed class OrderRepository : IOrderRepository
                 on cs.PlanId equals limit.PlanId
             where cs.CreatorId == creator.Id
                 && cs.Status == CreatorSubscriptionStatus.Active
-                && limit.LimitKey == emailSendsLimitKey
+                && limit.LimitKey == EmailSendsLimitKey
             select (int?)limit.LimitValue
         ).FirstOrDefaultAsync(ct) ?? 0;
 
-        // Same calendar-month boundary as UsagePeriodResolver.Resolve(CalendarMonth, now) (UTC) — so this reads the
-        // same counter row ICreatorUsageService writes to.
-        var emailsSentThisMonth = await _context.Set<CreatorUsageCounter>()
-            .AsNoTracking()
-            .Where(c => c.CreatorId == creator.Id && c.UsageKey == emailSendsLimitKey && c.PeriodStart == usageMonthStart)
-            .Select(c => (int?)c.UsedValue)
-            .FirstOrDefaultAsync(ct) ?? 0;
+        var emailsSentThisMonth = await GetEmailsSentThisMonthAsync(creator.Id, ct);
 
         // Daily revenue for the last TrendDays days. Bounded window (7 days of one creator's paid orders),
         // so we pull the rows and bucket in memory rather than doing SQL date bucketing.

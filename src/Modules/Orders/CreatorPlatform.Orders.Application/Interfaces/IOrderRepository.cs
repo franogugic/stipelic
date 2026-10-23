@@ -83,4 +83,8 @@ public interface IOrderRepository
 
     /// <summary>Home summary for a creator whose ownership the caller has already checked.</summary>
     Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct);
+
+    /// <summary>The emails counted against this calendar month's (UTC) send limit — campaigns consume it in the API and
+    /// failed sends give it back in the Worker, so it is read live rather than from the cached home summary.</summary>
+    Task<int> GetEmailsSentThisMonthAsync(int creatorId, CancellationToken ct);
 }

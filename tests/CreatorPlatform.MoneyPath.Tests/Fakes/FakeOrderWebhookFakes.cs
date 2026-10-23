@@ -66,6 +66,10 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
 
     public Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(new HomeSummaryDto(0, 0, null, 0, 0, [], 0, null, [], 0, 0, 0, 0, [], [], 0, [], 0, 0, 0));
+
+    public int EmailsSentThisMonth { get; set; }
+
+    public Task<int> GetEmailsSentThisMonthAsync(int creatorId, CancellationToken ct) => Task.FromResult(EmailsSentThisMonth);
 }
 
 public sealed class FakeEmailOutboxService : IEmailOutboxService
