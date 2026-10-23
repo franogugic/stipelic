@@ -40,7 +40,7 @@ builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 
-builder.Services.AddEmailInfrastructure(builder.Configuration);
+builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environment);
 
 builder.Services.Configure<MarketingOptions>(builder.Configuration.GetSection(MarketingOptions.SectionName));
 // The unsubscribe page lives in the same web app the other emails link to.

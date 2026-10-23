@@ -1,4 +1,5 @@
 using Azure;
+using CreatorPlatform.Email.Application.Exceptions;
 using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Email.Domain.Outbox;
 using CreatorPlatform.Email.Infrastructure.Options;
@@ -178,6 +179,22 @@ public sealed class EmailOutboxWorker(
                     message.Id,
                     throttled.ErrorCode,
                     throttledUntil);
+
+                await dbContext.SaveChangesAsync(ct);
+                return false;
+            }
+
+            // The provider could not take it right now (e.g. the SMTP catcher is not running): same as throttling.
+            if (exception is TransientEmailSendException transient)
+            {
+                var retryAt = DateTimeOffset.UtcNow.Add(transient.RetryAfter);
+                message.Reschedule(retryAt);
+
+                logger.LogWarning(
+                    exception,
+                    "Email outbox message {MessageId} not sent, the provider is unavailable; rescheduled to {NextAttemptAt} without consuming a retry.",
+                    message.Id,
+                    retryAt);
 
                 await dbContext.SaveChangesAsync(ct);
                 return false;
