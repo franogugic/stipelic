@@ -20,4 +20,8 @@ public interface IBlobStorageClient
     /// <summary>Best-effort delete — logs a warning on failure, never throws (called from a request path
     /// that's already rejecting the upload; a delete failure shouldn't turn into a 500 on top of that).</summary>
     Task DeleteAsync(string blobUrl, CancellationToken ct);
+
+    /// <summary>Deletes the blob if it exists (a missing one is success) and THROWS when the delete fails, for callers that
+    /// must not forget a blob they could not delete (the abandoned-upload cleanup keeps its row and retries).</summary>
+    Task DeleteIfExistsAsync(string blobUrl, CancellationToken ct);
 }

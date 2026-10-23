@@ -23,6 +23,10 @@ public sealed class MaintenanceOptions
     /// <summary>Sessions and one-time tokens are deleted this long after they expired (sessions also after revocation).</summary>
     public int ExpiredAuthRecordRetentionDays { get; set; } = 30;
 
+    /// <summary>An upload whose URL was issued this long ago and that was never confirmed is deleted with its blob. Must
+    /// outlast the upload URL (<c>Media:SasExpiryMinutes</c>) by a margin; the Worker checks it at start.</summary>
+    public int AbandonedUploadMinutes { get; set; } = 60;
+
     public TimeSpan Interval => TimeSpan.FromMinutes(IntervalMinutes);
 
     public TimeSpan StartDelay => TimeSpan.FromSeconds(StartDelaySeconds);

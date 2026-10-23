@@ -70,6 +70,9 @@ public sealed class AzureProductFileStorage : IProductFileStorage
         }
     }
 
+    public async Task DeleteIfExistsAsync(string blobPath, CancellationToken ct) =>
+        await _containerClient.GetBlobClient(blobPath).DeleteIfExistsAsync(DeleteSnapshotsOption.IncludeSnapshots, cancellationToken: ct);
+
     public Uri GenerateDownloadSasUri(string blobPath, string downloadFileName, string contentType, TimeSpan expiry)
     {
         var sas = new BlobSasBuilder

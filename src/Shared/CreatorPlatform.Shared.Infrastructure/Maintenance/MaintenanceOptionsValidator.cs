@@ -19,6 +19,8 @@ public sealed class MaintenanceOptionsValidator : IValidateOptions<MaintenanceOp
             failures.Add("Maintenance:SentEmailBodyRetentionDays must be between 1 and 3650.");
         if (options.ExpiredAuthRecordRetentionDays is < 1 or > 3650)
             failures.Add("Maintenance:ExpiredAuthRecordRetentionDays must be between 1 and 3650.");
+        if (options.AbandonedUploadMinutes is < 30 or > 10_080)
+            failures.Add("Maintenance:AbandonedUploadMinutes must be between 30 and 10080.");
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

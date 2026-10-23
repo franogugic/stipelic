@@ -24,6 +24,12 @@ public sealed class FakeBlobStorageClient : IBlobStorageClient
         return Task.FromResult(PropertiesToReturn);
     }
 
+    public Task DeleteIfExistsAsync(string blobUrl, CancellationToken ct)
+    {
+        DeleteCalls.Add(blobUrl);
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAsync(string blobUrl, CancellationToken ct)
     {
         DeleteCalls.Add(blobUrl);
@@ -81,6 +87,13 @@ public sealed class FakeProductFileStorage : IProductFileStorage
 
     public Task<byte[]> ReadHeadAsync(string blobPath, int byteCount, CancellationToken ct) =>
         Task.FromResult(Blobs.TryGetValue(blobPath, out var blob) ? blob.Bytes.Take(byteCount).ToArray() : []);
+
+    public Task DeleteIfExistsAsync(string blobPath, CancellationToken ct)
+    {
+        DeleteCalls.Add(blobPath);
+        Blobs.Remove(blobPath);
+        return Task.CompletedTask;
+    }
 
     public Task DeleteAsync(string blobPath, CancellationToken ct)
     {
