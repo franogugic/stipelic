@@ -4,30 +4,49 @@ using CreatorPlatform.Email.Infrastructure.Options;
 using CreatorPlatform.Email.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace CreatorPlatform.Email.Infrastructure;
 
 public static class EmailInfrastructureServiceCollectionExtensions
 {
+    /// <summary>
+    /// Binds and validates the <c>Email</c> section (the start fails on an invalid one) and registers the sender of the
+    /// configured provider: <see cref="EmailProvider.Smtp"/> (Development default: the local Mailpit) creates no ACS
+    /// client and needs no ACS connection string; <see cref="EmailProvider.Acs"/> sends through Azure Communication
+    /// Services.
+    /// </summary>
     public static IServiceCollection AddEmailInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
-        services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        var section = configuration.GetSection(EmailOptions.SectionName);
+        var isDevelopment = environment.IsDevelopment();
 
-        services.AddSingleton(_ =>
+        services
+            .AddOptions<EmailOptions>()
+            .Bind(section)
+            .PostConfigure(options => EmailOptionsDefaults.Apply(options, isDevelopment))
+            .ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<EmailOptions>>(new EmailOptionsValidator(isDevelopment)));
+
+        var provider = EmailOptionsDefaults.ResolveProvider(
+            section.GetValue<EmailProvider?>(nameof(EmailOptions.Provider)), isDevelopment);
+
+        if (provider == EmailProvider.Smtp)
         {
-            var options = configuration
-                .GetSection(EmailOptions.SectionName)
-                .Get<EmailOptions>();
+            services.AddScoped<IEmailSender, SmtpEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton(serviceProvider =>
+                new EmailClient(serviceProvider.GetRequiredService<IOptions<EmailOptions>>().Value.ConnectionString));
+            services.AddScoped<IEmailSender, AzureEmailSender>();
+        }
 
-            if (string.IsNullOrWhiteSpace(options?.ConnectionString))
-                throw new InvalidOperationException("Email connection string is not configured.");
-
-            return new EmailClient(options.ConnectionString);
-        });
-
-        services.AddScoped<IEmailSender, AzureEmailSender>();
         services.AddScoped<IEmailOutboxService, EmailOutboxService>();
 
         return services;
