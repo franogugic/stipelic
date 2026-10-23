@@ -227,4 +227,155 @@ public sealed class OrderSummaryTests
                     1000, {feeCents}, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {paidAt}, {updatedAt ?? createdAt})
             """);
     }
+
+    // ---- R6.5: one date rule for the board, the table, the tabs and the export ------------------------------------
+
+    private sealed class NoHomeSummaryCache : IHomeSummaryCache
+    {
+        public ValueTask<HomeSummaryDto?> GetAsync(int creatorId, CancellationToken ct) => ValueTask.FromResult<HomeSummaryDto?>(null);
+        public Task SetAsync(int creatorId, HomeSummaryDto value, CancellationToken ct) => Task.CompletedTask;
+        public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class NoTrendsCache : IDashboardTrendsCache
+    {
+        public ValueTask<DashboardTrendsDto?> GetAsync(int creatorId, string range, CancellationToken ct) => ValueTask.FromResult<DashboardTrendsDto?>(null);
+        public Task SetAsync(int creatorId, string range, DashboardTrendsDto value, CancellationToken ct) => Task.CompletedTask;
+        public Task RemoveAsync(int creatorId, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private async Task<T> WithServiceAsync<T>(Func<CreatorPlatform.Orders.Application.Services.OrderService, Task<T>> call)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return await call(new CreatorPlatform.Orders.Application.Services.OrderService(new OrderRepository(db), new NoHomeSummaryCache(), new NoTrendsCache()));
+    }
+
+    private async Task<Guid> ProductPublicIdAsync(int productId)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return (await db.Database.SqlQuery<Guid>($"""SELECT "PublicId" AS "Value" FROM products.products WHERE "Id" = {productId}""").ToListAsync()).Single();
+    }
+
+    /// <summary>The 7-day board's orders: what the list, the tabs and the export must agree with.</summary>
+    private async Task<(TestData.SeededCreator Creator, int ProductId)> SeedSevenDaysAsync()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        await SetTimezoneAsync(creator.CreatorId, Zagreb);
+        var productId = await AddProductAsync(creator.CreatorId);
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 2900, 290, LocalNoon(-2), LocalNoon(-3), LocalNoon(-2));        // placed earlier, paid in
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 1000, 100, LocalNoon(0), LocalNoon(0));
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 5000, 500, LocalNoon(-20), LocalNoon(-20));                     // outside 7d
+        await AddOrderAsync(creator.CreatorId, productId, "Refunded", 1500, 150, LocalNoon(-10), LocalNoon(-10), LocalNoon(-1));  // refunded in
+        await AddOrderAsync(creator.CreatorId, productId, "Refunded", 800, 80, LocalNoon(-30), LocalNoon(-30), LocalNoon(-9));    // refunded before
+        await AddOrderAsync(creator.CreatorId, productId, "Pending", 1000, 100, null, LocalNoon(-1).AddHours(-1));
+        await AddOrderAsync(creator.CreatorId, productId, "Pending", 1000, 100, null, LocalNoon(-12));
+        await AddOrderAsync(creator.CreatorId, productId, "Failed", 1000, 100, null, LocalNoon(0).AddMinutes(-5));
+        return (creator, productId);
+    }
+
+    [Fact]
+    public async Task TheList_WithAPeriod_HasExactlyTheBoardsOrders_ByCountedDate_WithTheTabs()
+    {
+        var (creator, _) = await SeedSevenDaysAsync();
+
+        var page = await WithServiceAsync(s => s.ListAsync(creator.Slug, creator.OwnerUserId, new OrderListQuery(Period: "7d"), null, null, null, 20, CancellationToken.None));
+        var board = await WithServiceAsync(s => s.GetPeriodSummaryAsync(creator.Slug, creator.OwnerUserId, "7d", CancellationToken.None));
+
+        Assert.Equal(["Paid", "Failed", "Refunded", "Pending", "Paid"], page.Orders.Select(o => o.Status));
+        Assert.Equal(page.Orders.OrderByDescending(o => o.CountedAt), page.Orders);
+        Assert.Equal(LocalNoon(-2), page.Orders[^1].CountedAt);            // the paid order counts on PaidAt, not CreatedAt
+        var refunded = page.Orders.Single(o => o.Status == "Refunded");
+        Assert.Equal((LocalNoon(-1), LocalNoon(-1)), (refunded.CountedAt, refunded.RefundedAt!.Value));
+        Assert.Null(page.Orders.First(o => o.Status == "Paid").RefundedAt);
+        Assert.Equal(new OrderStatusCountsDto(5, 2, 1, 1, 1), page.StatusCounts);
+        Assert.Equal(5, page.Total);
+        Assert.Equal(board.TotalOrderCount, page.StatusCounts!.All);                // the rows add up to the board
+        Assert.Equal((board.PaidOrderCount, board.RefundedOrderCount, board.PendingOrderCount, board.FailedOrderCount),
+            (page.StatusCounts.Paid, page.StatusCounts.Refunded, page.StatusCounts.Pending, page.StatusCounts.Failed));
+
+        var pending = await WithServiceAsync(s => s.ListAsync(creator.Slug, creator.OwnerUserId, new OrderListQuery(Status: "pending", Period: "7d"), null, null, null, 20, CancellationToken.None));
+        Assert.Equal((1, 5), (pending.Total!.Value, pending.StatusCounts!.All));
+        Assert.Single(pending.Orders);
+
+        var plain = await WithServiceAsync(s => s.ListAsync(creator.Slug, creator.OwnerUserId, new OrderListQuery(), null, null, null, 20, CancellationToken.None));
+        Assert.Equal((8, (int?)null), (plain.Orders.Count, plain.Total));
+    }
+
+    [Fact]
+    public async Task ThePeriodList_PagesByCountedDate_AndTheExportStreamsTheSameRows()
+    {
+        var (creator, _) = await SeedSevenDaysAsync();
+        var seen = new List<OrderDto>();
+        DateTimeOffset? afterCountedAt = null;
+        Guid? afterId = null;
+        do
+        {
+            var page = await WithServiceAsync(s => s.ListAsync(creator.Slug, creator.OwnerUserId, new OrderListQuery(Period: "7d"), null, afterCountedAt, afterId, 2, CancellationToken.None));
+            seen.AddRange(page.Orders);
+            if (!page.HasMore)
+                break;
+            (afterCountedAt, afterId) = (page.Orders[^1].CountedAt, page.Orders[^1].PublicId);
+        } while (true);
+
+        var exported = await WithServiceAsync(async s =>
+        {
+            var export = await s.StartExportAsync(creator.Slug, creator.OwnerUserId, new OrderListQuery(Period: "7d"), CancellationToken.None);
+            var rows = new List<OrderDto>();
+            await foreach (var order in export.Orders)
+                rows.Add(order);
+            return rows;
+        });
+
+        Assert.Equal(5, seen.Select(o => o.PublicId).Distinct().Count());
+        Assert.Equal(seen.Select(o => o.PublicId), exported.Select(o => o.PublicId));
+    }
+
+    [Fact]
+    public async Task TheSummary_HasThePreviousWindow_PaidCountsAndRefundedAmountsPerBucket_AndAProductFilter()
+    {
+        var (creator, productId) = await SeedSevenDaysAsync();
+        var otherProductId = await AddProductAsync(creator.CreatorId);
+        await AddOrderAsync(creator.CreatorId, otherProductId, "Paid", 4000, 400, LocalNoon(-1), LocalNoon(-1));
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 700, 70, LocalNoon(-8), LocalNoon(-8));       // the previous 7 days
+
+        var productPublicId = await ProductPublicIdAsync(productId);
+
+        var board = await WithServiceAsync(s => s.GetPeriodSummaryAsync(creator.Slug, creator.OwnerUserId, "7d", CancellationToken.None));
+        var ofProduct = await WithServiceAsync(s => s.GetPeriodSummaryAsync(creator.Slug, creator.OwnerUserId, "7d", CancellationToken.None, productPublicId));
+
+        Assert.Equal((3, 7900L), (board.PaidOrderCount, board.TotalPaidAmountCents));
+        Assert.Equal((2, 3900L), (ofProduct.PaidOrderCount, ofProduct.TotalPaidAmountCents));
+        Assert.Equal(productPublicId, ofProduct.ProductPublicId);
+        Assert.Null(board.ProductPublicId);
+
+        // The previous 7 days: the 700 paid on day -8, the refund on day -9 and the order left pending on day -12.
+        Assert.Equal(new OrderPeriodPreviousDto(1, 700, 1, 800, 1, 0, 3), board.Previous);
+        Assert.NotNull(board.PreviousRange);
+        Assert.Equal(board.Range.From, board.PreviousRange!.To);
+
+        Assert.Equal(board.PaidOrderCount, board.Buckets.Sum(b => b.PaidCount));
+        Assert.Equal(board.RefundedAmountCents, board.Buckets.Sum(b => b.RefundedCents));
+        Assert.Equal((1, 1500L), (board.Buckets[^2].RefundedCount, board.Buckets[^2].RefundedCents));   // refunded yesterday
+        Assert.Equal((1, 4000L), (board.Buckets[^2].PaidCount, board.Buckets[^2].GrossCents));   // yesterday: the other product's sale
+    }
+
+    [Fact]
+    public async Task TheProductsList_CountsEveryOrderOfAProduct_AnyStatus()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        var sold = await AddProductAsync(creator.CreatorId);
+        var refundedOnly = await AddProductAsync(creator.CreatorId);
+        await AddProductAsync(creator.CreatorId);   // never ordered: absent
+        await AddOrderAsync(creator.CreatorId, sold, "Paid", 1000, 100, LocalNoon(-1), LocalNoon(-1));
+        await AddOrderAsync(creator.CreatorId, sold, "Pending", 1000, 100, null, LocalNoon(0));
+        await AddOrderAsync(creator.CreatorId, refundedOnly, "Refunded", 1000, 100, LocalNoon(-5), LocalNoon(-5), LocalNoon(-2));
+
+        await using var db = _fixture.CreateDbContext();
+        var revenue = await new CreatorPlatform.Products.Infrastructure.Services.OrderContextProvider(db)
+            .GetProductRevenueByCreatorIdAsync(creator.CreatorId, CancellationToken.None);
+
+        Assert.Equal((1, 2), (revenue[sold].PaidOrderCount, revenue[sold].OrderCount));
+        Assert.Equal((0, 1), (revenue[refundedOnly].PaidOrderCount, revenue[refundedOnly].OrderCount));   // archived with orders → in the filter
+        Assert.Equal(2, revenue.Count);
+    }
 }

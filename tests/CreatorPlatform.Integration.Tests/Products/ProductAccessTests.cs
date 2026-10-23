@@ -242,7 +242,7 @@ public sealed class ProductAccessTests
         await using (var db = _fixture.CreateDbContext())
         {
             var order = Assert.Single(await new OrderRepository(db).GetByCreatorSlugAsync(
-                creator.Slug, creator.OwnerUserId, null, null, null, null, null, null, 10, None));
+                creator.Slug, creator.OwnerUserId, new OrderListFilter(null, null, null, null, null), null, 10, None));
             Assert.Equal(6, order.DownloadCount);
             Assert.Equal(grant.LastDownloadedAt, order.LastDownloadedAt);
         }

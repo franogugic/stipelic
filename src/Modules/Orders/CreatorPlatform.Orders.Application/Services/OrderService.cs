@@ -32,81 +32,105 @@ public sealed class OrderService : IOrderService
     public async Task<OrdersPageDto> ListAsync(
         string creatorSlug,
         int ownerUserId,
-        Guid? productId,
-        Guid? landingPageId,
-        string? status,
-        string? search,
+        OrderListQuery query,
         DateTimeOffset? afterCreatedAt,
+        DateTimeOffset? afterCountedAt,
         Guid? afterId,
         int limit,
         CancellationToken ct)
     {
         var clampedLimit = limit <= 0 ? DefaultLimit : Math.Min(limit, MaxLimit);
-        var parsedStatus = ParseStatus(status);
-        var customerSearch = NormalizeSearch(search);
+        var filter = await ResolveFilterAsync(creatorSlug, ownerUserId, query, ct);
+        var cursorAt = filter.Period is null ? afterCreatedAt : afterCountedAt;
+        var cursor = cursorAt is { } at && afterId is { } id ? new OrderListCursor(at, id) : null;
 
         // Fetch one extra row to detect a next page without a separate COUNT query, then trim it.
-        var rows = await _orderRepository.GetByCreatorSlugAsync(
-            creatorSlug, ownerUserId, productId, landingPageId, parsedStatus, customerSearch, afterCreatedAt, afterId,
-            clampedLimit + 1, ct);
+        var rows = await _orderRepository.GetByCreatorSlugAsync(creatorSlug, ownerUserId, filter, cursor, clampedLimit + 1, ct);
 
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.Take(clampedLimit).ToList() : rows;
+        if (filter.Period is null)
+            return new OrdersPageDto(page, hasMore);
 
-        return new OrdersPageDto(page, hasMore);
+        // With a period: the tabs (every status) and the total of the current tab, from one grouped count.
+        var counts = await _orderRepository.GetStatusCountsAsync(creatorSlug, ownerUserId, filter, ct);
+        var total = filter.Status switch
+        {
+            OrderStatus.Paid => counts.Paid,
+            OrderStatus.Pending => counts.Pending,
+            OrderStatus.Failed => counts.Failed,
+            OrderStatus.Refunded => counts.Refunded,
+            _ => counts.All,
+        };
+        return new OrdersPageDto(page, hasMore, total, counts);
     }
 
     public async Task<OrdersExport> StartExportAsync(
         string creatorSlug,
         int ownerUserId,
-        Guid? productId,
-        Guid? landingPageId,
-        string? status,
-        string? search,
+        OrderListQuery query,
         CancellationToken ct)
     {
-        var parsedStatus = ParseStatus(status);
-        var customerSearch = NormalizeSearch(search);
+        var filter = await ResolveFilterAsync(creatorSlug, ownerUserId, query, ct);
 
-        if (!await _orderRepository.CreatorExistsForOwnerAsync(creatorSlug, ownerUserId, ct))
-            throw new NotFoundException("Creator workspace not found.");
-
-        return new OrdersExport(
-            creatorSlug,
-            StreamOrdersAsync(creatorSlug, ownerUserId, productId, landingPageId, parsedStatus, customerSearch, ct));
+        return new OrdersExport(creatorSlug, StreamOrdersAsync(creatorSlug, ownerUserId, filter, ct));
     }
 
-    // The list's own keyset query, batch after batch: (CreatedAt, PublicId) cursor, newest first, one batch in
-    // memory at a time.
+    /// <summary>Validates the query (400) and the ownership of the workspace and the product (404), and turns the period
+    /// into its counted-date window in the creator's timezone.</summary>
+    private async Task<OrderListFilter> ResolveFilterAsync(string creatorSlug, int ownerUserId, OrderListQuery query, CancellationToken ct)
+    {
+        var status = ParseStatus(query.Status);
+        var customerSearch = NormalizeSearch(query.Search);
+        var periodKey = query.Period is null ? null : ResolvePeriod(query.Period);
+
+        var context = await _orderRepository.GetPeriodContextAsync(creatorSlug, ownerUserId, ct)
+            ?? throw new NotFoundException("Creator workspace not found.");
+        if (query.ProductId is { } productId && await _orderRepository.GetProductIdAsync(context.CreatorId, productId, ct) is null)
+            throw new NotFoundException("Product not found.");
+
+        OrderCountedRange? period = null;
+        if (periodKey is not null)
+        {
+            var plan = AnalyticsPeriodPlan.Create(periodKey, DateTimeOffset.UtcNow, context.Timezone, context.CreatedAt);
+            period = new OrderCountedRange(plan.TotalsFrom, plan.TotalsTo);
+        }
+
+        return new OrderListFilter(query.ProductId, query.LandingPageId, status, customerSearch, period);
+    }
+
+    // The list's own keyset query, batch after batch, newest first (by counted date with a period, else by CreatedAt),
+    // one batch in memory at a time.
     private async IAsyncEnumerable<OrderDto> StreamOrdersAsync(
         string creatorSlug,
         int ownerUserId,
-        Guid? productId,
-        Guid? landingPageId,
-        OrderStatus? status,
-        string? customerSearch,
+        OrderListFilter filter,
         [EnumeratorCancellation] CancellationToken ct)
     {
-        DateTimeOffset? afterCreatedAt = null;
-        Guid? afterId = null;
+        OrderListCursor? cursor = null;
 
         while (true)
         {
-            var rows = await _orderRepository.GetByCreatorSlugAsync(
-                creatorSlug, ownerUserId, productId, landingPageId, status, customerSearch, afterCreatedAt, afterId,
-                ExportBatchSize + 1, ct);
+            var rows = await _orderRepository.GetByCreatorSlugAsync(creatorSlug, ownerUserId, filter, cursor, ExportBatchSize + 1, ct);
             var hasMore = rows.Count > ExportBatchSize;
 
             foreach (var order in hasMore ? rows.Take(ExportBatchSize) : rows)
             {
-                afterCreatedAt = order.CreatedAt;
-                afterId = order.PublicId;
+                cursor = new OrderListCursor(filter.Period is null ? order.CreatedAt : order.CountedAt, order.PublicId);
                 yield return order;
             }
 
             if (!hasMore)
                 yield break;
         }
+    }
+
+    private static string ResolvePeriod(string period)
+    {
+        var key = period.Trim().ToLowerInvariant();
+        if (!AnalyticsPeriodPlan.Periods.Contains(key))
+            throw new BadRequestException($"Invalid period. Valid values: {string.Join(", ", AnalyticsPeriodPlan.Periods)}.");
+        return key;
     }
 
     /// <summary>Trimmed customer search term; null when blank. Longer than 100 characters is rejected.</summary>
@@ -196,17 +220,19 @@ public sealed class OrderService : IOrderService
     }
 
     public async Task<OrderPeriodSummaryDto> GetPeriodSummaryAsync(
-        string creatorSlug, int ownerUserId, string period, CancellationToken ct)
+        string creatorSlug, int ownerUserId, string period, CancellationToken ct, Guid? productId = null)
     {
-        var periodKey = period.Trim().ToLowerInvariant();
-        if (!AnalyticsPeriodPlan.Periods.Contains(periodKey))
-            throw new BadRequestException($"Invalid period. Valid values: {string.Join(", ", AnalyticsPeriodPlan.Periods)}.");
+        var periodKey = ResolvePeriod(period);
 
         var context = await _orderRepository.GetPeriodContextAsync(creatorSlug, ownerUserId, ct)
             ?? throw new NotFoundException("Creator workspace not found.");
+        int? productInternalId = null;
+        if (productId is { } publicId)
+            productInternalId = await _orderRepository.GetProductIdAsync(context.CreatorId, publicId, ct)
+                ?? throw new NotFoundException("Product not found.");
 
         var plan = AnalyticsPeriodPlan.Create(periodKey, DateTimeOffset.UtcNow, context.Timezone, context.CreatedAt);
-        var read = await _orderRepository.GetPeriodSummaryAsync(context.CreatorId, context.Timezone, plan, ct);
+        var read = await _orderRepository.GetPeriodSummaryAsync(context.CreatorId, context.Timezone, plan, ct, productInternalId);
 
         var totals = read.Totals;
         var buckets = plan.Buckets
@@ -214,7 +240,8 @@ public sealed class OrderService : IOrderService
             {
                 var values = read.Buckets.GetValueOrDefault(start) ?? new OrderBucketValues(0, 0, 0);
                 return new OrderBucketDto(
-                    start.ToString("yyyy-MM-dd'T'HH:mm"), values.GrossCents, values.GrossCents - values.FeeCents, values.RefundedCount);
+                    start.ToString("yyyy-MM-dd'T'HH:mm"), values.GrossCents, values.GrossCents - values.FeeCents, values.RefundedCount,
+                    values.PaidCount, values.RefundedCents);
             })
             .ToList();
 
@@ -233,7 +260,15 @@ public sealed class OrderService : IOrderService
             totals.PendingOrderCount,
             totals.FailedOrderCount,
             totals.PaidOrderCount + totals.RefundedOrderCount + totals.PendingOrderCount + totals.FailedOrderCount,
-            buckets);
+            buckets,
+            plan.PreviousTotalsFrom is { } previousFrom ? new OrderPeriodRangeDto(previousFrom, plan.PreviousRangeTo!.Value) : null,
+            productId,
+            read.Previous is { } previous
+                ? new OrderPeriodPreviousDto(
+                    previous.PaidOrderCount, previous.TotalPaidAmountCents, previous.RefundedOrderCount, previous.RefundedAmountCents,
+                    previous.PendingOrderCount, previous.FailedOrderCount,
+                    previous.PaidOrderCount + previous.RefundedOrderCount + previous.PendingOrderCount + previous.FailedOrderCount)
+                : null);
     }
 
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(

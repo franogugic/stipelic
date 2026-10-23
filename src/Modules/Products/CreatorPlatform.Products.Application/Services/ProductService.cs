@@ -123,6 +123,7 @@ public sealed class ProductService : IProductService
             UpdatedAt = dto.UpdatedAt,
             RevenueCents = dto.RevenueCents,
             PaidOrderCount = dto.PaidOrderCount,
+            OrderCount = dto.OrderCount,
             SalesTrend = dto.SalesTrend,
             SignupCount = signups?.Total ?? 0,
             SignupsThisMonth = trend[^1],
@@ -333,6 +334,7 @@ public sealed class ProductService : IProductService
         UpdatedAt = product.UpdatedAt,
         RevenueCents = revenue?.RevenueCents ?? 0,
         PaidOrderCount = revenue?.PaidOrderCount ?? 0,
+        OrderCount = revenue?.OrderCount ?? 0,
         SalesTrend = salesTrend ?? new int[ProductSalesTrend.Months]
     };
 }

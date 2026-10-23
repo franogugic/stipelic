@@ -53,6 +53,9 @@ public sealed record OrderMonthDto(string Month, long GrossCents, long FeeCents,
 /// <param name="Buckets">Oldest first, zero-filled: every hour so far for "today", every day, 7-day weeks for 2m / 3m and
 /// months for 6m (anchored at the window's first day, the day after the same date N months ago), or the last 12 months
 /// for "all".</param>
+/// <param name="PreviousRange">The window before (R6.5); null for "all".</param>
+/// <param name="ProductPublicId">The product filter, echoed (R6.5); null for every product.</param>
+/// <param name="Previous">The same counts for <paramref name="PreviousRange"/> (R6.5); null for "all".</param>
 public sealed record OrderPeriodSummaryDto(
     string Period,
     string Step,
@@ -68,7 +71,20 @@ public sealed record OrderPeriodSummaryDto(
     int PendingOrderCount,
     int FailedOrderCount,
     int TotalOrderCount,
-    List<OrderBucketDto> Buckets);
+    List<OrderBucketDto> Buckets,
+    OrderPeriodRangeDto? PreviousRange = null,
+    Guid? ProductPublicId = null,
+    OrderPeriodPreviousDto? Previous = null);
+
+/// <summary>The previous window's order counts (R6.5), by the same date rule. No fee.</summary>
+public sealed record OrderPeriodPreviousDto(
+    int PaidOrderCount,
+    long TotalPaidAmountCents,
+    int RefundedOrderCount,
+    long RefundedAmountCents,
+    int PendingOrderCount,
+    int FailedOrderCount,
+    int TotalOrderCount);
 
 public sealed record OrderPeriodRangeDto(DateTimeOffset From, DateTimeOffset To);
 
@@ -76,4 +92,6 @@ public sealed record OrderPeriodRangeDto(DateTimeOffset From, DateTimeOffset To)
 /// <param name="GrossCents">Paid orders paid in the bucket.</param>
 /// <param name="NetCents">GrossCents minus their platform fees.</param>
 /// <param name="RefundedCount">Orders refunded in the bucket.</param>
-public sealed record OrderBucketDto(string Start, long GrossCents, long NetCents, int RefundedCount);
+/// <param name="PaidCount">Paid orders counted in the bucket (R6.5).</param>
+/// <param name="RefundedCents">The AmountCents of the orders refunded in the bucket (R6.5).</param>
+public sealed record OrderBucketDto(string Start, long GrossCents, long NetCents, int RefundedCount, int PaidCount = 0, long RefundedCents = 0);

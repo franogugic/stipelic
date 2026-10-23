@@ -94,7 +94,7 @@ public class OrdersExportTests
             .ToList();
         var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache(), new FakeDashboardTrendsCache());
 
-        var export = await service.StartExportAsync(Slug, OwnerUserId, null, null, "paid", "  ana ", CancellationToken.None);
+        var export = await service.StartExportAsync(Slug, OwnerUserId, new OrderListQuery(null, null, "paid", "  ana "), CancellationToken.None);
         var exported = new List<OrderDto>();
         await foreach (var order in export.Orders)
             exported.Add(order);
@@ -114,7 +114,7 @@ public class OrdersExportTests
         var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache(), new FakeDashboardTrendsCache());
 
         await Assert.ThrowsAsync<NotFoundException>(
-            () => service.StartExportAsync(Slug, OwnerUserId, null, null, null, null, CancellationToken.None));
+            () => service.StartExportAsync(Slug, OwnerUserId, new OrderListQuery(null, null, null, null), CancellationToken.None));
 
         Assert.Equal(0, repository.CallCount);
     }
@@ -126,7 +126,7 @@ public class OrdersExportTests
         var service = new OrderService(repository, new FakeOrderListingHomeSummaryCache(), new FakeDashboardTrendsCache());
 
         await Assert.ThrowsAsync<BadRequestException>(
-            () => service.StartExportAsync(Slug, OwnerUserId, null, null, "shipped", null, CancellationToken.None));
+            () => service.StartExportAsync(Slug, OwnerUserId, new OrderListQuery(null, null, "shipped", null), CancellationToken.None));
 
         Assert.Equal(0, repository.CallCount);
     }

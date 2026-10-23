@@ -14,9 +14,26 @@ public sealed record OrderPeriodTotalsRow(
     long RefundedAmountCents, int PendingOrderCount, int FailedOrderCount);
 
 /// <param name="Buckets">Keyed by the local bucket start.</param>
-public sealed record OrderPeriodRead(OrderPeriodTotalsRow Totals, Dictionary<DateTime, OrderBucketValues> Buckets);
+/// <param name="Previous">The previous window's totals; null when the plan has none ("all").</param>
+public sealed record OrderPeriodRead(
+    OrderPeriodTotalsRow Totals, Dictionary<DateTime, OrderBucketValues> Buckets, OrderPeriodTotalsRow? Previous = null);
 
-public sealed record OrderBucketValues(long GrossCents, long FeeCents, int RefundedCount);
+public sealed record OrderBucketValues(long GrossCents, long FeeCents, int RefundedCount, int PaidCount = 0, long RefundedCents = 0);
+
+/// <summary>A counted-date window (R6.5): From null = all time.</summary>
+public sealed record OrderCountedRange(DateTimeOffset? From, DateTimeOffset To);
+
+/// <summary>The repository's list filter. With <paramref name="Period"/>, rows are the orders whose counted date falls in it,
+/// ordered by counted date desc; without, every order, ordered by CreatedAt desc.</summary>
+public sealed record OrderListFilter(
+    Guid? ProductPublicId,
+    Guid? LandingPagePublicId,
+    OrderStatus? Status,
+    string? CustomerSearch,
+    OrderCountedRange? Period);
+
+/// <summary>The keyset cursor: the last row's CreatedAt (no period) or CountedAt (with a period), and its public id.</summary>
+public sealed record OrderListCursor(DateTimeOffset At, Guid PublicId);
 
 public interface IOrderRepository
 {
@@ -31,14 +48,16 @@ public interface IOrderRepository
     Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,
-        Guid? productPublicId,
-        Guid? landingPagePublicId,
-        OrderStatus? status,
-        string? customerSearch,
-        DateTimeOffset? afterCreatedAt,
-        Guid? afterId,
+        OrderListFilter filter,
+        OrderListCursor? after,
         int limit,
         CancellationToken ct);
+
+    /// <summary>Orders per status for <paramref name="filter"/>, ignoring its status (the tabs of the list).</summary>
+    Task<OrderStatusCountsDto> GetStatusCountsAsync(string creatorSlug, int ownerUserId, OrderListFilter filter, CancellationToken ct);
+
+    /// <summary>The creator's product with this public id (any status); null when it isn't theirs.</summary>
+    Task<int?> GetProductIdAsync(int creatorId, Guid productPublicId, CancellationToken ct);
 
     /// <summary>The internal id of the user's active (not Disabled) workspace with this slug; null if none.</summary>
     Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct);
@@ -66,7 +85,8 @@ public interface IOrderRepository
 
     /// <summary>The totals and chart buckets of <paramref name="plan"/> for a creator whose ownership the caller has
     /// already checked: one aggregate over the creator's orders plus one grouped pass for the buckets.</summary>
-    Task<OrderPeriodRead> GetPeriodSummaryAsync(int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct);
+    Task<OrderPeriodRead> GetPeriodSummaryAsync(
+        int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct, int? productId = null);
 
     /// <summary>One aggregate over the page's orders with a FILTER per period.</summary>
     Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct);

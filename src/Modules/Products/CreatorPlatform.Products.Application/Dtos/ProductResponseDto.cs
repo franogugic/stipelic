@@ -24,6 +24,10 @@ public sealed class ProductResponseDto
     public int RevenueCents { get; init; }
     public int PaidOrderCount { get; init; }
 
+    /// <summary>Every order of the product, any status, all time (R6.5): the orders filter lists active products and
+    /// archived ones with orders. 0 on the single-product responses.</summary>
+    public int OrderCount { get; init; }
+
     /// <summary>Paid orders per calendar month (UTC) for the last six months, oldest first, the current month last.
     /// Filled on the product list; all zeros on the single-product responses (create, update, restore).</summary>
     public int[] SalesTrend { get; init; } = new int[ProductSalesTrend.Months];

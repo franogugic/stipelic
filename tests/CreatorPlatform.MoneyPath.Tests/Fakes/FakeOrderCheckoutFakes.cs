@@ -75,8 +75,14 @@ public sealed class FakeOrderRepository : IOrderRepository
         => Task.FromResult<Order?>(null);
 
     public Task<List<OrderDto>> GetByCreatorSlugAsync(
-        string creatorSlug, int ownerUserId, Guid? productPublicId, Guid? landingPagePublicId, OrderStatus? status, string? customerSearch, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
+        string creatorSlug, int ownerUserId, OrderListFilter filter, OrderListCursor? after, int limit, CancellationToken ct)
         => Task.FromResult(new List<OrderDto>());
+
+    public Task<OrderStatusCountsDto> GetStatusCountsAsync(string creatorSlug, int ownerUserId, OrderListFilter filter, CancellationToken ct)
+        => Task.FromResult(new OrderStatusCountsDto(0, 0, 0, 0, 0));
+
+    public Task<int?> GetProductIdAsync(int creatorId, Guid productPublicId, CancellationToken ct)
+        => Task.FromResult<int?>(1);
 
     public Task<string> GetCreatorTimezoneAsync(int creatorId, CancellationToken ct) => Task.FromResult("UTC");
 
@@ -98,7 +104,7 @@ public sealed class FakeOrderRepository : IOrderRepository
     public Task<OrderPeriodContext?> GetPeriodContextAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult<OrderPeriodContext?>(null);
 
-    public Task<OrderPeriodRead> GetPeriodSummaryAsync(int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct)
+    public Task<OrderPeriodRead> GetPeriodSummaryAsync(int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct, int? productId = null)
         => Task.FromResult(new OrderPeriodRead(new OrderPeriodTotalsRow(0, 0, 0, 0, 0, 0, 0), []));
 
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
