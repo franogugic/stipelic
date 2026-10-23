@@ -75,6 +75,17 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(o => o.RefundedCents)
             .IsRequired();
 
+        // Revenue totals sum what a Paid order keeps after a partial refund. Stored generated columns, so every query
+        // (SQL or LINQ) reads one rule; the fee's share is rounded half away from zero, as PayoutLedgerService does.
+        builder.Property(o => o.KeptAmountCents)
+            .HasComputedColumnSql("\"AmountCents\" - \"RefundedCents\"", stored: true);
+
+        builder.Property(o => o.KeptPlatformFeeCents)
+            .HasComputedColumnSql(
+                "\"PlatformFeeCents\" - CASE WHEN \"AmountCents\" > 0 " +
+                "THEN round(\"PlatformFeeCents\"::numeric * \"RefundedCents\" / \"AmountCents\")::integer ELSE 0 END",
+                stored: true);
+
         builder.Property(o => o.CreatedAt)
             .IsRequired();
 

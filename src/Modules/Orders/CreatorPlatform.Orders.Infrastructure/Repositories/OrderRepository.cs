@@ -130,8 +130,9 @@ public sealed class OrderRepository : IOrderRepository
                 x.o.Status.ToString(),
                 x.o.CreatedAt,
                 x.o.PaidAt,
-                x.o.PlatformFeeCents,
-                x.o.AmountCents - x.o.PlatformFeeCents,
+                // A Paid order's fee and net are what it keeps after a partial refund.
+                x.o.Status == OrderStatus.Paid ? x.o.KeptPlatformFeeCents : x.o.PlatformFeeCents,
+                x.o.Status == OrderStatus.Paid ? x.o.KeptAmountCents - x.o.KeptPlatformFeeCents : x.o.AmountCents - x.o.PlatformFeeCents,
                 x.LandingPageTitle,
                 x.DownloadCount ?? 0,
                 x.LastDownloadedAt,
@@ -277,8 +278,8 @@ public sealed class OrderRepository : IOrderRepository
         var totals = (await _context.Database.SqlQuery<OrderSummaryRow>($"""
             SELECT
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "PaidOrderCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPaidAmountCents",
-                COALESCE(SUM(o."PlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
+                COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPaidAmountCents",
+                COALESCE(SUM(o."KeptPlatformFeeCents") FILTER (WHERE o."Status" = 'Paid'), 0)::int AS "TotalPlatformFeeCents",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Refunded'))::int AS "RefundedOrderCount",
                 COUNT(o."Id")::int AS "TotalOrderCount",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Pending'))::int AS "PendingOrderCount",
@@ -318,7 +319,7 @@ public sealed class OrderRepository : IOrderRepository
         // for Pending and Failed — the same rule as the orders list.
         var rows = await _context.Database.SqlQuery<PeriodTotalsRow>($"""
             WITH counted AS (
-                SELECT o."Status", o."AmountCents", o."PlatformFeeCents",
+                SELECT o."Status", o."AmountCents", o."KeptAmountCents", o."KeptPlatformFeeCents",
                        CASE o."Status" WHEN 'Paid' THEN COALESCE(o."PaidAt", o."CreatedAt")
                                        WHEN 'Refunded' THEN o."UpdatedAt"
                                        ELSE o."CreatedAt" END AS "At"
@@ -332,8 +333,8 @@ public sealed class OrderRepository : IOrderRepository
             )
             SELECT w."Window",
                 (COUNT(*) FILTER (WHERE c."Status" = 'Paid'))::int AS "PaidOrderCount",
-                COALESCE(SUM(c."AmountCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPaidAmountCents",
-                COALESCE(SUM(c."PlatformFeeCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPlatformFeeCents",
+                COALESCE(SUM(c."KeptAmountCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPaidAmountCents",
+                COALESCE(SUM(c."KeptPlatformFeeCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPlatformFeeCents",
                 (COUNT(*) FILTER (WHERE c."Status" = 'Refunded'))::int AS "RefundedOrderCount",
                 COALESCE(SUM(c."AmountCents") FILTER (WHERE c."Status" = 'Refunded'), 0)::bigint AS "RefundedAmountCents",
                 (COUNT(*) FILTER (WHERE c."Status" = 'Pending'))::int AS "PendingOrderCount",
@@ -357,8 +358,8 @@ public sealed class OrderRepository : IOrderRepository
         var bucketRows = await _context.Database.SqlQuery<PeriodBucketRow>($"""
             SELECT 'paid' AS "Kind",
                    width_bucket(extract(epoch FROM (COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
-                   COALESCE(SUM(o."AmountCents"), 0)::bigint AS "GrossCents",
-                   COALESCE(SUM(o."PlatformFeeCents"), 0)::bigint AS "FeeCents",
+                   COALESCE(SUM(o."KeptAmountCents"), 0)::bigint AS "GrossCents",
+                   COALESCE(SUM(o."KeptPlatformFeeCents"), 0)::bigint AS "FeeCents",
                    COUNT(*)::int AS "Count"
             FROM orders.orders o
             WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId}) AND o."Status" = 'Paid'
@@ -412,15 +413,15 @@ public sealed class OrderRepository : IOrderRepository
                     interval '1 month') AS m
             ),
             local_orders AS (
-                SELECT o."Status", o."AmountCents", o."PlatformFeeCents",
+                SELECT o."Status", o."KeptAmountCents", o."KeptPlatformFeeCents",
                        date_trunc('month', COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}) AS "PaidMonth",
                        date_trunc('month', o."UpdatedAt" AT TIME ZONE {timezone}) AS "UpdatedMonth"
                 FROM orders.orders o
                 WHERE o."CreatorId" = {creatorId} AND o."Status" IN ('Paid', 'Refunded')
             )
             SELECT to_char(m."MonthStart", 'YYYY-MM') AS "Month",
-                   COALESCE(SUM(lo."AmountCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "GrossCents",
-                   COALESCE(SUM(lo."PlatformFeeCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "FeeCents",
+                   COALESCE(SUM(lo."KeptAmountCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "GrossCents",
+                   COALESCE(SUM(lo."KeptPlatformFeeCents") FILTER (WHERE lo."Status" = 'Paid' AND lo."PaidMonth" = m."MonthStart"), 0)::bigint AS "FeeCents",
                    (COUNT(*) FILTER (WHERE lo."Status" = 'Refunded' AND lo."UpdatedMonth" = m."MonthStart"))::int AS "RefundedCount"
             FROM months m
             LEFT JOIN local_orders lo ON lo."PaidMonth" = m."MonthStart" OR lo."UpdatedMonth" = m."MonthStart"
@@ -441,13 +442,13 @@ public sealed class OrderRepository : IOrderRepository
         var row = (await _context.Database.SqlQuery<SalesByPeriodRow>($"""
             SELECT
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.StartOfToday}))::int AS "TodayCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.StartOfToday}), 0)::bigint AS "TodayRevenueCents",
+                COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.StartOfToday}), 0)::bigint AS "TodayRevenueCents",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last7DaysFrom}))::int AS "Last7DaysCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last7DaysFrom}), 0)::bigint AS "Last7DaysRevenueCents",
+                COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last7DaysFrom}), 0)::bigint AS "Last7DaysRevenueCents",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last30DaysFrom}))::int AS "Last30DaysCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last30DaysFrom}), 0)::bigint AS "Last30DaysRevenueCents",
+                COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid' AND o."PaidAt" >= {periods.Last30DaysFrom}), 0)::bigint AS "Last30DaysRevenueCents",
                 (COUNT(o."Id") FILTER (WHERE o."Status" = 'Paid'))::int AS "AllTimeCount",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::bigint AS "AllTimeRevenueCents",
+                COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid'), 0)::bigint AS "AllTimeRevenueCents",
                 MAX(c."DefaultCurrency") AS "Currency"
             FROM orders.orders o
             JOIN creators.creators c ON c."Id" = o."CreatorId"
@@ -513,7 +514,7 @@ public sealed class OrderRepository : IOrderRepository
                 g.Key.PublicId,
                 g.Key.DefaultCurrency,
                 PurchaseCount = g.Count(),
-                TotalRevenueCents = g.Sum(o => o.AmountCents)
+                TotalRevenueCents = g.Sum(o => o.KeptAmountCents)
             }
         ).ToListAsync(ct);
 
@@ -553,9 +554,9 @@ public sealed class OrderRepository : IOrderRepository
             .Select(g => new
             {
                 PaidOrderCount = g.Count(o => o.Status == OrderStatus.Paid),
-                TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0),
-                ThisMonthRevenueCents = g.Sum(o => o.Status == OrderStatus.Paid && o.PaidAt >= monthStart ? o.AmountCents : 0),
-                TotalPlatformFeeCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.PlatformFeeCents : 0),
+                TotalPaidAmountCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.KeptAmountCents : 0),
+                ThisMonthRevenueCents = g.Sum(o => o.Status == OrderStatus.Paid && o.PaidAt >= monthStart ? o.KeptAmountCents : 0),
+                TotalPlatformFeeCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.KeptPlatformFeeCents : 0),
             })
             .FirstOrDefaultAsync(ct);
 
@@ -597,8 +598,8 @@ public sealed class OrderRepository : IOrderRepository
                 o.Status.ToString(),
                 o.CreatedAt,
                 o.PaidAt,
-                o.PlatformFeeCents,
-                o.AmountCents - o.PlatformFeeCents,
+                o.KeptPlatformFeeCents,
+                o.KeptAmountCents - o.KeptPlatformFeeCents,
                 null,
                 0,
                 null,
@@ -613,7 +614,7 @@ public sealed class OrderRepository : IOrderRepository
             join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
             where o.CreatorId == creator.Id && o.Status == OrderStatus.Paid
             group new { o, p } by new { o.ProductId, p.Name } into g
-            select new { g.Key.Name, Total = g.Sum(x => x.o.AmountCents) }
+            select new { g.Key.Name, Total = g.Sum(x => x.o.KeptAmountCents) }
         ).OrderByDescending(x => x.Total).FirstOrDefaultAsync(ct);
 
         var topProduct = topRow is null ? null : new TopProductDto(topRow.Name, topRow.Total);
@@ -643,7 +644,7 @@ public sealed class OrderRepository : IOrderRepository
         var trendRows = await _context.Set<Order>()
             .AsNoTracking()
             .Where(o => o.CreatorId == creator.Id && o.Status == OrderStatus.Paid && o.PaidAt >= trendStart)
-            .Select(o => new { o.PaidAt, o.AmountCents })
+            .Select(o => new { o.PaidAt, AmountCents = o.KeptAmountCents })
             .ToListAsync(ct);
 
         var revenueTrend = new int[TrendDays];
@@ -682,7 +683,7 @@ public sealed class OrderRepository : IOrderRepository
         var monthlyRows = await _context.Set<Order>()
             .AsNoTracking()
             .Where(o => o.CreatorId == creator.Id && o.Status == OrderStatus.Paid && o.PaidAt >= monthlyTrendStart)
-            .Select(o => new { o.PaidAt, o.AmountCents })
+            .Select(o => new { o.PaidAt, AmountCents = o.KeptAmountCents })
             .ToListAsync(ct);
 
         var monthlyRevenueTrend = new int[MonthlyTrendMonths];

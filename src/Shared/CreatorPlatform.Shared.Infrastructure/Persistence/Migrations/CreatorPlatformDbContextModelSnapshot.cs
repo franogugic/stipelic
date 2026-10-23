@@ -1745,6 +1745,16 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
 
+                    b.Property<int>("KeptAmountCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("integer")
+                        .HasComputedColumnSql("\"AmountCents\" - \"RefundedCents\"", true);
+
+                    b.Property<int>("KeptPlatformFeeCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("integer")
+                        .HasComputedColumnSql("\"PlatformFeeCents\" - CASE WHEN \"AmountCents\" > 0 THEN round(\"PlatformFeeCents\"::numeric * \"RefundedCents\" / \"AmountCents\")::integer ELSE 0 END", true);
+
                     b.Property<int?>("LandingPageId")
                         .HasColumnType("integer");
 

@@ -188,6 +188,14 @@ public sealed class Order
 
     public bool IsPartlyRefunded => Status == OrderStatus.Paid && RefundedCents > 0;
 
+    /// <summary>What the sale still keeps: <see cref="AmountCents"/> minus <see cref="RefundedCents"/>. A stored column
+    /// computed by the database — the figure every revenue total sums; stale in memory until the order is saved.</summary>
+    public int KeptAmountCents { get; private set; }
+
+    /// <summary>The platform fee the sale still keeps: the fee minus its share of the refunded part, rounded as the
+    /// ledger's fee refund is. Computed by the database, like <see cref="KeptAmountCents"/>.</summary>
+    public int KeptPlatformFeeCents { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? PaidAt { get; private set; }

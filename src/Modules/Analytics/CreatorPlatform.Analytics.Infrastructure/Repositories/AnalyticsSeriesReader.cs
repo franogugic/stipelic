@@ -93,7 +93,7 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
 
         var sales = await _context.Database.SqlQuery<BucketRow>($"""
             SELECT width_bucket(extract(epoch FROM (COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
-                   COUNT(*)::bigint AS "Value", COALESCE(SUM(o."AmountCents"), 0)::bigint AS "Extra"
+                   COUNT(*)::bigint AS "Value", COALESCE(SUM(o."KeptAmountCents"), 0)::bigint AS "Extra"
             FROM orders.orders o
             WHERE o."Status" = 'Paid'
               AND ({orderPageId}::int IS NULL OR o."LandingPageId" = {orderPageId})
@@ -138,7 +138,7 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
                     (COUNT(*) FILTER (WHERE {previousFrom}::timestamptz IS NOT NULL AND p."At" >= {previousFrom} AND p."At" < {previousTo}))::bigint AS "PreviousSales",
                     COALESCE(SUM(p."AmountCents") FILTER (WHERE {previousFrom}::timestamptz IS NOT NULL AND p."At" >= {previousFrom} AND p."At" < {previousTo}), 0)::bigint AS "PreviousRevenueCents"
                 FROM (
-                    SELECT COALESCE(o."PaidAt", o."CreatedAt") AS "At", o."AmountCents"
+                    SELECT COALESCE(o."PaidAt", o."CreatedAt") AS "At", o."KeptAmountCents" AS "AmountCents"
                     FROM orders.orders o
                     WHERE o."Status" = 'Paid'
                       AND ({orderPageId}::int IS NULL OR o."LandingPageId" = {orderPageId})
@@ -212,14 +212,14 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
         var rows = await _context.Database.SqlQuery<ProductBreakdownRow>($"""
             WITH per_product AS (
                 SELECT pr."Id" AS "ProductId", pr."PublicId" AS "PublicId", pr."Name" AS "Name",
-                       COUNT(*)::bigint AS "Sales", SUM(o."AmountCents")::bigint AS "RevenueCents"
+                       COUNT(*)::bigint AS "Sales", SUM(o."KeptAmountCents")::bigint AS "RevenueCents"
                 FROM orders.orders o
                 JOIN products.products pr ON pr."Id" = o."ProductId"
                 WHERE o."CreatorId" = {creatorId} AND o."Status" = 'Paid'
                   AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from})
                   AND COALESCE(o."PaidAt", o."CreatedAt") < {to}
                 GROUP BY pr."Id", pr."PublicId", pr."Name"
-                HAVING SUM(o."AmountCents") > 0
+                HAVING SUM(o."KeptAmountCents") > 0
             ),
             ranked AS (
                 SELECT p.*, ROW_NUMBER() OVER (ORDER BY p."RevenueCents" DESC, p."Name", p."PublicId") AS "Rank",
@@ -287,7 +287,7 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
                 GROUP BY ec."LandingPageId"
             ),
             sales AS (
-                SELECT o."LandingPageId", COUNT(*)::bigint AS "Sales", SUM(o."AmountCents")::bigint AS "RevenueCents"
+                SELECT o."LandingPageId", COUNT(*)::bigint AS "Sales", SUM(o."KeptAmountCents")::bigint AS "RevenueCents"
                 FROM orders.orders o
                 WHERE o."CreatorId" = {creatorId} AND o."Status" = 'Paid' AND o."LandingPageId" IN (SELECT "Id" FROM pages)
                   AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from})
@@ -351,7 +351,7 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
                     AND ({from}::timestamptz IS NULL OR o."UpdatedAt" >= {from}) AND o."UpdatedAt" < {to}))::int AS "RefundCount",
                 COALESCE(SUM(o."AmountCents") FILTER (WHERE o."ProductId" = {productId} AND o."Status" = 'Refunded'
                     AND ({from}::timestamptz IS NULL OR o."UpdatedAt" >= {from}) AND o."UpdatedAt" < {to}), 0)::bigint AS "RefundedCents",
-                COALESCE(SUM(o."AmountCents") FILTER (WHERE o."Status" = 'Paid'
+                COALESCE(SUM(o."KeptAmountCents") FILTER (WHERE o."Status" = 'Paid'
                     AND ({from}::timestamptz IS NULL OR COALESCE(o."PaidAt", o."CreatedAt") >= {from})
                     AND COALESCE(o."PaidAt", o."CreatedAt") < {to}), 0)::bigint AS "CreatorRevenueCents"
             FROM orders.orders o
