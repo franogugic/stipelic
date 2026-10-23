@@ -107,11 +107,15 @@ public sealed class EmailOutboxMessage
         LastError = null;
     }
 
+    /// <summary>The <c>LastError</c> column's length (varchar(1000)); a longer error is cut, never rejected by the
+    /// database (which would leave the message stuck in Processing).</summary>
+    public const int LastErrorMaxLength = 1000;
+
     public void MarkAsFailed(string error, DateTimeOffset nextAttemptAt, int maxRetryCount)
     {
         RetryCount++;
-        LastError = error.Length > 2000
-            ? error[..2000]
+        LastError = error.Length > LastErrorMaxLength
+            ? error[..LastErrorMaxLength]
             : error;
 
         if (RetryCount >= maxRetryCount)

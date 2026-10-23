@@ -59,7 +59,7 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
         builder.Property(message => message.ProcessingExpiresAt);
 
         builder.Property(message => message.LastError)
-            .HasMaxLength(1000);
+            .HasMaxLength(EmailOutboxMessage.LastErrorMaxLength);
 
         builder.Property(message => message.CreatedAt)
             .IsRequired();
