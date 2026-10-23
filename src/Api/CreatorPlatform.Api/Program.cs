@@ -100,6 +100,8 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors(FrontendCorsOptions.PolicyName);
+// After CORS (a refused request still carries the CORS headers the SPA needs to read it), before anything acts.
+app.UseMiddleware<AntiForgeryHeaderMiddleware>();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseMiddleware<SessionAuthenticationMiddleware>();
 app.UseRateLimiter();
