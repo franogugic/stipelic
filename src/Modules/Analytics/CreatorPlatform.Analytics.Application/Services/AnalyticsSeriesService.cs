@@ -71,11 +71,20 @@ public sealed class AnalyticsSeriesService : IAnalyticsSeriesService
         var buckets = Fill(plan.Buckets, read.Buckets);
         var previousBuckets = plan.PreviousBuckets is null ? null : Fill(plan.PreviousBuckets, read.Buckets);
 
-        AnalyticsProductExtrasDto? extras = null;
+        AnalyticsProductExtrasDto? productExtras = null;
+        AnalyticsExtrasDto? extras = null;
         if (scopeKey == "product")
         {
             var row = await _reader.GetProductExtrasAsync(creator.Id, item.Id, current, ct);
-            extras = new AnalyticsProductExtrasDto(row.RefundCount, row.RefundedCents, row.CreatorRevenueCents);
+            productExtras = new AnalyticsProductExtrasDto(row.RefundCount, row.RefundedCents, row.CreatorRevenueCents);
+        }
+        if (scopeKey is "product" or "workspace")
+        {
+            var productId = scopeKey == "product" ? item.Id : (int?)null;
+            var row = await _reader.GetExtrasAsync(creator.Id, productId, target.LandingPageIds, current, previous, ct);
+            extras = new AnalyticsExtrasDto(
+                row.RefundCount, row.RefundedCents, row.Customers, previous is null ? null : row.PreviousCustomers,
+                row.ReturningCustomers, row.Signups, row.SignupsStillSubscribed);
         }
 
         return new AnalyticsSeriesDto(
@@ -92,6 +101,7 @@ public sealed class AnalyticsSeriesService : IAnalyticsSeriesService
             buckets,
             previousBuckets,
             periodKey == "all" ? BestMonth(buckets) : null,
+            productExtras,
             extras);
     }
 

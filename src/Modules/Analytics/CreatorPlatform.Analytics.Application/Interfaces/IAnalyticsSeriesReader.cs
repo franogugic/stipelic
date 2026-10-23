@@ -33,6 +33,12 @@ public interface IAnalyticsSeriesReader
     Task<SeriesProductBreakdownRow> GetProductBreakdownAsync(int creatorId, SeriesRange range, int limit, CancellationToken ct);
 
     Task<SeriesProductExtrasRow> GetProductExtrasAsync(int creatorId, int productId, SeriesRange range, CancellationToken ct);
+
+    /// <summary>The workspace's (<paramref name="productId"/> null) or one product's refunds, customers and sign-ups in
+    /// the period (R6.3): two grouped reads, one over the creator's orders and one over the sign-ups.</summary>
+    /// <param name="productPageIds">The product's pages (its sign-ups); ignored for the workspace, which counts new contacts.</param>
+    Task<SeriesExtrasRow> GetExtrasAsync(
+        int creatorId, int? productId, int[] productPageIds, SeriesRange current, SeriesRange? previous, CancellationToken ct);
 }
 
 public sealed record SeriesCreatorRow(int Id, string? Timezone, string Currency, DateTimeOffset CreatedAt);
@@ -58,6 +64,10 @@ public sealed record SeriesReadResult(
     SeriesValues? Previous);
 
 public sealed record SeriesProductExtrasRow(int RefundCount, long RefundedCents, long CreatorRevenueCents);
+
+public sealed record SeriesExtrasRow(
+    int RefundCount, long RefundedCents, int Customers, int PreviousCustomers, int ReturningCustomers,
+    int Signups, int SignupsStillSubscribed);
 
 public sealed record SeriesProductRow(Guid PublicId, string Name, long Sales, long RevenueCents);
 

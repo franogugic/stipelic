@@ -18,6 +18,7 @@ namespace CreatorPlatform.Analytics.Application.Series;
 /// <param name="PreviousBuckets">Yesterday's 24 hours, or the buckets of the window before; null for "all".</param>
 /// <param name="BestMonth">"all" only: the strongest of <paramref name="Buckets"/> per metric (null when it is 0).</param>
 /// <param name="Product">Product scope only: refunds in the period and the creator's revenue in the same period.</param>
+/// <param name="Extras">Workspace and product scope (null for a page): refunds, customers and sign-ups in the period.</param>
 public sealed record AnalyticsSeriesDto(
     string Scope,
     string Period,
@@ -32,7 +33,8 @@ public sealed record AnalyticsSeriesDto(
     List<AnalyticsBucketDto> Buckets,
     List<AnalyticsBucketDto>? PreviousBuckets,
     AnalyticsBestMonthDto? BestMonth,
-    AnalyticsProductExtrasDto? Product);
+    AnalyticsProductExtrasDto? Product,
+    AnalyticsExtrasDto? Extras);
 
 public sealed record AnalyticsRangeDto(DateTimeOffset From, DateTimeOffset To);
 
@@ -63,6 +65,25 @@ public sealed record AnalyticsMonthValueDto(string Month, long Value);
 /// <param name="RefundedCents">Their AmountCents.</param>
 /// <param name="CreatorRevenueCents">All the creator's paid revenue in the same period — for "share of your revenue".</param>
 public sealed record AnalyticsProductExtrasDto(int RefundCount, long RefundedCents, long CreatorRevenueCents);
+
+/// <summary>The period's refunds, customers and sign-ups — of the workspace, or of one product (R6.3). No fee.</summary>
+/// <param name="RefundCount">Orders refunded in the period (by refund time).</param>
+/// <param name="RefundedCents">Their AmountCents.</param>
+/// <param name="Customers">Distinct buyers (lower-cased email) with a Paid order counted in the period (PaidAt, else CreatedAt).</param>
+/// <param name="PreviousCustomers">The same for the previous window; null for "all".</param>
+/// <param name="ReturningCustomers">Of <paramref name="Customers"/>, those with a Paid order counted before the period start
+/// (of this product for a product, of any product for the workspace); 0 for "all", which starts at the beginning.</param>
+/// <param name="Signups">Distinct emails that signed up in the period: on the product's pages for a product, new contacts
+/// for the workspace.</param>
+/// <param name="SignupsStillSubscribed">Of <paramref name="Signups"/>, those not unsubscribed from the creator now.</param>
+public sealed record AnalyticsExtrasDto(
+    int RefundCount,
+    long RefundedCents,
+    int Customers,
+    int? PreviousCustomers,
+    int ReturningCustomers,
+    int Signups,
+    int SignupsStillSubscribed);
 
 /// <summary>Revenue and sales per product for one period (paid orders by PaidAt, else CreatedAt), best first.</summary>
 /// <param name="Products">At most 20 products with revenue, sorted by revenue desc (ties by name).</param>

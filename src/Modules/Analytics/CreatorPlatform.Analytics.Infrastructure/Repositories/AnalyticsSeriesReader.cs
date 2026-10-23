@@ -261,6 +261,72 @@ public sealed class AnalyticsSeriesReader : IAnalyticsSeriesReader
             """).AsNoTracking().ToListAsync(ct)).Single();
     }
 
+    public async Task<SeriesExtrasRow> GetExtrasAsync(
+        int creatorId, int? productId, int[] productPageIds, SeriesRange current, SeriesRange? previous, CancellationToken ct)
+    {
+        var from = current.From;
+        var to = current.To;
+        var previousFrom = previous?.From;
+        var previousTo = previous?.To;
+
+        // Orders: refunds by refund time (UpdatedAt); buyers by lower(email) of Paid orders, counted by PaidAt.
+        var orders = (await _context.Database.SqlQuery<OrderExtrasRow>($"""
+            WITH scoped AS (
+                SELECT o."Status", o."AmountCents", o."UpdatedAt", lower(o."Email") AS "Buyer", COALESCE(o."PaidAt", o."CreatedAt") AS "At"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId})
+                  AND o."Status" IN ('Paid', 'Refunded')
+            ),
+            paid AS (SELECT s."Buyer", s."At" FROM scoped s WHERE s."Status" = 'Paid' AND s."Buyer" IS NOT NULL),
+            current_buyers AS (
+                SELECT DISTINCT p."Buyer" FROM paid p WHERE ({from}::timestamptz IS NULL OR p."At" >= {from}) AND p."At" < {to}
+            )
+            SELECT
+                (SELECT COUNT(*) FROM scoped s WHERE s."Status" = 'Refunded'
+                    AND ({from}::timestamptz IS NULL OR s."UpdatedAt" >= {from}) AND s."UpdatedAt" < {to})::int AS "RefundCount",
+                (SELECT COALESCE(SUM(s."AmountCents"), 0) FROM scoped s WHERE s."Status" = 'Refunded'
+                    AND ({from}::timestamptz IS NULL OR s."UpdatedAt" >= {from}) AND s."UpdatedAt" < {to})::bigint AS "RefundedCents",
+                (SELECT COUNT(*) FROM current_buyers)::int AS "Customers",
+                (SELECT COUNT(DISTINCT p."Buyer") FROM paid p
+                    WHERE {previousFrom}::timestamptz IS NOT NULL AND p."At" >= {previousFrom} AND p."At" < {previousTo})::int AS "PreviousCustomers",
+                (SELECT COUNT(*) FROM current_buyers c
+                    WHERE {from}::timestamptz IS NOT NULL
+                      AND EXISTS (SELECT 1 FROM paid p WHERE p."Buyer" = c."Buyer" AND p."At" < {from}))::int AS "ReturningCustomers"
+            """).AsNoTracking().ToListAsync(ct)).Single();
+
+        // Sign-ups: a product's distinct emails captured on its pages (or for it); the workspace's new contacts.
+        var signups = productId is null
+            ? (await _context.Database.SqlQuery<SignupExtrasRow>($"""
+                SELECT COUNT(*)::int AS "Signups",
+                       COUNT(*) FILTER (WHERE NOT EXISTS (
+                           SELECT 1 FROM marketing.unsubscribes u WHERE u."CreatorId" = cs."CreatorId" AND u."Email" = cs."Email"))::int AS "StillSubscribed"
+                FROM marketing.contact_summaries cs
+                WHERE cs."CreatorId" = {creatorId}
+                  AND ({from}::timestamptz IS NULL OR cs."FirstCapturedAt" >= {from}) AND cs."FirstCapturedAt" < {to}
+                """).AsNoTracking().ToListAsync(ct)).Single()
+            : (await _context.Database.SqlQuery<SignupExtrasRow>($"""
+                WITH emails AS (
+                    SELECT DISTINCT ec."Email"
+                    FROM analytics.email_captures ec
+                    WHERE (ec."LandingPageId" = ANY({productPageIds}) OR ec."ProductId" = {productId})
+                      AND ({from}::timestamptz IS NULL OR ec."CapturedAt" >= {from}) AND ec."CapturedAt" < {to}
+                )
+                SELECT COUNT(*)::int AS "Signups",
+                       COUNT(*) FILTER (WHERE NOT EXISTS (
+                           SELECT 1 FROM marketing.unsubscribes u WHERE u."CreatorId" = {creatorId} AND u."Email" = e."Email"))::int AS "StillSubscribed"
+                FROM emails e
+                """).AsNoTracking().ToListAsync(ct)).Single();
+
+        return new SeriesExtrasRow(
+            orders.RefundCount, orders.RefundedCents, orders.Customers, orders.PreviousCustomers, orders.ReturningCustomers,
+            signups.Signups, signups.StillSubscribed);
+    }
+
+    private sealed record OrderExtrasRow(
+        int RefundCount, long RefundedCents, int Customers, int PreviousCustomers, int ReturningCustomers);
+
+    private sealed record SignupExtrasRow(int Signups, int StillSubscribed);
+
     /// <param name="Bucket">The 1-based bin of width_bucket over the bucket starts.</param>
     private sealed record BucketRow(int Bucket, long Value, long Extra);
 
