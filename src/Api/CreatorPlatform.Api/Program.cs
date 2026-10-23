@@ -69,7 +69,7 @@ builder.Services.AddAuthInfrastructure();
 builder.Services.AddCreatorsInfrastructure();
 builder.Services.AddProductsInfrastructure();
 builder.Services.AddLandingPagesInfrastructure();
-builder.Services.AddEmailInfrastructure(builder.Configuration);
+builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddPaymentsInfrastructure();
 builder.Services.AddPayoutsInfrastructure();
 builder.Services.AddMarketingInfrastructure();
