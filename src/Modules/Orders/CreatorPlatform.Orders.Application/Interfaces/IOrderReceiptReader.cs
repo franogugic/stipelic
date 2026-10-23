@@ -3,6 +3,7 @@ using CreatorPlatform.Shared.Domain.Enums;
 namespace CreatorPlatform.Orders.Application.Interfaces;
 
 /// <summary>Everything the receipt shows, read in one query by the Stripe Checkout session id.</summary>
+/// <param name="AccessToken">The buyer's personal link token while it is on (null before payment and after a refund).</param>
 public sealed record OrderReceiptRow(
     Guid OrderPublicId,
     string Status,
@@ -18,7 +19,8 @@ public sealed record OrderReceiptRow(
     string? BrandName,
     string? BrandColor,
     string? LogoUrl,
-    string? SupportEmail);
+    string? SupportEmail,
+    string? AccessToken);
 
 public interface IOrderReceiptReader
 {

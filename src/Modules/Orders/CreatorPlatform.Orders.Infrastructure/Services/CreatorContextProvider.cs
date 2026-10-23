@@ -86,7 +86,8 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             select new
             {
                 p.Name,
-                p.Type,
+                p.FileContentType,
+                p.FileSizeBytes,
                 p.ThumbnailUrl,
                 CreatorName = c.Name,
                 BrandName = s != null ? s.BrandName : null,
@@ -100,12 +101,8 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
 
         return new OrderEmailContext(
             row.Name,
-            row.Type switch
-            {
-                ProductType.Digital => "Digital download",
-                ProductType.Course => "Online course",
-                _ => "Service",
-            },
+            row.FileContentType,
+            row.FileSizeBytes,
             row.ThumbnailUrl,
             string.IsNullOrWhiteSpace(row.BrandName) ? row.CreatorName : row.BrandName,
             row.PrimaryColor,

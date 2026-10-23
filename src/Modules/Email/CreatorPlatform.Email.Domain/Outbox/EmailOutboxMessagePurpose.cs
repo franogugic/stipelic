@@ -8,5 +8,6 @@ public enum EmailOutboxMessagePurpose
     CampaignBroadcast = 4,
     PasswordReset = 5,
     EmailChangeVerification = 6,
-    EmailChanged = 7
+    EmailChanged = 7,
+    LeadMagnetDelivery = 8
 }

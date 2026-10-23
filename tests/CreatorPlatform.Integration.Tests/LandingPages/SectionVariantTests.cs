@@ -48,8 +48,8 @@ public sealed class SectionVariantTests
             productPublicId = Guid.NewGuid();
             var now = DateTimeOffset.UtcNow;
             await db.Database.ExecuteSqlAsync($"""
-                INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "CreatedAt", "UpdatedAt")
-                VALUES ({productPublicId}, {creator.CreatorId}, 'Guide', 0, 'Digital', 'Active', {now}, {now})
+                INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "CreatedAt", "UpdatedAt")
+                VALUES ({productPublicId}, {creator.CreatorId}, 'Guide', 0, 'Active', 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {now}, {now})
                 """);
         }
 

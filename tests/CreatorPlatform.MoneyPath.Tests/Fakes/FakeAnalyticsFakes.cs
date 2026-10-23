@@ -108,3 +108,15 @@ public sealed class FakeAnalyticsUnitOfWork : IAnalyticsUnitOfWork
         LastTransactionCommitted = true;
     }
 }
+
+/// <summary>Records every delivery call the capture service makes (the real one is covered by integration tests).</summary>
+public sealed class FakeLeadMagnetDelivery : ILeadMagnetDelivery
+{
+    public List<(int CreatorId, int LandingPageId, string Email)> Deliveries { get; } = [];
+
+    public Task DeliverAsync(int creatorId, int landingPageId, string normalizedEmail, DateTimeOffset now, CancellationToken ct)
+    {
+        Deliveries.Add((creatorId, landingPageId, normalizedEmail));
+        return Task.CompletedTask;
+    }
+}

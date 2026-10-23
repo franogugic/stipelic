@@ -6,6 +6,7 @@ using CreatorPlatform.Marketing.Domain.Unsubscribes;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
+using CreatorPlatform.Products.Domain.Access;
 using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -81,12 +82,22 @@ public sealed class OrderRepository : IOrderRepository
             join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
             join lp in _context.Set<LandingPage>().AsNoTracking() on o.LandingPageId equals (int?)lp.Id into lpJoin
             from lp in lpJoin.DefaultIfEmpty()
+            // At most one grant per order (unique index), so this left join never multiplies rows.
+            join g in _context.Set<AccessGrant>().AsNoTracking() on (int?)o.Id equals g.OrderId into gJoin
+            from g in gJoin.DefaultIfEmpty()
             where c.Slug == creatorSlug
                 && c.OwnerUserId == ownerUserId
                 && (!productPublicId.HasValue || p.PublicId == productPublicId.Value)
                 && (!landingPagePublicId.HasValue || lp.PublicId == landingPagePublicId.Value)
                 && (!status.HasValue || o.Status == status.Value)
-            select new { o, ProductName = p.Name, LandingPageTitle = (string?)lp.Title };
+            select new
+            {
+                o,
+                ProductName = p.Name,
+                LandingPageTitle = (string?)lp.Title,
+                DownloadCount = (int?)g.DownloadCount,
+                LastDownloadedAt = (DateTimeOffset?)g.LastDownloadedAt,
+            };
 
         if (customerSearch is not null)
         {
@@ -127,7 +138,9 @@ public sealed class OrderRepository : IOrderRepository
                 x.o.PaidAt,
                 x.o.PlatformFeeCents,
                 x.o.AmountCents - x.o.PlatformFeeCents,
-                x.LandingPageTitle))
+                x.LandingPageTitle,
+                x.DownloadCount ?? 0,
+                x.LastDownloadedAt))
             .ToListAsync(ct);
     }
 

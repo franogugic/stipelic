@@ -78,7 +78,7 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return await _context.Set<Product>()
             .AsNoTracking()
             .Where(p => p.Id == productId)
-            .Select(p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl, p.Type.ToString()))
+            .Select(p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl, p.Status == ProductStatus.Active))
             .FirstOrDefaultAsync(ct);
     }
 
@@ -90,7 +90,7 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return await _context.Set<Product>()
             .AsNoTracking()
             .Where(p => productIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl, p.Type.ToString()), ct);
+            .ToDictionaryAsync(p => p.Id, p => new ProductInfo(p.PublicId, p.Name, p.PriceCents, p.ThumbnailUrl, p.Status == ProductStatus.Active), ct);
     }
 
     public Task<PublicCreatorBrand?> GetPublicBrandAsync(int creatorId, CancellationToken ct) =>

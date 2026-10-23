@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Access\CreatorPlatform.Access.Application\CreatorPlatform.Access.Application.csproj" />
     <ProjectReference Include="..\..\src\Shared\CreatorPlatform.Shared.Domain\CreatorPlatform.Shared.Domain.csproj" />
     <ProjectReference Include="..\..\src\Shared\CreatorPlatform.Shared.Application\CreatorPlatform.Shared.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Creators\CreatorPlatform.Creators.Domain\CreatorPlatform.Creators.Domain.csproj" />

@@ -29,25 +29,25 @@ public sealed class PublicLandingPagePayloadTests
     }
 
     [Fact]
-    public async Task ThePublicPage_CarriesTheBrand_AndTheProductTypeAndCurrency()
+    public async Task ThePublicPage_CarriesTheBrand_AndTheProductKindAndCurrency()
     {
         var creator = await _data.CreateCreatorAsync();
         await AddSettingsAsync(creator.CreatorId, "Acme Studio", "#E2553A", "https://cdn.example.test/logo.png");
-        var productId = await AddProductAsync(creator.CreatorId, "Course", 2900, "https://cdn.example.test/cover.png");
+        var productId = await AddProductAsync(creator.CreatorId, 2900, "https://cdn.example.test/cover.png");
         var slug = await AddPageAsync(creator.CreatorId, productId, "Sales", "Published");
 
         var page = await WithServiceAsync(s => s.GetPublishedAsync(creator.Slug, slug, CancellationToken.None));
 
         Assert.NotNull(page);
         Assert.Equal(new PublicCreatorBrandDto("Acme Studio", "#E2553A", "https://cdn.example.test/logo.png"), page.Creator);
-        Assert.Equal(new PublicProductDto("Course", "Eur"), page.Product);
+        Assert.Equal(new PublicProductDto(IsFree: false, "Eur"), page.Product);
     }
 
     [Fact]
     public async Task WithoutBrandSettings_TheWorkspaceNameIsTheBrand()
     {
         var creator = await _data.CreateCreatorAsync();
-        var productId = await AddProductAsync(creator.CreatorId, "Digital", 0, null);
+        var productId = await AddProductAsync(creator.CreatorId, 0, null);
         var slug = await AddPageAsync(creator.CreatorId, productId, "LeadGen", "Published");
 
         var page = await WithServiceAsync(s => s.GetPublishedAsync(creator.Slug, slug, CancellationToken.None));
@@ -61,7 +61,7 @@ public sealed class PublicLandingPagePayloadTests
     public async Task AnUnpublishedPage_IsTheSameAsAMissingOne(string status)
     {
         var creator = await _data.CreateCreatorAsync();
-        var productId = await AddProductAsync(creator.CreatorId, "Digital", 1000, null);
+        var productId = await AddProductAsync(creator.CreatorId, 1000, null);
         var slug = await AddPageAsync(creator.CreatorId, productId, "Sales", status);
 
         Assert.Null(await WithServiceAsync(s => s.GetPublishedAsync(creator.Slug, slug, CancellationToken.None)));
@@ -73,7 +73,7 @@ public sealed class PublicLandingPagePayloadTests
     {
         var creator = await _data.CreateCreatorAsync();
         await AddSettingsAsync(creator.CreatorId, "Acme Studio", "#E2553A", null);
-        var productId = await AddProductAsync(creator.CreatorId, "Digital", 1500, "https://cdn.example.test/thumb.png");
+        var productId = await AddProductAsync(creator.CreatorId, 1500, "https://cdn.example.test/thumb.png");
         await AddPageAsync(creator.CreatorId, productId, "Sales", "Draft");
         await AddPageAsync(creator.CreatorId, productId, "Sales", "Archived");
         var published = new List<string>();
@@ -110,13 +110,13 @@ public sealed class PublicLandingPagePayloadTests
             """);
     }
 
-    private async Task<int> AddProductAsync(int creatorId, string type, int priceCents, string? thumbnailUrl)
+    private async Task<int> AddProductAsync(int creatorId, int priceCents, string? thumbnailUrl)
     {
         await using var db = _fixture.CreateDbContext();
         var now = DateTimeOffset.UtcNow;
         return (await db.Database.SqlQuery<int>($"""
-            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "ThumbnailUrl", "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', {priceCents}, {type}, 'Active', {thumbnailUrl}, {now}, {now})
+            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "ThumbnailUrl", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', {priceCents}, 'Active', 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {thumbnailUrl}, {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }

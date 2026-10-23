@@ -37,9 +37,9 @@ public sealed class LandingPageProductDetailsTests
         var name = $"Product {publicId:N}"[..20];
         var now = DateTimeOffset.UtcNow;
         var id = (await db.Database.SqlQuery<int>($"""
-            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "ThumbnailUrl",
+            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "ThumbnailUrl",
                                            "CreatedAt", "UpdatedAt")
-            VALUES ({publicId}, {creatorId}, {name}, 1000, 'Digital', 'Active', {thumbnailUrl}, {now}, {now})
+            VALUES ({publicId}, {creatorId}, {name}, 1000, 'Active', 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {thumbnailUrl}, {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
         return new SeededProduct(id, publicId, name, thumbnailUrl);

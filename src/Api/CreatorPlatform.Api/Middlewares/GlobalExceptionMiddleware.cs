@@ -71,6 +71,12 @@ public sealed class GlobalExceptionMiddleware
             _logger.LogWarning(e, "Not found: {Message}", e.Message);
             await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
         }
+        catch (GoneException e)
+        {
+            var statusCode = StatusCodes.Status410Gone;
+            _logger.LogInformation("Gone: {Message} ({Code})", e.Message, e.Code);
+            await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
+        }
         catch (InternalServerException e)
         {
             var statusCode = StatusCodes.Status500InternalServerError;

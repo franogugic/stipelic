@@ -1102,8 +1102,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ToEmail")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
 
                     b.HasKey("Id");
 
@@ -1663,6 +1663,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("BlobPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("BlobUrl")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -1681,6 +1685,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("CreatorId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
@@ -1980,7 +1988,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("CreatorPlatform.Products.Domain.Products.Product", b =>
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Access.AccessGrant", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1988,9 +1996,75 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("AccessUrl")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DownloadCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<Guid?>("EmailCaptureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("LastDownloadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("OrderId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique()
+                        .HasFilter("\"OrderId\" IS NOT NULL");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.HasIndex("CreatorId", "ProductId");
+
+                    b.HasIndex("EmailCaptureId", "ProductId")
+                        .IsUnique()
+                        .HasFilter("\"EmailCaptureId\" IS NOT NULL");
+
+                    b.ToTable("access_grants", "products", t =>
+                        {
+                            t.HasCheckConstraint("CK_access_grants_One_Source", "(\"OrderId\" IS NOT NULL AND \"EmailCaptureId\" IS NULL) OR (\"OrderId\" IS NULL AND \"EmailCaptureId\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Products.Product", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2001,6 +2075,24 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("FileBlobPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("FileContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("FileUploadedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2022,11 +2114,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2041,6 +2128,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.ToTable("products", "products", t =>
                         {
+                            t.HasCheckConstraint("CK_products_Active_Has_File", "\"Status\" <> 'Active' OR \"FileBlobPath\" IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_products_File_Complete", "(\"FileBlobPath\" IS NULL AND \"FileName\" IS NULL AND \"FileSizeBytes\" IS NULL AND \"FileContentType\" IS NULL AND \"FileUploadedAt\" IS NULL) OR (\"FileBlobPath\" IS NOT NULL AND \"FileName\" IS NOT NULL AND \"FileSizeBytes\" > 0 AND \"FileContentType\" IS NOT NULL AND \"FileUploadedAt\" IS NOT NULL)");
+
                             t.HasCheckConstraint("CK_products_PriceCents_NonNegative", "\"PriceCents\" >= 0");
                         });
                 });
@@ -2406,6 +2497,31 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
                         .WithMany()
                         .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Products.Domain.Access.AccessGrant", b =>
+                {
+                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CreatorPlatform.Analytics.Domain.EmailCaptures.EmailCapture", null)
+                        .WithMany()
+                        .HasForeignKey("EmailCaptureId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CreatorPlatform.Orders.Domain.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CreatorPlatform.Products.Domain.Products.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

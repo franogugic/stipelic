@@ -37,6 +37,12 @@ public sealed class BlobReferenceConfiguration : IEntityTypeConfiguration<BlobRe
         builder.HasIndex(b => b.BlobUrl)
             .IsUnique();
 
+        builder.Property(b => b.BlobPath)
+            .HasMaxLength(500);
+
+        builder.Property(b => b.FileName)
+            .HasMaxLength(255);
+
         builder.Property(b => b.ContentType)
             .HasMaxLength(100)
             .IsRequired();

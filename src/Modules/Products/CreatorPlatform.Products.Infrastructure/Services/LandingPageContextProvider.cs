@@ -21,4 +21,16 @@ public sealed class LandingPageContextProvider : ILandingPageContextProvider
             .AsNoTracking()
             .AnyAsync(lp => lp.ProductId == productId && lp.Status == LandingPageStatus.Published, ct);
     }
+
+    public async Task<(bool LeadPage, bool SalesPage)> GetPageKindsUsingAsync(int productId, CancellationToken ct)
+    {
+        var types = await _context.Set<LandingPage>()
+            .AsNoTracking()
+            .Where(lp => lp.ProductId == productId && lp.Status != LandingPageStatus.Archived)
+            .Select(lp => lp.Type)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return (types.Contains(LandingPageType.LeadGen), types.Contains(LandingPageType.Sales));
+    }
 }

@@ -10,8 +10,11 @@ public sealed record CreatorContext(int CreatorId, int MaxLandingPages, int Acti
     public bool HasPayoutProfile { get; init; }
 }
 
-/// <param name="Type">"Digital" | "Service" | "Course".</param>
-public sealed record ProductInfo(Guid PublicId, string Name, int PriceCents, string? ThumbnailUrl, string Type);
+/// <param name="IsActive">Active (and so has its file): only such a free product can be a lead page's document.</param>
+public sealed record ProductInfo(Guid PublicId, string Name, int PriceCents, string? ThumbnailUrl, bool IsActive)
+{
+    public bool IsFree => PriceCents == 0;
+}
 
 /// <summary>What a visitor sees of a creator: the brand name (else the workspace name), colour, logo and the
 /// currency their products are sold in ("Eur" | "Usd").</summary>

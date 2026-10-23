@@ -13,6 +13,8 @@ public class ProductStatusUpdateTests
     private const int OwnerUserId = 1;
     private const int CreatorId = 1;
 
+    private static readonly FakeProductFiles Files = new();
+
     private static (
         ProductService Service,
         FakeProductRepository ProductRepository,
@@ -25,13 +27,14 @@ public class ProductStatusUpdateTests
         };
         var landingPages = new FakeLandingPageContextProvider();
         var service = new ProductService(
-            productRepository, contextProvider, new FakeProductsUnitOfWork(), new FakeOrderContextProvider(), landingPages);
+            productRepository, contextProvider, new FakeProductsUnitOfWork(), new FakeOrderContextProvider(), landingPages, Files);
         return (service, productRepository, landingPages);
     }
 
     private static Product SeedProduct(FakeProductRepository repository, ProductStatus status)
     {
-        var product = Product.Create(CreatorId, "Test Product", null, 1000, ProductType.Digital, null, null, DateTimeOffset.UtcNow);
+        var product = Product.Create(CreatorId, "Test Product", null, 1000, null, DateTimeOffset.UtcNow);
+        product.AttachFile(ProductFile.Create($"productfile/{CreatorId}/{Guid.NewGuid():N}.pdf", "guide.pdf", 8_600_000, "application/pdf", DateTimeOffset.UtcNow), DateTimeOffset.UtcNow);
         if (status == ProductStatus.Active) product.Publish(DateTimeOffset.UtcNow);
         repository.Seed(product);
         return product;
@@ -41,7 +44,6 @@ public class ProductStatusUpdateTests
     {
         Name = "Renamed",
         PriceCents = 2900,
-        Type = "Digital",
         Status = status
     };
 
@@ -134,7 +136,7 @@ public class ProductStatusUpdateTests
         var (service, _, _) = BuildService();
 
         var result = await service.CreateAsync(CreatorSlug, OwnerUserId,
-            new CreateProductRequestDto { Name = "New", PriceCents = 1000, Type = "Digital", Status = status }, CancellationToken.None);
+            new CreateProductRequestDto { Name = "New", PriceCents = 1000, FileReference = Files.Upload(CreatorId), Status = status }, CancellationToken.None);
 
         Assert.Equal(expected, result.Status);
     }
@@ -146,6 +148,6 @@ public class ProductStatusUpdateTests
 
         await Assert.ThrowsAsync<BadRequestException>(() =>
             service.CreateAsync(CreatorSlug, OwnerUserId,
-                new CreateProductRequestDto { Name = "New", PriceCents = 1000, Type = "Digital", Status = "Archived" }, CancellationToken.None));
+                new CreateProductRequestDto { Name = "New", PriceCents = 1000, FileReference = Files.Upload(CreatorId), Status = "Archived" }, CancellationToken.None));
     }
 }

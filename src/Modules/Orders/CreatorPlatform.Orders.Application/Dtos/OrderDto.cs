@@ -12,4 +12,7 @@ public sealed record OrderDto(
     DateTimeOffset? PaidAt,
     int PlatformFeeCents,
     int NetAmountCents,
-    string? LandingPageTitle);
+    string? LandingPageTitle,
+    // The buyer's personal link (F8): how often they downloaded the file. 0 before payment.
+    int DownloadCount = 0,
+    DateTimeOffset? LastDownloadedAt = null);

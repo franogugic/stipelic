@@ -7,5 +7,7 @@ public interface ILandingPageContextProvider
 {
     Task<bool> IsUsedByPublishedPageAsync(int productId, CancellationToken ct);
 
-    /// <summary>The product's draft and published pages (archived pages sell nothing), published first.</summary>
+    /// <summary>Whether a draft or published (not archived) page uses the product, by page kind: a lead page gives a
+    /// free product away, a Sales page sells a paid one.</summary>
+    Task<(bool LeadPage, bool SalesPage)> GetPageKindsUsingAsync(int productId, CancellationToken ct);
 }

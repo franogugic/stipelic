@@ -43,7 +43,8 @@ public sealed class OrderReceiptService : IOrderReceiptService
                 row.CreatorSlug,
                 row.BrandColor,
                 row.LogoUrl,
-                row.SupportEmail));
+                row.SupportEmail),
+            row.Status == "Paid" ? row.AccessToken : null);
     }
 
     private static string? FirstName(string? name)

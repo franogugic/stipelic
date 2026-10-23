@@ -17,26 +17,34 @@ public sealed class BlobReference
         int creatorId,
         MediaUploadPurpose purpose,
         string blobUrl,
+        string blobPath,
         string contentType,
+        string? fileName,
         DateTimeOffset createdAt)
     {
         PublicId = publicId;
         CreatorId = creatorId;
         Purpose = purpose;
         BlobUrl = blobUrl;
+        BlobPath = blobPath;
         ContentType = contentType;
+        FileName = fileName;
         Status = BlobReferenceStatus.Pending;
         CreatedAt = createdAt;
     }
 
+    /// <param name="blobPath">The path inside its container (<c>{purpose}/{creatorId}/{guid}.{ext}</c>).</param>
+    /// <param name="fileName">The name the creator's file had (product documents: the name buyers download it as).</param>
     public static BlobReference CreatePending(
         int creatorId,
         MediaUploadPurpose purpose,
         string blobUrl,
+        string blobPath,
         string contentType,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string? fileName = null)
     {
-        return new BlobReference(Guid.NewGuid(), creatorId, purpose, blobUrl, contentType, createdAt);
+        return new BlobReference(Guid.NewGuid(), creatorId, purpose, blobUrl, blobPath, contentType, fileName, createdAt);
     }
 
     /// <summary>Only valid from <see cref="BlobReferenceStatus.Pending"/> — a confirmed reference is
@@ -60,6 +68,12 @@ public sealed class BlobReference
     public MediaUploadPurpose Purpose { get; private set; }
 
     public string BlobUrl { get; private set; } = string.Empty;
+
+    /// <summary>Path inside the container; null on rows from before it was recorded.</summary>
+    public string? BlobPath { get; private set; }
+
+    /// <summary>The uploaded file's original name — set for product documents.</summary>
+    public string? FileName { get; private set; }
 
     public string ContentType { get; private set; } = string.Empty;
 

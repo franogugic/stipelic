@@ -49,7 +49,8 @@ public class CheckoutBuyerEmailTests
             _outbox,
             new FakeHomeSummaryCache(),
             new PayoutLedgerService(_ledger, NullLogger<PayoutLedgerService>.Instance),
-            Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.example.com", ApiBaseUrl = "https://api.example.com" }),
+            new FakeOrderAccessGrants(),
+            Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.example.com" }),
             NullLogger<OrderWebhookService>.Instance);
 
         return service.HandleCheckoutSessionCompletedAsync(

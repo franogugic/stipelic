@@ -50,6 +50,7 @@ public static class RateLimitPolicies
     public const string DeleteContact = "DeleteContact";
     public const string MutateTemplate = "MutateTemplate";
     public const string RequestMediaUpload = "RequestMediaUpload";
+    public const string ProductAccess = "ProductAccess";
 
     private static readonly TimeSpan OneMinute = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan TenMinutes = TimeSpan.FromMinutes(10);
@@ -98,6 +99,8 @@ public static class RateLimitPolicies
         new(DeleteContact, 60, TenMinutes),
         new(MutateTemplate, 30, TenMinutes),
         new(RequestMediaUpload, 20, TenMinutes),
+        // The public download page: loading it and each download share one bucket per IP.
+        new(ProductAccess, 30, TenMinutes),
     ];
 
     /// <summary>The global limiter every request passes through, on top of its endpoint policy.</summary>

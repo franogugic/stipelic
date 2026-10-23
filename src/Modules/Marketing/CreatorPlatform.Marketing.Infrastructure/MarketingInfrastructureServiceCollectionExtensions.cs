@@ -38,6 +38,7 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddSingleton<IContactCsvReader, ContactCsvReader>();
         services.AddScoped<IContactImportRepository, ContactImportRepository>();
         services.AddScoped<IContactImportService, ContactImportService>();
+        services.AddScoped<CreatorPlatform.Analytics.Application.Interfaces.ILeadMagnetDelivery, LeadMagnetDelivery>();
 
         return services;
     }
