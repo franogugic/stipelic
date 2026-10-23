@@ -56,9 +56,9 @@ public class ProductFileUploadTests
 
     private static byte[] Pad(byte[] head, int size) => [.. head, .. new byte[Math.Max(0, size - head.Length)]];
 
-    private async Task<(string BlobUrl, BlobReference Reference)> UploadAsync(string declaredType, string storedType, byte[] bytes, string fileName = "Guide.pdf")
+    private async Task<(string BlobUrl, BlobReference Reference)> UploadAsync(string declaredType, string storedType, byte[] bytes)
     {
-        var upload = await _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, declaredType, CancellationToken.None, fileName);
+        var upload = await _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, declaredType, CancellationToken.None);
         var reference = Assert.Single(_references.References, r => r.BlobUrl == upload.BlobUrl);
         _storage.Put(reference.BlobPath!, storedType, bytes);
         return (upload.BlobUrl, reference);
@@ -71,14 +71,15 @@ public class ProductFileUploadTests
     public async Task ARealDocument_IsConfirmed_AndAnsweredWithAReferenceNotAUrl(string contentType)
     {
         var bytes = contentType switch { "application/pdf" => Pdf(), "application/zip" => Zip(), _ => Epub() };
-        var (blobUrl, reference) = await UploadAsync(contentType, contentType, bytes, "My Guide.pdf");
+        var (blobUrl, reference) = await UploadAsync(contentType, contentType, bytes);
 
-        var result = await _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None);
+        var result = await _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None, "My Guide.pdf");
 
         Assert.Null(result.Url);
         Assert.Equal(reference.PublicId, result.FileReference);
         Assert.Equal("My Guide.pdf", result.FileName);
-        Assert.Equal(bytes.LongLength, result.SizeBytes);
+        Assert.Equal(bytes.LongLength, result.FileSizeBytes);
+        Assert.Equal("My Guide.pdf", reference.FileName);
         Assert.Equal(contentType, result.ContentType);
         Assert.Equal(BlobReferenceStatus.Confirmed, reference.Status);
         Assert.Empty(_storage.DeleteCalls);
@@ -105,7 +106,7 @@ public class ProductFileUploadTests
     {
         var (blobUrl, reference) = await UploadAsync(contentType, contentType, bytes);
 
-        var error = await Assert.ThrowsAsync<BadRequestException>(() => _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<BadRequestException>(() => _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None, "Guide.pdf"));
 
         Assert.Equal(MediaUploadService.FileRejectedCode, error.Code);
         Assert.Equal([reference.BlobPath!], _storage.DeleteCalls);
@@ -118,7 +119,7 @@ public class ProductFileUploadTests
         var (blobUrl, reference) = await UploadAsync("application/pdf", "application/pdf", Pdf());
         _storage.ReportedLengths[reference.BlobPath!] = MaxBytes + 1;
 
-        await Assert.ThrowsAsync<BadRequestException>(() => _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None));
+        await Assert.ThrowsAsync<BadRequestException>(() => _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None, "Guide.pdf"));
 
         Assert.Equal([reference.BlobPath!], _storage.DeleteCalls);
     }
@@ -129,7 +130,7 @@ public class ProductFileUploadTests
         // Declared a PDF, but the browser stored it as a ZIP (a valid one).
         var (blobUrl, reference) = await UploadAsync("application/pdf", "application/zip", Zip());
 
-        await Assert.ThrowsAsync<BadRequestException>(() => _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None));
+        await Assert.ThrowsAsync<BadRequestException>(() => _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None, "Guide.pdf"));
 
         Assert.Equal([reference.BlobPath!], _storage.DeleteCalls);
     }
@@ -138,19 +139,40 @@ public class ProductFileUploadTests
     public async Task AnUnsupportedType_IsRefusedBeforeAnyUploadUrl()
     {
         await Assert.ThrowsAsync<BadRequestException>(() =>
-            _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, "application/x-msdownload", CancellationToken.None, "setup.exe"));
+            _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, "application/x-msdownload", CancellationToken.None));
 
         Assert.Empty(_references.References);
     }
 
     [Fact]
-    public async Task AProductFile_NeedsItsName_AndKeepsOnlyTheName()
+    public async Task ConfirmingAProductFile_NeedsItsName_AndKeepsOnlyTheName()
     {
-        var missing = await Assert.ThrowsAsync<BadRequestException>(() =>
-            _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, "application/pdf", CancellationToken.None, "  "));
-        Assert.Equal(MediaUploadService.FileNameRequiredCode, missing.Code);
+        var (blobUrl, reference) = await UploadAsync("application/pdf", "application/pdf", Pdf());
 
-        await _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, "application/pdf", CancellationToken.None, "..\\..\\secret\\Guide.pdf");
-        Assert.Equal("Guide.pdf", Assert.Single(_references.References).FileName);
+        var missing = await Assert.ThrowsAsync<BadRequestException>(() =>
+            _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None, "  "));
+        Assert.Equal(MediaUploadService.FileNameRequiredCode, missing.Code);
+        Assert.Equal(BlobReferenceStatus.Pending, reference.Status);    // nothing deleted: the client can confirm again
+        Assert.Empty(_storage.DeleteCalls);
+
+        var result = await _service.ConfirmUploadAsync(CreatorId, blobUrl, CancellationToken.None, "..\\..\\secret\\Guide.pdf");
+        Assert.Equal("Guide.pdf", result.FileName);
+        Assert.Equal("Guide.pdf", reference.FileName);
+    }
+
+    [Fact]
+    public async Task ANameGivenAtUploadUrl_IsChecked_AndUsedWhenTheConfirmGivesNone()
+    {
+        var blank = await Assert.ThrowsAsync<BadRequestException>(() =>
+            _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, "application/pdf", CancellationToken.None, " "));
+        Assert.Equal(MediaUploadService.FileNameRequiredCode, blank.Code);
+
+        var upload = await _service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductFile, "application/pdf", CancellationToken.None, "Early.pdf");
+        var reference = Assert.Single(_references.References, r => r.BlobUrl == upload.BlobUrl);
+        _storage.Put(reference.BlobPath!, "application/pdf", Pdf());
+
+        var result = await _service.ConfirmUploadAsync(CreatorId, upload.BlobUrl, CancellationToken.None);
+
+        Assert.Equal("Early.pdf", result.FileName);
     }
 }

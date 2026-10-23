@@ -14,6 +14,8 @@ public sealed record OrderReceiptRow(
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     string ProductName,
+    string? FileName,
+    long? FileSizeBytes,
     string CreatorName,
     string CreatorSlug,
     string? BrandName,

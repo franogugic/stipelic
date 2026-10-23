@@ -27,6 +27,8 @@ public sealed class OrderReceiptReader : IOrderReceiptReader
                 o."CreatedAt"        AS "CreatedAt",
                 o."PaidAt"           AS "PaidAt",
                 p."Name"             AS "ProductName",
+                p."FileName"         AS "FileName",
+                p."FileSizeBytes"    AS "FileSizeBytes",
                 c."Name"             AS "CreatorName",
                 c."Slug"             AS "CreatorSlug",
                 s."BrandName"        AS "BrandName",

@@ -1,8 +1,9 @@
 namespace CreatorPlatform.Access.Application.Interfaces;
 
 /// <summary>A personal link as the download page sees it.</summary>
+/// <param name="RevokedAt">When a refund turned the link off; null while it works.</param>
 public sealed record AccessGrantView(
-    bool IsRevoked,
+    DateTimeOffset? RevokedAt,
     string ProductName,
     string? FileName,
     long? FileSizeBytes,

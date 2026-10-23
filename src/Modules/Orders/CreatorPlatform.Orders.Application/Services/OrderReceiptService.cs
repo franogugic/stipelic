@@ -44,7 +44,9 @@ public sealed class OrderReceiptService : IOrderReceiptService
                 row.BrandColor,
                 row.LogoUrl,
                 row.SupportEmail),
-            row.Status == "Paid" ? row.AccessToken : null);
+            row.Status == "Paid" ? row.AccessToken : null,
+            row.FileName,
+            row.FileSizeBytes);
     }
 
     private static string? FirstName(string? name)

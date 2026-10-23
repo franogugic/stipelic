@@ -14,7 +14,7 @@ public class OrdersExportTests
     private static OrderDto Order(
         string? name = "Ana Kovač", string product = "Preset Pack", string? landingPage = "Spring Sale",
         int amountCents = 2900, int feeCents = 145, string status = "Paid", Guid? id = null, DateTimeOffset? createdAt = null,
-        string? email = "ana@example.com") => new(
+        string? email = "ana@example.com", int downloads = 3) => new(
         id ?? OrderId,
         email,
         name,
@@ -26,13 +26,14 @@ public class OrdersExportTests
         null,
         feeCents,
         amountCents - feeCents,
-        landingPage);
+        landingPage,
+        downloads);
 
     [Fact]
     public void Header_AndFileName_MatchTheContract()
     {
         Assert.Equal(
-            "order_id,created_at,customer_name,customer_email,product,landing_page,status,amount,platform_fee,net,currency",
+            "order_id,created_at,customer_name,customer_email,product,landing_page,status,amount,platform_fee,net,currency,downloads",
             OrdersCsv.Header);
         Assert.Equal("orders-acme-2026-10-02.csv", OrdersCsv.FileName("acme", new DateTimeOffset(2026, 10, 2, 8, 0, 0, TimeSpan.Zero)));
     }
@@ -41,7 +42,7 @@ public class OrdersExportTests
     public void Row_FormatsMoneyColumnsAsDecimalsAndDateAsIsoUtc()
     {
         Assert.Equal(
-            $"{OrderId},2026-09-30T12:05:09Z,Ana Kovač,ana@example.com,Preset Pack,Spring Sale,Paid,29.00,1.45,27.55,EUR",
+            $"{OrderId},2026-09-30T12:05:09Z,Ana Kovač,ana@example.com,Preset Pack,Spring Sale,Paid,29.00,1.45,27.55,EUR,3",
             OrdersCsv.Row(Order()));
     }
 
@@ -53,14 +54,14 @@ public class OrdersExportTests
     {
         var row = OrdersCsv.Row(Order(amountCents: amountCents, feeCents: feeCents));
 
-        Assert.Contains($",Paid,{expectedMoney},EUR", row);
+        Assert.Contains($",Paid,{expectedMoney},EUR,", row);
     }
 
     [Fact]
     public void Row_MissingNameAndLandingPage_AreEmptyFields()
     {
         Assert.Equal(
-            $"{OrderId},2026-09-30T12:05:09Z,,ana@example.com,Preset Pack,,Paid,29.00,1.45,27.55,EUR",
+            $"{OrderId},2026-09-30T12:05:09Z,,ana@example.com,Preset Pack,,Paid,29.00,1.45,27.55,EUR,3",
             OrdersCsv.Row(Order(name: null, landingPage: null)));
     }
 
@@ -68,8 +69,8 @@ public class OrdersExportTests
     public void Row_APendingOrderWithoutAnEmailYet_HasAnEmptyEmailField()
     {
         Assert.Equal(
-            $"{OrderId},2026-09-30T12:05:09Z,,,Preset Pack,Spring Sale,Pending,29.00,1.45,27.55,EUR",
-            OrdersCsv.Row(Order(name: null, email: null, status: "Pending")));
+            $"{OrderId},2026-09-30T12:05:09Z,,,Preset Pack,Spring Sale,Pending,29.00,1.45,27.55,EUR,0",
+            OrdersCsv.Row(Order(name: null, email: null, status: "Pending", downloads: 0)));
     }
 
     [Fact]
@@ -78,7 +79,7 @@ public class OrdersExportTests
         var row = OrdersCsv.Row(Order(name: "=HYPERLINK(\"http://evil\",\"x\")", product: "+Bonus", landingPage: "-50% off"));
 
         Assert.Equal(
-            $"{OrderId},2026-09-30T12:05:09Z,\"'=HYPERLINK(\"\"http://evil\"\",\"\"x\"\")\",ana@example.com,'+Bonus,'-50% off,Paid,29.00,1.45,27.55,EUR",
+            $"{OrderId},2026-09-30T12:05:09Z,\"'=HYPERLINK(\"\"http://evil\"\",\"\"x\"\")\",ana@example.com,'+Bonus,'-50% off,Paid,29.00,1.45,27.55,EUR,3",
             row);
     }
 

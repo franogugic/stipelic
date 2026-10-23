@@ -55,7 +55,7 @@ public sealed class MediaController : ControllerBase
         var currentUser = GetVerifiedUser();
         var creatorId = await GetOwnedCreatorIdAsync(slug, currentUser.Id, ct);
 
-        var response = await _mediaUploadService.ConfirmUploadAsync(creatorId, request.BlobUrl, ct);
+        var response = await _mediaUploadService.ConfirmUploadAsync(creatorId, request.BlobUrl, ct, request.FileName);
 
         return Ok(ApiResponse<ConfirmUploadResponseDto>.Success(
             StatusCodes.Status200OK,

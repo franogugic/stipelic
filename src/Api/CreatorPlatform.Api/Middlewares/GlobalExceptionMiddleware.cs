@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using CreatorPlatform.Auth.Application.Exceptions;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.Shared.Application.Exceptions;
@@ -75,7 +77,10 @@ public sealed class GlobalExceptionMiddleware
         {
             var statusCode = StatusCodes.Status410Gone;
             _logger.LogInformation("Gone: {Message} ({Code})", e.Message, e.Code);
-            await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
+            if (e.Body is null)
+                await HandleExceptionAsync(context, statusCode, e.Message, e.Code);
+            else
+                await HandleGoneWithBodyAsync(context, e);
         }
         catch (InternalServerException e)
         {
@@ -106,5 +111,23 @@ public sealed class GlobalExceptionMiddleware
         };
 
         await context.Response.WriteAsJsonAsync(response);
+    }
+
+    /// <summary>The usual <c>statusCode</c>/<c>message</c>/<c>code</c>, plus the gone thing's own fields at the top level.</summary>
+    private static async Task HandleGoneWithBodyAsync(HttpContext context, GoneException exception)
+    {
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = StatusCodes.Status410Gone;
+
+        var body = new JsonObject
+        {
+            ["statusCode"] = StatusCodes.Status410Gone,
+            ["message"] = exception.Message,
+            ["code"] = exception.Code,
+        };
+        foreach (var (name, value) in JsonSerializer.SerializeToNode(exception.Body, JsonSerializerOptions.Web)!.AsObject().ToList())
+            body[name] = value?.DeepClone();
+
+        await context.Response.WriteAsJsonAsync(body);
     }
 }

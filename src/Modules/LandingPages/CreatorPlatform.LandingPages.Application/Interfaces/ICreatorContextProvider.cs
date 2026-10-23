@@ -10,7 +10,7 @@ public sealed record CreatorContext(int CreatorId, int MaxLandingPages, int Acti
     public bool HasPayoutProfile { get; init; }
 }
 
-/// <param name="IsActive">Active (and so has its file): only such a free product can be a lead page's document.</param>
+/// <param name="IsActive">Active (and so has its file): only an Active product can be on a page.</param>
 public sealed record ProductInfo(Guid PublicId, string Name, int PriceCents, string? ThumbnailUrl, bool IsActive)
 {
     public bool IsFree => PriceCents == 0;

@@ -41,12 +41,9 @@ public sealed class ProductAccessService : IProductAccessService
             grant.ProductName,
             grant.FileName!,
             grant.FileSizeBytes!.Value,
-            new ProductAccessBrandDto(
-                string.IsNullOrWhiteSpace(grant.BrandName) ? grant.CreatorName : grant.BrandName,
-                grant.BrandColor,
-                grant.LogoUrl),
+            Brand(grant),
             grant.OrderPublicId is null ? "capture" : "order",
-            grant.OrderPublicId is { } orderPublicId ? OrderNumbers.From(orderPublicId) : null,
+            OrderNumber(grant),
             grant.PaidAt);
     }
 
@@ -76,14 +73,28 @@ public sealed class ProductAccessService : IProductAccessService
             throw Invalid();
 
         var grant = await _reader.GetAsync(token!, ct) ?? throw Invalid();
-        if (grant.IsRevoked)
-            throw new GoneException("This download link was turned off because the order was refunded.", RevokedCode);
+        if (grant.RevokedAt is { } revokedAt)
+        {
+            // Only a refund turns a link off, at the refund: the revocation time is the refund time.
+            throw new GoneException(
+                "This download link was turned off because the order was refunded.",
+                RevokedCode,
+                new ProductAccessRevokedDto(grant.ProductName, Brand(grant), OrderNumber(grant), revokedAt));
+        }
         // A product people hold links to keeps its file (ProductService refuses to remove it); defensive only.
         if (grant.FileName is null || grant.FileSizeBytes is null)
             throw Invalid();
 
         return grant;
     }
+
+    private static ProductAccessBrandDto Brand(AccessGrantView grant) => new(
+        string.IsNullOrWhiteSpace(grant.BrandName) ? grant.CreatorName : grant.BrandName,
+        grant.BrandColor,
+        grant.LogoUrl);
+
+    private static string? OrderNumber(AccessGrantView grant) =>
+        grant.OrderPublicId is { } orderPublicId ? OrderNumbers.From(orderPublicId) : null;
 
     private static bool IsWellFormed(string? token) =>
         token is { Length: TokenLength } && token.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');

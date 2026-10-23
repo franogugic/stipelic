@@ -20,7 +20,7 @@ public sealed partial class LandingPageService : ILandingPageService
     public const string PayoutsNotReadyCode = "PAYOUTS_NOT_READY";
     public const string PlanLimitReachedCode = "PLAN_LIMIT_REACHED";
 
-    // Product rules (F8): a Sales page sells a paid product; a lead page gives away an Active free one, or nothing.
+    // Product rules (F8): a Sales page sells an Active paid product; a lead page gives away an Active free one, or nothing.
     public const string ProductRequiredCode = "PRODUCT_REQUIRED";
     public const string ProductNotPaidCode = "PRODUCT_NOT_PAID";
     public const string ProductNotFreeCode = "PRODUCT_NOT_FREE";
@@ -479,8 +479,8 @@ public sealed partial class LandingPageService : ILandingPageService
         return (productId, info);
     }
 
-    /// <summary>Null when the product fits the page type: a Sales page needs a paid product; a lead page needs nothing,
-    /// or an Active free product (the document a sign-up gets by email).</summary>
+    /// <summary>Null when the product fits the page type: a Sales page needs an Active paid product; a lead page needs
+    /// nothing, or an Active free product (the document a sign-up gets by email).</summary>
     private static (string Message, string Code)? ProductProblem(LandingPageType type, ProductInfo? product)
     {
         if (type == LandingPageType.Sales)
@@ -489,6 +489,8 @@ public sealed partial class LandingPageService : ILandingPageService
                 return ("A Sales page needs the product it sells.", ProductRequiredCode);
             if (product.IsFree)
                 return ("A Sales page sells a paid product. Free products are given away on lead pages.", ProductNotPaidCode);
+            if (!product.IsActive)
+                return ("A Sales page sells an active product. Make the product active first.", ProductNotActiveCode);
             return null;
         }
 

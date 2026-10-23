@@ -88,10 +88,46 @@ public sealed class ProductService : IProductService
         var revenueByProductId = await _orderContextProvider.GetProductRevenueByCreatorIdAsync(creatorId, ct);
         var trendByProductId = await _orderContextProvider.GetProductSalesTrendsAsync(
             creatorId, ProductSalesTrend.FirstMonth(DateTimeOffset.UtcNow), ct);
+        var signupsByProductId = products.Any(p => p.IsFree)
+            ? await _landingPageContextProvider.GetProductSignupsAsync(creatorId, DateTimeOffset.UtcNow, ct)
+            : [];
 
         return products
-            .Select(p => MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id), trendByProductId.GetValueOrDefault(p.Id)))
+            .Select(p => WithSignups(
+                MapToDto(p, revenueByProductId.GetValueOrDefault(p.Id), trendByProductId.GetValueOrDefault(p.Id)),
+                p,
+                signupsByProductId.GetValueOrDefault(p.Id)))
             .ToList();
+    }
+
+    /// <summary>A free product's sign-ups (zeros when nobody signed up yet); a paid product carries none.</summary>
+    private static ProductResponseDto WithSignups(ProductResponseDto dto, Product product, ProductSignups? signups)
+    {
+        if (!product.IsFree)
+            return dto;
+
+        var trend = signups?.Trend ?? new int[ProductSalesTrend.Months];
+        return new ProductResponseDto
+        {
+            PublicId = dto.PublicId,
+            Name = dto.Name,
+            Description = dto.Description,
+            PriceCents = dto.PriceCents,
+            Status = dto.Status,
+            ThumbnailUrl = dto.ThumbnailUrl,
+            FileName = dto.FileName,
+            FileSizeBytes = dto.FileSizeBytes,
+            FileContentType = dto.FileContentType,
+            FileUploadedAt = dto.FileUploadedAt,
+            CreatedAt = dto.CreatedAt,
+            UpdatedAt = dto.UpdatedAt,
+            RevenueCents = dto.RevenueCents,
+            PaidOrderCount = dto.PaidOrderCount,
+            SalesTrend = dto.SalesTrend,
+            SignupCount = signups?.Total ?? 0,
+            SignupsThisMonth = trend[^1],
+            SignupsTrend = trend,
+        };
     }
 
     public async Task<ProductResponseDto> UpdateAsync(
@@ -287,12 +323,12 @@ public sealed class ProductService : IProductService
         Name = product.Name,
         Description = product.Description,
         PriceCents = product.PriceCents,
-        IsFree = product.IsFree,
         Status = product.Status.ToString(),
         ThumbnailUrl = product.ThumbnailUrl,
-        File = product.HasFile
-            ? new ProductFileDto(product.FileName!, product.FileSizeBytes!.Value, product.FileContentType!, product.FileUploadedAt!.Value)
-            : null,
+        FileName = product.FileName,
+        FileSizeBytes = product.FileSizeBytes,
+        FileContentType = product.FileContentType,
+        FileUploadedAt = product.FileUploadedAt,
         CreatedAt = product.CreatedAt,
         UpdatedAt = product.UpdatedAt,
         RevenueCents = revenue?.RevenueCents ?? 0,

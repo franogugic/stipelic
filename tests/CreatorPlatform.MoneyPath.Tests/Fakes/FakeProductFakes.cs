@@ -41,6 +41,7 @@ public sealed class FakeProductRepository : IProductRepository
 
     public Task<bool> HasActiveAccessGrantsAsync(int productId, CancellationToken ct)
         => Task.FromResult(ProductsWithActiveGrants.Contains(productId));
+
 }
 
 /// <summary>Confirmed uploads by (creator, reference); every other reference resolves to nothing, like another creator's
@@ -117,4 +118,9 @@ public sealed class FakeLandingPageContextProvider : ILandingPageContextProvider
 
     public Task<(bool LeadPage, bool SalesPage)> GetPageKindsUsingAsync(int productId, CancellationToken ct)
         => Task.FromResult((UsedByLeadPage, UsedBySalesPage));
+
+    public Dictionary<int, ProductSignups> SignupsByProductId { get; } = [];
+
+    public Task<Dictionary<int, ProductSignups>> GetProductSignupsAsync(int creatorId, DateTimeOffset now, CancellationToken ct)
+        => Task.FromResult(SignupsByProductId);
 }

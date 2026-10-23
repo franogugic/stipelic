@@ -46,7 +46,8 @@ public sealed class MediaUploadService : IMediaUploadService
                 $"Unsupported content type '{contentType}'. Allowed: {string.Join(", ", allowed)}.");
         }
 
-        var name = isProductFile ? NormalizeFileName(fileName) : null;
+        // A product file's name may come now or with the confirm; one given now must be a real name.
+        var name = isProductFile && fileName is not null ? NormalizeFileName(fileName) : null;
         var now = DateTimeOffset.UtcNow;
         var extension = isProductFile ? ProductFileSignatures.ExtensionFor(contentType) : ExtensionFor(contentType);
         var blobPath = $"{purpose}/{creatorId}/{Guid.NewGuid()}.{extension}";
@@ -67,7 +68,7 @@ public sealed class MediaUploadService : IMediaUploadService
         return new UploadUrlResponseDto(uploadUrl.ToString(), blobUrl, now.Add(expiry));
     }
 
-    public async Task<ConfirmUploadResponseDto> ConfirmUploadAsync(int creatorId, string blobUrl, CancellationToken ct)
+    public async Task<ConfirmUploadResponseDto> ConfirmUploadAsync(int creatorId, string blobUrl, CancellationToken ct, string? fileName = null)
     {
         var reference = await _repository.GetPendingByCreatorAndUrlAsync(creatorId, blobUrl, ct);
         if (reference is null)
@@ -80,7 +81,7 @@ public sealed class MediaUploadService : IMediaUploadService
             throw new ConflictException("Upload link expired, request a new one.");
 
         if (reference.Purpose == MediaUploadPurpose.ProductFile)
-            return await ConfirmProductFileAsync(reference, ct);
+            return await ConfirmProductFileAsync(reference, NormalizeFileName(fileName ?? reference.FileName), ct);
 
         var properties = await _blobStorageClient.GetPropertiesAsync(blobUrl, ct);
         if (properties is null)
@@ -99,7 +100,7 @@ public sealed class MediaUploadService : IMediaUploadService
         reference.Confirm((int)properties.ContentLength, DateTimeOffset.UtcNow);
         await _unitOfWork.SaveChangesAsync(ct);
 
-        return new ConfirmUploadResponseDto(blobUrl);
+        return new ConfirmUploadResponseDto { Url = blobUrl };
     }
 
     /// <summary>
@@ -108,7 +109,7 @@ public sealed class MediaUploadService : IMediaUploadService
     /// (<see cref="ProductFileSignatures"/>). Anything else is deleted and refused. The answer is an opaque reference,
     /// never a URL.
     /// </summary>
-    private async Task<ConfirmUploadResponseDto> ConfirmProductFileAsync(BlobReference reference, CancellationToken ct)
+    private async Task<ConfirmUploadResponseDto> ConfirmProductFileAsync(BlobReference reference, string fileName, CancellationToken ct)
     {
         var blobPath = reference.BlobPath!;
         var properties = await _productFileStorage.GetPropertiesAsync(blobPath, ct);
@@ -131,10 +132,16 @@ public sealed class MediaUploadService : IMediaUploadService
                 $"The file must be a PDF, EPUB or ZIP of at most {_options.ProductFileMaxSizeBytes / 1_048_576} MB.", FileRejectedCode);
         }
 
-        reference.Confirm((int)properties.ContentLength, DateTimeOffset.UtcNow);
+        reference.Confirm((int)properties.ContentLength, DateTimeOffset.UtcNow, fileName);
         await _unitOfWork.SaveChangesAsync(ct);
 
-        return new ConfirmUploadResponseDto(null, reference.PublicId, reference.FileName, properties.ContentLength, contentType);
+        return new ConfirmUploadResponseDto
+        {
+            FileReference = reference.PublicId,
+            FileName = fileName,
+            FileSizeBytes = properties.ContentLength,
+            ContentType = contentType,
+        };
     }
 
     private static string NormalizeFileName(string? fileName)

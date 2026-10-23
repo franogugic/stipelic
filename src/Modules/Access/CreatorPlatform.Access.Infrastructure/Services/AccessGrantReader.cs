@@ -27,7 +27,7 @@ public sealed class AccessGrantReader : IAccessGrantReader
             from o in _context.Set<Order>().AsNoTracking().Where(o => (int?)o.Id == g.OrderId).DefaultIfEmpty()
             where g.Token == token
             select new AccessGrantView(
-                g.RevokedAt != null,
+                g.RevokedAt,
                 p.Name,
                 p.FileName,
                 p.FileSizeBytes,

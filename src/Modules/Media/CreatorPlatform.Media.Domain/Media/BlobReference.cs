@@ -34,7 +34,7 @@ public sealed class BlobReference
     }
 
     /// <param name="blobPath">The path inside its container (<c>{purpose}/{creatorId}/{guid}.{ext}</c>).</param>
-    /// <param name="fileName">The name the creator's file had (product documents: the name buyers download it as).</param>
+    /// <param name="fileName">A product document's name when the upload-url request gave it; the confirm may set it.</param>
     public static BlobReference CreatePending(
         int creatorId,
         MediaUploadPurpose purpose,
@@ -49,12 +49,15 @@ public sealed class BlobReference
 
     /// <summary>Only valid from <see cref="BlobReferenceStatus.Pending"/> — a confirmed reference is
     /// immutable history, so a second confirm attempt on the same row is a bug, not a no-op.</summary>
-    public void Confirm(int sizeBytes, DateTimeOffset confirmedAt)
+    /// <param name="fileName">The name the creator's file had (product documents: the name buyers download it as); null
+    /// keeps the one given at upload-url time.</param>
+    public void Confirm(int sizeBytes, DateTimeOffset confirmedAt, string? fileName = null)
     {
         if (Status != BlobReferenceStatus.Pending)
             throw new InvalidOperationException($"Cannot confirm a blob reference in status '{Status}'.");
 
         SizeBytes = sizeBytes;
+        FileName = fileName ?? FileName;
         Status = BlobReferenceStatus.Confirmed;
         ConfirmedAt = confirmedAt;
     }

@@ -18,6 +18,7 @@ public class LandingPageProductRulesTests
     private static readonly ProductInfo Paid = new(Guid.NewGuid(), "Presets", 2900, null, IsActive: true);
     private static readonly ProductInfo FreeActive = new(Guid.NewGuid(), "Guide", 0, null, IsActive: true);
     private static readonly ProductInfo FreeDraft = new(Guid.NewGuid(), "Guide", 0, null, IsActive: false);
+    private static readonly ProductInfo PaidDraft = new(Guid.NewGuid(), "Presets", 2900, null, IsActive: false);
 
     private readonly FakeLandingPageRepository _pages = new();
     private readonly FakeLandingPagesCreatorContextProvider _creators = new()
@@ -43,6 +44,7 @@ public class LandingPageProductRulesTests
     {
         { "Sales", "none", LandingPageService.ProductRequiredCode },
         { "Sales", "free", LandingPageService.ProductNotPaidCode },
+        { "Sales", "paid-draft", LandingPageService.ProductNotActiveCode },
         { "LeadGen", "paid", LandingPageService.ProductNotFreeCode },
         { "LeadGen", "free-draft", LandingPageService.ProductNotActiveCode },
     };
@@ -52,6 +54,7 @@ public class LandingPageProductRulesTests
         "paid" => Paid,
         "free" => FreeActive,
         "free-draft" => FreeDraft,
+        "paid-draft" => PaidDraft,
         _ => null,
     };
 

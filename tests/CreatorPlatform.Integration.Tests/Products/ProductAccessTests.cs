@@ -85,13 +85,13 @@ public sealed class ProductAccessTests
         return sessionId;
     }
 
-    private async Task<int> CreatePageAsync(int creatorId, int? productId, string type = "LeadGen")
+    private async Task<int> CreatePageAsync(int creatorId, int? productId, string type = "LeadGen", string status = "Published")
     {
         await using var db = _fixture.CreateDbContext();
         return (await db.Database.SqlQuery<int>($"""
             INSERT INTO landing_pages.landing_pages ("PublicId", "CreatorId", "ProductId", "Title", "Slug", "Type", "Status",
                                                      "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, 'Guide', {$"p-{Guid.NewGuid():N}"}, {type}, 'Published', now(), now())
+            VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, 'Guide', {$"p-{Guid.NewGuid():N}"}, {type}, {status}, now(), now())
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }
@@ -182,6 +182,7 @@ public sealed class ProductAccessTests
         await using var db = _fixture.CreateDbContext();
         var receipt = await new OrderReceiptReader(db).GetBySessionIdAsync(sessionId, None);
         Assert.Equal(grant.Token, receipt!.AccessToken);
+        Assert.Equal(("Presets.zip", 18_350_080L), (receipt.FileName, receipt.FileSizeBytes));
     }
 
     [Fact]
@@ -303,8 +304,8 @@ public sealed class ProductAccessTests
         _storage.Put(blobPath, "application/pdf", "%PDF-1.7"u8.ToArray());
         await using var db = _fixture.CreateDbContext();
         var upload = BlobReference.CreatePending(creatorId, MediaUploadPurpose.ProductFile,
-            $"https://test.blob.core.windows.net/product-files/{blobPath}", blobPath, "application/pdf", DateTimeOffset.UtcNow, fileName);
-        upload.Confirm(8, DateTimeOffset.UtcNow);
+            $"https://test.blob.core.windows.net/product-files/{blobPath}", blobPath, "application/pdf", DateTimeOffset.UtcNow);
+        upload.Confirm(8, DateTimeOffset.UtcNow, fileName);
         db.Add(upload);
         await db.SaveChangesAsync();
         return upload.PublicId;
@@ -415,6 +416,49 @@ public sealed class ProductAccessTests
         Assert.Empty(await OutboxAsync(email, LeadMagnetPurpose));
         Assert.Empty(await CaptureGrantsAsync(newsletter, email));
         Assert.Empty(await CaptureGrantsAsync(sales, email));
+    }
+
+    // ---- The products list's sign-ups ----------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SignUps_CountByTheProductALeadPageGivesAway_InTheCreatorsLocalMonths()
+    {
+        var creator = await _data.CreateCreatorAsync();
+        await using (var db = _fixture.CreateDbContext())
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO creators.creator_settings ("CreatorId", "BrandName", "PrimaryColor", "Timezone", "Language", "CreatedAt", "UpdatedAt")
+                VALUES ({creator.CreatorId}, 'Island Studio', '#2F8F9D', 'Pacific/Kiritimati', 'en', now(), now())
+                """);
+        var guide = await CreateProductAsync(creator.CreatorId, priceCents: 0);
+        var paid = await CreateProductAsync(creator.CreatorId);
+        var lead = await CreatePageAsync(creator.CreatorId, guide.Id);
+        var archivedLead = await CreatePageAsync(creator.CreatorId, guide.Id, status: "Archived");
+        var sales = await CreatePageAsync(creator.CreatorId, paid.Id, type: "Sales");
+
+        var now = new DateTimeOffset(2026, 10, 23, 12, 0, 0, TimeSpan.Zero);
+        // Kiritimati is UTC+14: 30 Sep 12:00 UTC is already 1 Oct there, so it is this month's.
+        await CaptureAtAsync(lead, new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero));
+        await CaptureAtAsync(lead, new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero));
+        await CaptureAtAsync(archivedLead, new DateTimeOffset(2026, 5, 5, 9, 0, 0, TimeSpan.Zero));     // May: the oldest month
+        await CaptureAtAsync(lead, new DateTimeOffset(2026, 1, 10, 9, 0, 0, TimeSpan.Zero));            // outside the six months
+        await CaptureAtAsync(sales, new DateTimeOffset(2026, 10, 10, 9, 0, 0, TimeSpan.Zero));          // not a lead page
+
+        await using var read = _fixture.CreateDbContext();
+        var signups = await new LandingPageContextProvider(read).GetProductSignupsAsync(creator.CreatorId, now, None);
+
+        var counted = Assert.Single(signups);
+        Assert.Equal(guide.Id, counted.Key);
+        Assert.Equal(4, counted.Value.Total);
+        Assert.Equal([1, 0, 0, 0, 0, 2], counted.Value.Trend);
+    }
+
+    private async Task CaptureAtAsync(int landingPageId, DateTimeOffset capturedAt)
+    {
+        await using var db = _fixture.CreateDbContext();
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO analytics.email_captures ("Id", "LandingPageId", "Email", "CapturedAt")
+            VALUES ({Guid.NewGuid()}, {landingPageId}, {TestData.UniqueEmail("lead")}, {capturedAt})
+            """);
     }
 
     // ---- Schema and migration ---------------------------------------------------------------------------------------

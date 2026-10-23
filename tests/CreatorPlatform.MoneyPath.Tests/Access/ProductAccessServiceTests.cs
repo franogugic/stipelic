@@ -1,3 +1,4 @@
+using CreatorPlatform.Access.Application.Dtos;
 using CreatorPlatform.Access.Application.Interfaces;
 using CreatorPlatform.Access.Application.Services;
 using CreatorPlatform.Media.Application.Options;
@@ -21,8 +22,10 @@ public class ProductAccessServiceTests
         _service = new ProductAccessService(_reader, _storage, Options.Create(new MediaOptions { DownloadUrlExpiryMinutes = 10 }));
     }
 
+    private static readonly DateTimeOffset RefundedAt = new(2026, 10, 2, 9, 30, 0, TimeSpan.Zero);
+
     private static AccessGrantView View(bool revoked = false, Guid? orderPublicId = null) => new(
-        revoked, "Adriatic Summer Presets", "Adriatic Presets.zip", 18_350_080, "MH Studio workspace", "MH Studio", "#E2553A",
+        revoked ? RefundedAt : null, "Adriatic Summer Presets", "Adriatic Presets.zip", 18_350_080, "MH Studio workspace", "MH Studio", "#E2553A",
         "https://cdn.test/logo.png", orderPublicId, orderPublicId is null ? null : new DateTimeOffset(2026, 9, 29, 10, 0, 0, TimeSpan.Zero));
 
     [Theory]
@@ -84,14 +87,18 @@ public class ProductAccessServiceTests
     }
 
     [Fact]
-    public async Task ARefundedLink_IsGone_AndDownloadsNothing()
+    public async Task ARefundedLink_IsGone_WithWhatTheTurnedOffPageShows_AndDownloadsNothing()
     {
         var token = AccessGrant.NewToken();
-        _reader.Grants[token] = View(revoked: true, orderPublicId: Guid.NewGuid());
+        _reader.Grants[token] = View(revoked: true, orderPublicId: Guid.Parse("a1b2c3d4-0000-0000-0000-000000000000"));
 
         var get = await Assert.ThrowsAsync<GoneException>(() => _service.GetAsync(token, CancellationToken.None));
         var download = await Assert.ThrowsAsync<GoneException>(() => _service.DownloadAsync(token, CancellationToken.None));
 
+        Assert.Equal(
+            new ProductAccessRevokedDto("Adriatic Summer Presets", new("MH Studio", "#E2553A", "https://cdn.test/logo.png"), "A1B2C3D4", RefundedAt),
+            get.Body);
+        Assert.Equal(get.Body, download.Body);
         Assert.Equal(ProductAccessService.RevokedCode, get.Code);
         Assert.Equal(ProductAccessService.RevokedCode, download.Code);
         Assert.Empty(_storage.DownloadSasCalls);
@@ -130,7 +137,7 @@ public class ProductAccessServiceTests
         {
             Calls++;
             // Like the real statement: only a link that is on counts and returns the file.
-            if (!Grants.TryGetValue(token, out var grant) || grant.IsRevoked || !Targets.TryGetValue(token, out var target))
+            if (!Grants.TryGetValue(token, out var grant) || grant.RevokedAt is not null || !Targets.TryGetValue(token, out var target))
                 return Task.FromResult<AccessDownloadTarget?>(null);
 
             DownloadsRecorded++;

@@ -13,7 +13,14 @@ public sealed record ProductAccessDto(
     DateTimeOffset? PaidAt);
 
 /// <param name="Name">The creator's brand name, else the workspace name.</param>
-public sealed record ProductAccessBrandDto(string Name, string? Colour, string? LogoUrl);
+public sealed record ProductAccessBrandDto(string Name, string? Color, string? LogoUrl);
+
+/// <summary>The 410 of a link turned off by a refund: what the "turned off" page shows, next to <c>code</c>.</summary>
+public sealed record ProductAccessRevokedDto(
+    string ProductName,
+    ProductAccessBrandDto Brand,
+    string? OrderNumber,
+    DateTimeOffset? RefundedAt);
 
 /// <summary>A short-lived signed URL for the file; the browser downloads it as an attachment.</summary>
 public sealed record ProductDownloadDto(string Url);

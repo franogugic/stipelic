@@ -70,4 +70,31 @@ public sealed class PublicAccessControllerTests
         var body = (await JsonDocument.ParseAsync(context.Response.Body)).RootElement;
         Assert.Equal(code, body.GetProperty("code").GetString());
     }
+
+    [Fact]
+    public async Task ARefundedLink_Answers410_WithWhatTheTurnedOffPageShows_AtTheTopLevel()
+    {
+        var revoked = new ProductAccessRevokedDto(
+            "Adriatic Presets", new ProductAccessBrandDto("MH Studio", "#E2553A", null), "A1B2C3D4",
+            new DateTimeOffset(2026, 10, 2, 9, 30, 0, TimeSpan.Zero));
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        await new GlobalExceptionMiddleware(
+            _ => throw new GoneException("Turned off.", ProductAccessService.RevokedCode, revoked),
+            NullLogger<GlobalExceptionMiddleware>.Instance).InvokeAsync(context);
+
+        Assert.Equal(410, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        var body = (await JsonDocument.ParseAsync(context.Response.Body)).RootElement;
+        Assert.Equal(ProductAccessService.RevokedCode, body.GetProperty("code").GetString());
+        Assert.Equal("Turned off.", body.GetProperty("message").GetString());
+        Assert.Equal("Adriatic Presets", body.GetProperty("productName").GetString());
+        Assert.Equal("MH Studio", body.GetProperty("brand").GetProperty("name").GetString());
+        Assert.Equal("#E2553A", body.GetProperty("brand").GetProperty("color").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("brand").GetProperty("logoUrl").ValueKind);
+        Assert.Equal("A1B2C3D4", body.GetProperty("orderNumber").GetString());
+        Assert.Equal(revoked.RefundedAt, body.GetProperty("refundedAt").GetDateTimeOffset());
+        Assert.False(body.TryGetProperty("details", out _));
+    }
 }

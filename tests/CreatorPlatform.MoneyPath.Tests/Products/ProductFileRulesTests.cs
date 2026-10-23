@@ -49,7 +49,7 @@ public class ProductFileRulesTests
 
         var draft = await CreateAsync(file: null, status: "Draft");
         Assert.Equal("Draft", draft.Status);
-        Assert.Null(draft.File);
+        Assert.Null(draft.FileName);
     }
 
     [Fact]
@@ -71,10 +71,11 @@ public class ProductFileRulesTests
         var product = await CreateAsync(reference, status: "Active");
 
         Assert.Equal("Active", product.Status);
-        Assert.False(product.IsFree);
-        Assert.Equal("Color Grading Guide.pdf", product.File!.FileName);
-        Assert.Equal(8_600_000, product.File.SizeBytes);
-        Assert.Equal("application/pdf", product.File.ContentType);
+        Assert.Equal(1900, product.PriceCents);
+        Assert.Equal("Color Grading Guide.pdf", product.FileName);
+        Assert.Equal(8_600_000, product.FileSizeBytes);
+        Assert.Equal("application/pdf", product.FileContentType);
+        Assert.NotNull(product.FileUploadedAt);
         Assert.Equal(_files.Uploads[(CreatorId, reference)].BlobPath, Stored(product.PublicId).FileBlobPath);
     }
 
@@ -116,7 +117,7 @@ public class ProductFileRulesTests
         var savesBefore = _unitOfWork.SaveChangesCallCount;
         var updated = await UpdateAsync(product.PublicId, file: _files.Upload(CreatorId, "v2.pdf"));
 
-        Assert.Equal("v2.pdf", updated.File!.FileName);
+        Assert.Equal("v2.pdf", updated.FileName);
         Assert.Equal("Active", updated.Status);
         Assert.Equal([oldPath], _files.DeletedBlobPaths);
         Assert.Equal(savesBefore + 1, _unitOfWork.SaveChangesCallCount);
@@ -133,7 +134,7 @@ public class ProductFileRulesTests
 
         var path = Stored(product.PublicId).FileBlobPath!;
         var draft = await UpdateAsync(product.PublicId, removeFile: true, status: "Draft");
-        Assert.Null(draft.File);
+        Assert.Null(draft.FileName);
         Assert.Equal([path], _files.DeletedBlobPaths);
     }
 
@@ -155,7 +156,7 @@ public class ProductFileRulesTests
     public async Task AProductALeadPageGivesAway_StaysFree_AndOneASalesPageSells_StaysPaid()
     {
         var free = await CreateAsync(_files.Upload(CreatorId), status: "Active", priceCents: 0);
-        Assert.True(free.IsFree);
+        Assert.Equal(0, free.PriceCents);
         _pages.UsedByLeadPage = true;
         var leadError = await Assert.ThrowsAsync<ConflictException>(() => UpdateAsync(free.PublicId, priceCents: 900));
         Assert.Equal(ProductService.UsedByLeadPageCode, leadError.Code);
@@ -169,5 +170,29 @@ public class ProductFileRulesTests
 
         // A new price of the same kind is fine.
         Assert.Equal(3900, (await UpdateAsync(paid.PublicId, priceCents: 3900)).PriceCents);
+    }
+
+    [Fact]
+    public async Task TheProductList_GivesFreeProductsTheirSignUps_AndPaidOnesNone()
+    {
+        var free = await CreateAsync(_files.Upload(CreatorId), status: "Active", priceCents: 0);
+        var quiet = await CreateAsync(_files.Upload(CreatorId), status: "Active", priceCents: 0);
+        var paid = await CreateAsync(_files.Upload(CreatorId), status: "Active", priceCents: 2900);
+        _pages.SignupsByProductId[Stored(free.PublicId).Id] = new ProductSignups(42, [1, 2, 3, 4, 5, 6]);
+
+        var list = await _service.ListAsync(CreatorSlug, OwnerUserId, includeArchived: false, CancellationToken.None);
+
+        var freeRow = list.Single(p => p.PublicId == free.PublicId);
+        Assert.Equal((42, 6), (freeRow.SignupCount, freeRow.SignupsThisMonth));
+        Assert.Equal([1, 2, 3, 4, 5, 6], freeRow.SignupsTrend);
+
+        var quietRow = list.Single(p => p.PublicId == quiet.PublicId);
+        Assert.Equal((0, 0), (quietRow.SignupCount, quietRow.SignupsThisMonth));
+        Assert.Equal(new int[ProductSalesTrend.Months], quietRow.SignupsTrend);
+
+        var paidRow = list.Single(p => p.PublicId == paid.PublicId);
+        Assert.Null(paidRow.SignupCount);
+        Assert.Null(paidRow.SignupsThisMonth);
+        Assert.Null(paidRow.SignupsTrend);
     }
 }
