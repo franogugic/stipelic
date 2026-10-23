@@ -1,4 +1,5 @@
 using CreatorPlatform.Api.Health;
+using CreatorPlatform.Api.Hosting;
 using CreatorPlatform.Api.Middlewares;
 using CreatorPlatform.Api.Networking;
 using CreatorPlatform.Api.RateLimiting;
@@ -27,7 +28,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
 
-var builder = WebApplication.CreateBuilder(args);
+// `--migrate`: apply the database migrations and exit (the production one-shot step); see DatabaseMigrationCommand.
+var migrateOnly = DatabaseMigrationCommand.TryTake(args, out var hostArgs);
+
+var builder = WebApplication.CreateBuilder(hostArgs);
 
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
@@ -94,6 +98,14 @@ builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 });
 
 var app = builder.Build();
+
+if (migrateOnly)
+{
+    var exitCode = await DatabaseMigrationCommand.RunAsync(app.Services, app.Logger, CancellationToken.None);
+    await app.DisposeAsync();   // flushes the console logger before the process ends
+    Environment.ExitCode = exitCode;
+    return;
+}
 
 // First: everything below (HTTPS redirection, rate limits, the login limiter) sees the client's address and scheme.
 app.UseTrustedForwardedHeaders();
