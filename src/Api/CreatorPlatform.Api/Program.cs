@@ -33,6 +33,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 builder.Services.AddFrontendCors(builder.Configuration);
+builder.Services.AddPlatformSecurity(builder.Configuration, builder.Environment);
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
@@ -84,6 +85,7 @@ var app = builder.Build();
 
 // First: everything below (HTTPS redirection, rate limits, the login limiter) sees the client's address and scheme.
 app.UseTrustedForwardedHeaders();
+app.UsePlatformSecurityHeaders(app.Environment);
 
 if (app.Configuration.GetValue<bool>("Database:AutoMigrate"))
 {
