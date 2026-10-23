@@ -19,7 +19,7 @@ public class LandingPageRestoreTests
         var contextProvider = new FakeLandingPagesCreatorContextProvider { Context = context };
         var unitOfWork = new FakeLandingPagesUnitOfWork();
 
-        var service = new LandingPageService(repository, sectionRepository, contextProvider, unitOfWork);
+        var service = new LandingPageService(repository, sectionRepository, contextProvider, unitOfWork, new FakeOwnedImageCheck());
 
         return (service, repository);
     }

@@ -32,7 +32,7 @@ public class CreatorServicePayoutProfileTests
             new FakeCreatorOpenBalanceCheck(),
             new FakeBillingCustomerService(),
             new FakeCreatorCacheInvalidator(),
-            NullLogger<CreatorService>.Instance);
+            NullLogger<CreatorService>.Instance, new FakeOwnedImageCheck());
 
         return (service, profileRepository);
     }

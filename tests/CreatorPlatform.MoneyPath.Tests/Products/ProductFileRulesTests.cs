@@ -26,7 +26,7 @@ public class ProductFileRulesTests
     public ProductFileRulesTests()
     {
         var creators = new FakeProductsCreatorContextProvider { Context = new CreatorContext(CreatorId, MaxProducts: 10, ActiveProductCount: 0) };
-        _service = new ProductService(_products, creators, _unitOfWork, new FakeOrderContextProvider(), _pages, _files);
+        _service = new ProductService(_products, creators, _unitOfWork, new FakeOrderContextProvider(), _pages, _files, new FakeOwnedImageCheck());
     }
 
     private Task<ProductResponseDto> CreateAsync(Guid? file, string? status = "Draft", int priceCents = 1900) =>

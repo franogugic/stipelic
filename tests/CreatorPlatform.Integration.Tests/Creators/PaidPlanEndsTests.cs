@@ -189,7 +189,7 @@ public sealed class PaidPlanEndsTests
             new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             new RecordingCreatorCacheInvalidator(),
-            NullLogger<CreatorService>.Instance);
+            NullLogger<CreatorService>.Instance, new AnyImageAccepted());
         return (await service.GetCurrentForOwnerAsync(creator.OwnerUserId, CancellationToken.None))!;
     }
 

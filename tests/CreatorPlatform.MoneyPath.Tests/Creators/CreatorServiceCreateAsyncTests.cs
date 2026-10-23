@@ -34,7 +34,7 @@ public class CreatorServiceCreateAsyncTests
             new FakeCreatorOpenBalanceCheck(),
             new FakeBillingCustomerService(),
             new FakeCreatorCacheInvalidator(),
-            NullLogger<CreatorService>.Instance);
+            NullLogger<CreatorService>.Instance, new FakeOwnedImageCheck());
     }
 
     private static CreateCreatorRequestDto BuildRequest(string countryCode) => new()

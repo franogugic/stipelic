@@ -64,7 +64,7 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
             new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             invalidator,
-            NullLogger<CreatorService>.Instance);
+            NullLogger<CreatorService>.Instance, new AnyImageAccepted());
         await service.UpdateSettingsAsync(creator.Slug, creator.OwnerUserId, new UpdateCreatorSettingsRequestDto
         {
             BrandName = "Brand",

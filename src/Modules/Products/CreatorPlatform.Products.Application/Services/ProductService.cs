@@ -1,3 +1,4 @@
+using CreatorPlatform.Shared.Application.Media;
 using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Interfaces;
 using CreatorPlatform.Products.Domain.Products;
@@ -24,6 +25,7 @@ public sealed class ProductService : IProductService
     private readonly IOrderContextProvider _orderContextProvider;
     private readonly ILandingPageContextProvider _landingPageContextProvider;
     private readonly IProductFiles _productFiles;
+    private readonly IOwnedImageCheck _ownedImages;
 
     public ProductService(
         IProductRepository productRepository,
@@ -31,7 +33,8 @@ public sealed class ProductService : IProductService
         IProductsUnitOfWork unitOfWork,
         IOrderContextProvider orderContextProvider,
         ILandingPageContextProvider landingPageContextProvider,
-        IProductFiles productFiles)
+        IProductFiles productFiles,
+        IOwnedImageCheck ownedImages)
     {
         _productRepository = productRepository;
         _creatorContextProvider = creatorContextProvider;
@@ -39,6 +42,7 @@ public sealed class ProductService : IProductService
         _orderContextProvider = orderContextProvider;
         _landingPageContextProvider = landingPageContextProvider;
         _productFiles = productFiles;
+        _ownedImages = ownedImages;
     }
 
     public async Task<ProductResponseDto> CreateAsync(
@@ -53,6 +57,7 @@ public sealed class ProductService : IProductService
         var description = NormalizeOptionalText(request.Description, ProductDescriptionMaxLength);
         var priceCents = ValidatePriceCents(request.PriceCents);
         var thumbnailUrl = NormalizeOptionalUrl(request.ThumbnailUrl, ProductThumbnailUrlMaxLength);
+        await _ownedImages.EnsureOwnedAsync(creatorId, [thumbnailUrl], ct);
         var requestedStatus = ParseRequestedStatus(request.Status);
 
         if (maxProducts >= 0 && activeProductCount >= maxProducts)
@@ -151,6 +156,7 @@ public sealed class ProductService : IProductService
         var description = NormalizeOptionalText(request.Description, ProductDescriptionMaxLength);
         var priceCents = ValidatePriceCents(request.PriceCents);
         var thumbnailUrl = NormalizeOptionalUrl(request.ThumbnailUrl, ProductThumbnailUrlMaxLength);
+        await _ownedImages.EnsureOwnedAsync(creatorId, [thumbnailUrl], ct);
         // A missing status leaves the product as it is, so callers that only edit fields keep working.
         var newStatus = ParseRequestedStatus(request.Status) ?? product.Status;
         var now = DateTimeOffset.UtcNow;
