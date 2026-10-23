@@ -108,17 +108,16 @@ logs its count at Information; a job that fails logs an Error and is retried on 
 | `stale-pending-orders` | Marks checkouts still Pending 25 hours after they started as Failed (their Stripe session expired after 24 hours; the extra hour covers an order created just before its session). A payment that still arrives later is booked normally: the webhook pays a Failed order. An order paid while the job runs stays Paid. | `StalePendingOrderHours` = 25, at least 24 |
 
 **Before the first run on a database with existing data** (not needed for an empty production database): images saved
-before PR 1 could point at an upload that was never confirmed, and `abandoned-uploads` would delete it. This must
-return no rows:
+before PR 1 could point at an upload that was never confirmed, and `abandoned-uploads` would delete it once it is an
+hour old. This check covers every Pending reference, whatever its age, and must return no rows:
 
 ```sql
-SELECT b."Id", b."CreatorId", b."Purpose", b."CreatedAt"
-FROM media.blob_references AS b
+SELECT b."Id"
+FROM media.blob_references b
 WHERE b."Status" = 'Pending'
-  AND b."CreatedAt" < now() - interval '60 minutes'
-  AND (EXISTS (SELECT 1 FROM products.products AS p WHERE p."ThumbnailUrl" = b."BlobUrl")
-       OR EXISTS (SELECT 1 FROM creators.creator_settings AS s WHERE s."LogoUrl" = b."BlobUrl")
-       OR EXISTS (SELECT 1 FROM landing_pages.landing_page_sections AS ls WHERE strpos(ls."ContentJson"::text, b."BlobUrl") > 0));
+  AND (EXISTS (SELECT 1 FROM products.products p WHERE p."ThumbnailUrl" = b."BlobUrl")
+       OR EXISTS (SELECT 1 FROM creators.creator_settings s WHERE s."LogoUrl" = b."BlobUrl")
+       OR EXISTS (SELECT 1 FROM landing_pages.landing_page_sections ls WHERE strpos(ls."ContentJson"::text, b."BlobUrl") > 0));
 ```
 
 If it returns rows, mark those uploads confirmed first (`UPDATE media.blob_references SET "Status" = 'Confirmed',
