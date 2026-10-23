@@ -51,6 +51,8 @@ public static class RateLimitPolicies
     public const string MutateTemplate = "MutateTemplate";
     public const string RequestMediaUpload = "RequestMediaUpload";
     public const string ProductAccess = "ProductAccess";
+    public const string CaptureSignup = "CaptureSignup";
+    public const string StartCheckout = "StartCheckout";
 
     private static readonly TimeSpan OneMinute = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan TenMinutes = TimeSpan.FromMinutes(10);
@@ -101,7 +103,16 @@ public static class RateLimitPolicies
         new(RequestMediaUpload, 20, TenMinutes),
         // The public download page: loading it and each download share one bucket per IP.
         new(ProductAccess, 30, TenMinutes),
+        // Public lead sign-ups: each one can send a real email from our domain and use a creator's contact slot.
+        // Also limited per email address (CaptureSignupPerEmail), across IPs.
+        new(CaptureSignup, 5, TenMinutes),
+        // Public checkout: each call creates a Stripe Checkout session and a Pending order.
+        new(StartCheckout, 10, TenMinutes),
     ];
+
+    /// <summary>Sign-ups for one email address (hashed), whatever the IP — so a botnet cannot mail-bomb one person. Not an
+    /// endpoint policy: the address is only known after the body is read (see <see cref="CaptureEmailRateLimiter"/>).</summary>
+    public static RateLimitPolicyDefinition CaptureSignupPerEmail { get; } = new("CaptureSignupPerEmail", 5, TenMinutes);
 
     /// <summary>The global limiter every request passes through, on top of its endpoint policy.</summary>
     public static RateLimitPolicyDefinition Global { get; } = new("Global", 300, OneMinute);
