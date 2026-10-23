@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace CreatorPlatform.Worker;
 
-/// <summary>Same polling-loop shape as <see cref="EmailOutboxWorker"/>: one scope per tick, sequential
+/// <summary>A polling loop: one scope per tick, sequential
 /// processing within the batch, one row's failure never stops the rest.</summary>
 public sealed class ScheduledCampaignDispatchWorker(
     IServiceScopeFactory scopeFactory,

@@ -16,7 +16,9 @@ public sealed class EmailOutboxMessage
         string plainTextBody,
         string? replyTo,
         string? listUnsubscribeUrl,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        int? creatorId,
+        long? queuePosition)
     {
         Id = id;
         Purpose = purpose;
@@ -31,6 +33,8 @@ public sealed class EmailOutboxMessage
         RetryCount = 0;
         NextAttemptAt = createdAt;
         CreatedAt = createdAt;
+        CreatorId = creatorId;
+        QueuePosition = queuePosition;
     }
 
     public static EmailOutboxMessage Create(
@@ -42,8 +46,13 @@ public sealed class EmailOutboxMessage
         string plainTextBody,
         DateTimeOffset createdAt,
         string? replyTo = null,
-        string? listUnsubscribeUrl = null)
+        string? listUnsubscribeUrl = null,
+        int? creatorId = null,
+        long? queuePosition = null)
     {
+        if (purpose == EmailOutboxMessagePurpose.CampaignBroadcast && (creatorId is null) != (queuePosition is null))
+            throw new ArgumentException("A campaign message gets its creator and its queue position together.");
+
         return new EmailOutboxMessage(
             Guid.NewGuid(),
             purpose,
@@ -54,8 +63,13 @@ public sealed class EmailOutboxMessage
             plainTextBody,
             replyTo,
             listUnsubscribeUrl,
-            createdAt);
+            createdAt,
+            creatorId,
+            queuePosition);
     }
+
+    /// <summary>Transactional mail (everything but campaigns) is sent before any campaign mail.</summary>
+    public bool IsTransactional => Purpose != EmailOutboxMessagePurpose.CampaignBroadcast;
 
     public void MarkAsSent(DateTimeOffset sentAt)
     {
@@ -169,4 +183,15 @@ public sealed class EmailOutboxMessage
     public string? LastError { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    /// <summary>The creator a campaign message is sent for (null for transactional mail): the unit of fairness.</summary>
+    public int? CreatorId { get; private set; }
+
+    /// <summary>
+    /// Campaign messages only: the order in which the outbox sends them (start-time fair queuing). A creator's campaign is
+    /// numbered from the head of the campaign queue, or from after that creator's own mail still waiting, whichever is
+    /// later. So every creator with mail waiting gets an equal share of sending, however big its list, and a creator's
+    /// second campaign waits behind its first instead of doubling its share. Assigned by the outbox service when queuing.
+    /// </summary>
+    public long? QueuePosition { get; private set; }
 }

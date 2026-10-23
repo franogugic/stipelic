@@ -1053,6 +1053,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("CreatorId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("HtmlBody")
                         .HasColumnType("text");
 
@@ -1077,6 +1080,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<long?>("QueuePosition")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("ReplyTo")
                         .HasMaxLength(254)
@@ -1108,6 +1114,18 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasIndex("SentAt")
                         .HasDatabaseName("IX_email_outbox_messages_SentAt_WithBodies")
                         .HasFilter("\"Status\" = 'Sent' AND \"HtmlBody\" IS NOT NULL");
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .HasDatabaseName("IX_email_outbox_messages_TransactionalQueue")
+                        .HasFilter("\"Purpose\" <> 'CampaignBroadcast' AND \"Status\" IN ('Pending', 'Processing')");
+
+                    b.HasIndex("CreatorId", "QueuePosition")
+                        .HasDatabaseName("IX_email_outbox_messages_CreatorCampaignQueue")
+                        .HasFilter("\"Purpose\" = 'CampaignBroadcast' AND \"Status\" IN ('Pending', 'Processing')");
+
+                    b.HasIndex("QueuePosition", "Id")
+                        .HasDatabaseName("IX_email_outbox_messages_CampaignQueue")
+                        .HasFilter("\"Purpose\" = 'CampaignBroadcast' AND \"Status\" IN ('Pending', 'Processing')");
 
                     b.HasIndex("Status", "NextAttemptAt");
 

@@ -10,6 +10,19 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
 
     public const string SentWithBodiesIndexFilter = "\"Status\" = 'Sent' AND \"HtmlBody\" IS NOT NULL";
 
+    /// <summary>Messages the outbox may still send (or is sending).</summary>
+    public const string UnsentFilter = "\"Status\" IN ('Pending', 'Processing')";
+
+    /// <summary>Unsent campaign mail: the fair queue.</summary>
+    public const string CampaignQueueFilter = "\"Purpose\" = 'CampaignBroadcast' AND " + UnsentFilter;
+
+    /// <summary>Unsent transactional mail.</summary>
+    public const string TransactionalQueueFilter = "\"Purpose\" <> 'CampaignBroadcast' AND " + UnsentFilter;
+
+    public const string CampaignQueueIndexName = "IX_email_outbox_messages_CampaignQueue";
+    public const string CreatorCampaignQueueIndexName = "IX_email_outbox_messages_CreatorCampaignQueue";
+    public const string TransactionalQueueIndexName = "IX_email_outbox_messages_TransactionalQueue";
+
     public void Configure(EntityTypeBuilder<EmailOutboxMessage> builder)
     {
         builder.ToTable("email_outbox_messages", "email");
@@ -64,6 +77,11 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
         builder.Property(message => message.CreatedAt)
             .IsRequired();
 
+        // No FK to creators: the outbox stays decoupled from the modules that queue into it.
+        builder.Property(message => message.CreatorId);
+
+        builder.Property(message => message.QueuePosition);
+
         builder.HasIndex(message => new { message.Status, message.NextAttemptAt });
         builder.HasIndex(message => new { message.Status, message.ProcessingExpiresAt });
         builder.HasIndex(message => new { message.Purpose, message.CorrelationKey, message.Status });
@@ -73,5 +91,17 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
         builder.HasIndex(message => message.SentAt)
             .HasDatabaseName(SentWithBodiesIndexName)
             .HasFilter(SentWithBodiesIndexFilter);
+
+        // The outbox's two claim queries (EmailOutboxDispatcher) and the queue-position lookups (EmailOutboxService).
+        // Each query repeats its index's filter word for word, so Postgres can use the partial index.
+        builder.HasIndex(message => new { message.QueuePosition, message.Id })
+            .HasDatabaseName(CampaignQueueIndexName)
+            .HasFilter(CampaignQueueFilter);
+        builder.HasIndex(message => new { message.CreatorId, message.QueuePosition })
+            .HasDatabaseName(CreatorCampaignQueueIndexName)
+            .HasFilter(CampaignQueueFilter);
+        builder.HasIndex(message => new { message.CreatedAt, message.Id })
+            .HasDatabaseName(TransactionalQueueIndexName)
+            .HasFilter(TransactionalQueueFilter);
     }
 }

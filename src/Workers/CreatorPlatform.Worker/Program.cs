@@ -11,6 +11,7 @@ using CreatorPlatform.Marketing.Infrastructure.Repositories;
 using CreatorPlatform.Marketing.Infrastructure.Services;
 using CreatorPlatform.Auth.Infrastructure.Maintenance;
 using CreatorPlatform.Email.Infrastructure.Maintenance;
+using CreatorPlatform.Email.Infrastructure.Outbox;
 using CreatorPlatform.Media.Infrastructure.Maintenance;
 using CreatorPlatform.Orders.Infrastructure.Maintenance;
 using CreatorPlatform.Shared.Infrastructure.Maintenance;
@@ -27,6 +28,11 @@ builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 });
 
 builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environment);
+builder.Services.AddEmailOutboxProcessing(builder.Configuration);
+
+// A stop lets the outbox finish the batch it claimed (each send is bounded by Email:Outbox:SendTimeoutSeconds);
+// docker-compose.prod.yml gives the container 45 s.
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 
 builder.Services.Configure<MarketingOptions>(builder.Configuration.GetSection(MarketingOptions.SectionName));
 // The unsubscribe page lives in the same web app the other emails link to.
@@ -67,7 +73,6 @@ builder.Services.AddAuthMaintenanceTasks();
 builder.Services.AddMediaMaintenanceTasks(builder.Configuration);
 builder.Services.AddOrdersMaintenanceTasks();
 
-builder.Services.AddHostedService<EmailOutboxWorker>();
 builder.Services.AddHostedService<ScheduledCampaignDispatchWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 

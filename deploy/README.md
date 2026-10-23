@@ -61,6 +61,36 @@ remove in a later release), because the old API serves requests until its contai
 5. `docker compose -f docker-compose.prod.yml up -d`, then check `docker compose ... ps` (migrate: exited 0) and
    `curl https://<domain>/health`.
 
+## Email sending (the Worker's outbox)
+
+The API only queues mail; the Worker sends it. Each pass:
+
+1. Asks the quota how much may go out now, and claims no more than that, so a claimed message never waits.
+2. Claims **transactional mail first** (order access, lead magnets, verification, password reset, email change,
+   payouts), oldest first.
+3. Fills the rest of the batch with campaign mail in **fair order**. Every creator with campaign mail waiting gets an
+   equal share, whatever the list size, so a 10-recipient campaign is not stuck behind a 20,000-recipient one. A
+   creator's second campaign queues behind its first and does not double its share.
+4. Sends up to `MaxParallelSends` at once. ACS returns once it has accepted a message (`WaitUntil.Started`). The next pass
+   follows at once while mail is ready; the poll interval applies only when nothing is ready.
+
+Several Worker replicas can run side by side: claims use `FOR UPDATE SKIP LOCKED` and a lease, so a crashed instance's
+messages come back after `ProcessingLeaseMinutes`. On a stop, the Worker finishes the batch it claimed.
+
+| Setting (`Email:Outbox`) | Default | |
+|---|---|---|
+| `MaxSendsPerMinute`, `MaxSendsPerHour` | ACS 30 / 100 (custom domain before a quota increase); SMTP 600 / 36000 | **Per Worker instance.** With N replicas, set the provider's quota divided by N. |
+| `TransactionalReservePercent` | 20 | The share of each window campaigns may not use, so order and password emails always find room. |
+| `BatchSize`, `MaxParallelSends` | 40, 8 | |
+| `SendTimeoutSeconds`, `ProcessingLeaseMinutes` | 30, 5 | The Worker refuses to start if a batch could outlast half its lease. |
+| `PollIntervalSeconds` | 5 | The longest a new email waits while the outbox is idle. |
+
+- **Throttling (429) or the provider unreachable:** this Worker pauses all sending until `Retry-After` (else
+  `Email:ThrottleBackoffMinutes`); the message keeps its place and does not use one of its 3 retries.
+- **Bounces after acceptance** are not seen by the outbox (ACS reports them through its delivery events, later work).
+- Logs: one Information line per pass (claimed, sent, deferred, failed); each failure at Warning; a permanent failure at
+  Error.
+
 ## Maintenance (the Worker's cleanup)
 
 The Worker runs the cleanup every hour (first one minute after it starts). With several Worker replicas, a Postgres
