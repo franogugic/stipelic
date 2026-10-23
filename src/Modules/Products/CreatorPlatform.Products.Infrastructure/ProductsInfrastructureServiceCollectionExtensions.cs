@@ -17,6 +17,7 @@ public static class ProductsInfrastructureServiceCollectionExtensions
         services.AddScoped<IOrderContextProvider, OrderContextProvider>();
         services.AddScoped<ILandingPageContextProvider, LandingPageContextProvider>();
         services.AddScoped<IProductsUnitOfWork, ProductsUnitOfWork>();
+        services.AddScoped<IProductFiles, ProductFiles>();
 
         return services;
     }

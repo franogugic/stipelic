@@ -21,9 +21,9 @@ public sealed class AnalyticsController : ControllerBase
         _currentUserContext = currentUserContext;
     }
 
-    /// <summary>A page's or a product's views, emails, sales and revenue for one period, in the creator's timezone,
-    /// with the period before. <paramref name="scope"/>: page | product; <paramref name="period"/>: today | 7d | 30d |
-    /// all (default 7d).</summary>
+    /// <summary>A page's, a product's or the whole workspace's views, emails, sales and revenue for one period, in the
+    /// creator's timezone, with the period before. <paramref name="scope"/>: page | product | workspace (no
+    /// <paramref name="id"/>); <paramref name="period"/>: today | 7d | 15d | 30d | 2m | 3m | 6m | all (default 7d).</summary>
     [HttpGet("series")]
     public async Task<ActionResult<ApiResponse<AnalyticsSeriesDto>>> Series(
         string slug,
@@ -37,6 +37,40 @@ public sealed class AnalyticsController : ControllerBase
         var series = await _seriesService.GetAsync(slug, user.Id, scope, id, period, ct);
 
         return Ok(ApiResponse<AnalyticsSeriesDto>.Success(StatusCodes.Status200OK, "Analytics loaded.", series));
+    }
+
+    /// <summary>Paid revenue and sales per product for one period (default 30d): the best 20 products with revenue, the
+    /// revenue of the rest, how many products sold, and with <paramref name="productId"/> that product's rank.</summary>
+    [HttpGet("products")]
+    public async Task<ActionResult<ApiResponse<AnalyticsProductBreakdownDto>>> Products(
+        string slug,
+        [FromQuery] string? period,
+        [FromQuery] Guid? productId,
+        CancellationToken ct)
+    {
+        var user = GetVerifiedUser();
+
+        var breakdown = await _seriesService.GetProductBreakdownAsync(slug, user.Id, period, productId, ct);
+
+        return Ok(ApiResponse<AnalyticsProductBreakdownDto>.Success(StatusCodes.Status200OK, "Product revenue loaded.", breakdown));
+    }
+
+    /// <summary>The dashboard's top pages for one period (default 30d), of one product when <paramref name="productId"/> is
+    /// given: non-archived pages with activity, ranked by revenue, emails, then views (<paramref name="limit"/> 1–20,
+    /// default 5).</summary>
+    [HttpGet("pages")]
+    public async Task<ActionResult<ApiResponse<AnalyticsPagesDto>>> Pages(
+        string slug,
+        [FromQuery] string? period,
+        [FromQuery] Guid? productId,
+        [FromQuery] int? limit,
+        CancellationToken ct)
+    {
+        var user = GetVerifiedUser();
+
+        var pages = await _seriesService.GetTopPagesAsync(slug, user.Id, period, productId, limit, ct);
+
+        return Ok(ApiResponse<AnalyticsPagesDto>.Success(StatusCodes.Status200OK, "Top pages loaded.", pages));
     }
 
     private Auth.Application.Dtos.CurrentUserDto GetVerifiedUser()

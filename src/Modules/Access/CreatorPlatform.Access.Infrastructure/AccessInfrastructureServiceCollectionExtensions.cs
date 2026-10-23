@@ -1,4 +1,5 @@
 using CreatorPlatform.Access.Application.Interfaces;
+using CreatorPlatform.Access.Application.Services;
 using CreatorPlatform.Access.Infrastructure.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -8,7 +9,8 @@ public static class AccessInfrastructureServiceCollectionExtensions
 {
     public static IServiceCollection AddAccessInfrastructure(this IServiceCollection services)
     {
-        services.AddScoped<IAccessRedirectService, AccessRedirectService>();
+        services.AddScoped<IAccessGrantReader, AccessGrantReader>();
+        services.AddScoped<IProductAccessService, ProductAccessService>();
         return services;
     }
 }

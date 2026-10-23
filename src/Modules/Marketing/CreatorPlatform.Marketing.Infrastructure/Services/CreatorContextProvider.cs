@@ -69,7 +69,8 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             _context.Set<CreatorSettings>()
                 .Where(s => s.CreatorId == c.Id)
                 .Select(s => s.Timezone)
-                .FirstOrDefault() ?? CreatorTimeZone.Fallback));
+                .FirstOrDefault() ?? CreatorTimeZone.Fallback,
+            c.CreatedAt));
     }
 
     public async Task<Dictionary<int, Guid>> GetLandingPagePublicIdsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)

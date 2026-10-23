@@ -14,11 +14,14 @@ public sealed class FakeLandingPagesCreatorContextProvider : ICreatorContextProv
     public Task<int?> GetProductIdForCreatorAsync(int creatorId, Guid productPublicId, CancellationToken ct)
         => Task.FromResult<int?>(1);
 
+    /// <summary>Every product id resolves to this one: a paid Active product unless a test changes it.</summary>
+    public ProductInfo Product { get; set; } = new(Guid.Empty, "Product", 1000, null, true);
+
     public Task<ProductInfo?> GetProductInfoAsync(int productId, CancellationToken ct)
-        => Task.FromResult<ProductInfo?>(new ProductInfo(Guid.Empty, "Product", 1000, null, "Digital"));
+        => Task.FromResult<ProductInfo?>(Product);
 
     public Task<Dictionary<int, ProductInfo>> GetProductInfosAsync(IReadOnlyCollection<int> productIds, CancellationToken ct)
-        => Task.FromResult(productIds.ToDictionary(id => id, _ => new ProductInfo(Guid.Empty, "Product", 1000, null, "Digital")));
+        => Task.FromResult(productIds.ToDictionary(id => id, _ => Product));
 
     public Task<PublicCreatorBrand?> GetPublicBrandAsync(int creatorId, CancellationToken ct)
         => Task.FromResult<PublicCreatorBrand?>(new PublicCreatorBrand(creatorId, "Brand", null, null, "Eur"));

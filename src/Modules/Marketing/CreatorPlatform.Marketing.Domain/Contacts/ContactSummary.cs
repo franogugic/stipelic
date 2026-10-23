@@ -27,4 +27,12 @@ public sealed class ContactSummary
     /// Names are resolved by the caller (bounded batch join to landing_pages), never stored here — a
     /// landing page's title can change, and this array must never go stale.</summary>
     public List<int> SourceLandingPageIds { get; private set; } = [];
+
+    /// <summary>When a CSV import created this contact (F5.1); null for contacts that signed up on a page. An import
+    /// never touches an existing contact, so this is set only on contacts that were new through the import, and then
+    /// <see cref="FirstCapturedAt"/> is the import time too.</summary>
+    public DateTimeOffset? ImportedAt { get; private set; }
+
+    /// <summary>The <see cref="ContactImport"/> that created this contact; null when not imported.</summary>
+    public int? ImportId { get; private set; }
 }

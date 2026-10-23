@@ -12,11 +12,11 @@ public static class OrdersInfrastructureServiceCollectionExtensions
     public static IServiceCollection AddOrdersInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<IHomeSummaryCache, HomeSummaryCache>();
-        services.AddSingleton<IDashboardTrendsCache, DashboardTrendsCache>();
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IOrderReceiptReader, OrderReceiptReader>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<IOrdersUnitOfWork, OrdersUnitOfWork>();
+        services.AddScoped<IOrderAccessGrants, OrderAccessGrants>();
         services.AddScoped<IPaymentCheckoutSessionService, StripePaymentCheckoutSessionService>();
         services.AddScoped<IOrderCheckoutService, OrderCheckoutService>();
         services.AddScoped<IOrderWebhookService, OrderWebhookService>();

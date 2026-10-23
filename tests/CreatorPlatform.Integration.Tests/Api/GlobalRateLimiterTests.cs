@@ -35,6 +35,7 @@ public sealed class GlobalRateLimiterTests
     [InlineData(HealthEndpoint.Path)]
     [InlineData("/HEALTH")]
     [InlineData("/api/public/o/some-token")]
+    [InlineData("/api/public/c/some-token")]
     public void ExemptPaths_AreNeverLimited(string path)
     {
         using var limiter = PartitionedRateLimiter.Create<HttpContext, string>(RateLimitPolicies.GlobalPartition);

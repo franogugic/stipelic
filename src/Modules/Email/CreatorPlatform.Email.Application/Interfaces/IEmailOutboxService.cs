@@ -21,6 +21,10 @@ public interface IEmailOutboxService
     /// <summary>The buyer's creator-branded order email; replies go to the creator's support address when set.</summary>
     Task QueueOrderAccessAsync(string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct);
 
+    /// <summary>The "your free download" email for a lead-page sign-up (transactional: sent even to an unsubscribed
+    /// email); replies go to the creator's support address when set.</summary>
+    Task QueueLeadMagnetAsync(string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct);
+
     Task QueuePayoutRequestedAsync(string toEmail, string payoutPublicId, PayoutRequestedEmail payout, CancellationToken ct);
 
     /// <summary>Queues one pre-rendered campaign broadcast message for a single recipient. Subject/html/

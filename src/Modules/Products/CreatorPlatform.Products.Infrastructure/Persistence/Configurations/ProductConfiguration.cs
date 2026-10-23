@@ -39,21 +39,26 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.Property(product => product.PriceCents)
             .IsRequired();
 
-        builder.Property(product => product.Type)
-            .HasConversion<string>()
-            .HasMaxLength(30)
-            .IsRequired();
-
         builder.Property(product => product.Status)
             .HasConversion<string>()
             .HasMaxLength(30)
             .IsRequired();
 
-        builder.Property(product => product.AccessUrl)
-            .HasMaxLength(2000);
-
         builder.Property(product => product.ThumbnailUrl)
             .HasMaxLength(2000);
+
+        builder.Property(product => product.FileBlobPath)
+            .HasMaxLength(ProductFile.MaxBlobPathLength);
+
+        builder.Property(product => product.FileName)
+            .HasMaxLength(ProductFile.MaxFileNameLength);
+
+        builder.Property(product => product.FileSizeBytes);
+
+        builder.Property(product => product.FileContentType)
+            .HasMaxLength(ProductFile.MaxContentTypeLength);
+
+        builder.Property(product => product.FileUploadedAt);
 
         builder.Property(product => product.CreatedAt)
             .IsRequired();
@@ -68,5 +73,14 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
             .IsRequired();
 
         builder.ToTable(t => t.HasCheckConstraint("CK_products_PriceCents_NonNegative", "\"PriceCents\" >= 0"));
+
+        // The file's columns are set or cleared together, and an Active product always has a file.
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_products_File_Complete",
+            "(\"FileBlobPath\" IS NULL AND \"FileName\" IS NULL AND \"FileSizeBytes\" IS NULL AND \"FileContentType\" IS NULL AND \"FileUploadedAt\" IS NULL) " +
+            "OR (\"FileBlobPath\" IS NOT NULL AND \"FileName\" IS NOT NULL AND \"FileSizeBytes\" > 0 AND \"FileContentType\" IS NOT NULL AND \"FileUploadedAt\" IS NOT NULL)"));
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_products_Active_Has_File",
+            "\"Status\" <> 'Active' OR \"FileBlobPath\" IS NOT NULL"));
     }
 }

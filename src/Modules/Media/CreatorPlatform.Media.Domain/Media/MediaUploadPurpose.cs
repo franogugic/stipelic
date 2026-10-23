@@ -8,5 +8,8 @@ public enum MediaUploadPurpose
     ProductThumbnail,
     CreatorLogo,
     LandingPageHero,
-    LandingPageProductImage
+    LandingPageProductImage,
+
+    /// <summary>A product's document (F8): stored in the private container, delivered only through personal links.</summary>
+    ProductFile
 }

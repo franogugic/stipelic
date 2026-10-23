@@ -27,11 +27,7 @@ public sealed class CapturesListTests
     private async Task<List<EmailCaptureResponseDto>> ListAsync(int landingPageId, int limit)
     {
         await using var db = _fixture.CreateDbContext();
-        var service = new EmailCaptureService(
-            new EmailCaptureRepository(db),
-            new AnalyticsCreatorContextProvider(db),
-            new CreatorUsageService(db),
-            new AnalyticsUnitOfWork(db));
+        var service = TestData.CreateCaptureService(db);
         return await service.ListCapturesAsync(landingPageId, limit, CancellationToken.None);
     }
 

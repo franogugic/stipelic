@@ -1,6 +1,8 @@
 using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Marketing.Domain.Contacts;
 using CreatorPlatform.Marketing.Domain.Unsubscribes;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,7 +14,8 @@ namespace CreatorPlatform.Marketing.Infrastructure.Repositories;
 /// per-row correlated subqueries.</summary>
 public sealed class ContactsRepository : IContactsRepository
 {
-    private sealed record SummaryRow(string Email, DateTimeOffset FirstCapturedAt, List<int> SourceLandingPageIds);
+    private sealed record SummaryRow(
+        string Email, DateTimeOffset FirstCapturedAt, List<int> SourceLandingPageIds, DateTimeOffset? ImportedAt);
 
     private readonly CreatorPlatformDbContext _context;
 
@@ -43,7 +46,8 @@ public sealed class ContactsRepository : IContactsRepository
             SELECT
                 "Email" AS "Email",
                 "FirstCapturedAt" AS "FirstCapturedAt",
-                "SourceLandingPageIds" AS "SourceLandingPageIds"
+                "SourceLandingPageIds" AS "SourceLandingPageIds",
+                "ImportedAt" AS "ImportedAt"
             FROM marketing.contact_summaries
             WHERE "CreatorId" = {creatorId}
               AND "Email" > {after}
@@ -101,7 +105,8 @@ public sealed class ContactsRepository : IContactsRepository
                     s.SourceLandingPageIds.Count,
                     string.Join(", ", titles),
                     unsubscribedEmails.Contains(s.Email),
-                    sourceList);
+                    sourceList,
+                    s.ImportedAt);
             })
             .ToList();
     }
@@ -119,7 +124,9 @@ public sealed class ContactsRepository : IContactsRepository
                 COUNT(*)::int AS "Total",
                 (COUNT(*) FILTER (WHERE u."Id" IS NULL))::int AS "Active",
                 (COUNT(*) FILTER (WHERE cs."FirstCapturedAt" >= {monthStart}))::int AS "NewThisMonth",
-                (COUNT(*) FILTER (WHERE u."Id" IS NOT NULL))::int AS "Unsubscribed"
+                (COUNT(*) FILTER (WHERE u."Id" IS NOT NULL))::int AS "Unsubscribed",
+                (COUNT(*) FILTER (WHERE cs."ImportId" IS NOT NULL AND cs."ImportedAt" >= {monthStart}))::int AS "ImportedThisMonth",
+                (COUNT(*) FILTER (WHERE cs."ImportId" IS NOT NULL))::int AS "Imported"
             FROM marketing.contact_summaries cs
             LEFT JOIN marketing.unsubscribes u
                 ON u."CreatorId" = {creatorId}
@@ -219,6 +226,107 @@ public sealed class ContactsRepository : IContactsRepository
             .ToListAsync(ct);
     }
 
+    public async Task<Dictionary<DateTime, ContactBucketRow>> GetBucketsAsync(
+        int creatorId, string timezone, IReadOnlyList<DateTime> bucketStarts, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        // Each event is turned into the creator's wall-clock time and binned with width_bucket over the plan's local
+        // bucket starts (the same scale as AnalyticsPeriodPlan.Edges), so a DST change never moves an event.
+        var edges = AnalyticsPeriodPlan.ToEdges(bucketStarts);
+        var rows = await _context.Database.SqlQuery<BucketEventRow>($"""
+            SELECT 'joined' AS "Kind",
+                   width_bucket(extract(epoch FROM (cs."FirstCapturedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   COUNT(*)::int AS "Count",
+                   (COUNT(*) FILTER (WHERE cs."ImportId" IS NOT NULL))::int AS "Imported"
+            FROM marketing.contact_summaries cs
+            WHERE cs."CreatorId" = {creatorId} AND cs."FirstCapturedAt" >= {from} AND cs."FirstCapturedAt" < {to}
+            GROUP BY 2
+            UNION ALL
+            SELECT 'left' AS "Kind",
+                   width_bucket(extract(epoch FROM (u."UnsubscribedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   COUNT(*)::int AS "Count",
+                   0::int AS "Imported"
+            FROM marketing.unsubscribes u
+            WHERE u."CreatorId" = {creatorId} AND u."UnsubscribedAt" >= {from} AND u."UnsubscribedAt" < {to}
+            GROUP BY 2
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        var buckets = new Dictionary<DateTime, ContactBucketRow>();
+        foreach (var row in rows)
+        {
+            // width_bucket numbers the bins from 1; 0 would be an event before the first start, excluded above.
+            if (row.Bucket < 1 || row.Bucket > bucketStarts.Count)
+                continue;
+            var key = bucketStarts[row.Bucket - 1];
+            var current = buckets.GetValueOrDefault(key) ?? new ContactBucketRow(0, 0);
+            buckets[key] = row.Kind == "joined"
+                ? current with { Joined = row.Count, Imported = row.Imported }
+                : current with { Unsubscribed = row.Count };
+        }
+
+        return buckets;
+    }
+
+    public async Task<int> CountCapturedBeforeAsync(int creatorId, DateTimeOffset before, CancellationToken ct) =>
+        (await _context.Database.SqlQuery<int>($"""
+            SELECT COUNT(*)::int AS "Value" FROM marketing.contact_summaries cs
+            WHERE cs."CreatorId" = {creatorId} AND cs."FirstCapturedAt" < {before}
+            """).ToListAsync(ct)).Single();
+
+    private sealed record BucketEventRow(string Kind, int Bucket, int Count, int Imported);
+
+    public async Task<ContactPeriodTotalsRow> GetPeriodTotalsAsync(
+        int creatorId, DateTimeOffset? from, DateTimeOffset to, DateTimeOffset? previousFrom, DateTimeOffset? previousTo, CancellationToken ct)
+    {
+        // A contact joins at its first capture (an imported one at its import); an opt-out counts when it was recorded,
+        // also for a contact deleted since — the same rules as the buckets.
+        return (await _context.Database.SqlQuery<ContactPeriodTotalsRow>($"""
+            SELECT
+                (SELECT COUNT(*) FILTER (WHERE {from}::timestamptz IS NOT NULL AND cs."FirstCapturedAt" < {from})
+                 FROM marketing.contact_summaries cs WHERE cs."CreatorId" = {creatorId})::int AS "StartTotal",
+                j."Joined", u."Unsubscribed", j."Imported", j."PreviousJoined", u."PreviousUnsubscribed", j."PreviousImported"
+            FROM (
+                SELECT
+                    (COUNT(*) FILTER (WHERE ({from}::timestamptz IS NULL OR cs."FirstCapturedAt" >= {from}) AND cs."FirstCapturedAt" < {to}))::int AS "Joined",
+                    (COUNT(*) FILTER (WHERE cs."ImportId" IS NOT NULL AND ({from}::timestamptz IS NULL OR cs."FirstCapturedAt" >= {from}) AND cs."FirstCapturedAt" < {to}))::int AS "Imported",
+                    (COUNT(*) FILTER (WHERE {previousTo}::timestamptz IS NOT NULL AND cs."FirstCapturedAt" >= {previousFrom} AND cs."FirstCapturedAt" < {previousTo}))::int AS "PreviousJoined",
+                    (COUNT(*) FILTER (WHERE {previousTo}::timestamptz IS NOT NULL AND cs."ImportId" IS NOT NULL AND cs."FirstCapturedAt" >= {previousFrom} AND cs."FirstCapturedAt" < {previousTo}))::int AS "PreviousImported"
+                FROM marketing.contact_summaries cs
+                WHERE cs."CreatorId" = {creatorId}
+            ) j,
+            (
+                SELECT
+                    (COUNT(*) FILTER (WHERE ({from}::timestamptz IS NULL OR u."UnsubscribedAt" >= {from}) AND u."UnsubscribedAt" < {to}))::int AS "Unsubscribed",
+                    (COUNT(*) FILTER (WHERE {previousTo}::timestamptz IS NOT NULL AND u."UnsubscribedAt" >= {previousFrom} AND u."UnsubscribedAt" < {previousTo}))::int AS "PreviousUnsubscribed"
+                FROM marketing.unsubscribes u
+                WHERE u."CreatorId" = {creatorId}
+            ) u
+            """).AsNoTracking().ToListAsync(ct)).Single();
+    }
+
+    public async Task<List<ContactPeriodSourceRow>> GetPeriodSourcesAsync(
+        int creatorId, DateTimeOffset? from, DateTimeOffset to, CancellationToken ct)
+    {
+        // The import only ever creates new contacts, so a contact with an ImportId was first an import; any other
+        // contact's first source is the first page in its capture-ordered SourceLandingPageIds.
+        return await _context.Database.SqlQuery<ContactPeriodSourceRow>($"""
+            SELECT lp."PublicId" AS "LandingPagePublicId", lp."Title" AS "Title", s."Count" AS "Count"
+            FROM (
+                SELECT CASE WHEN cs."ImportId" IS NOT NULL THEN NULL ELSE cs."SourceLandingPageIds"[1] END AS "LandingPageId",
+                       COUNT(*)::int AS "Count"
+                FROM marketing.contact_summaries cs
+                WHERE cs."CreatorId" = {creatorId}
+                  AND ({from}::timestamptz IS NULL OR cs."FirstCapturedAt" >= {from}) AND cs."FirstCapturedAt" < {to}
+                  AND (cs."ImportId" IS NOT NULL OR cardinality(cs."SourceLandingPageIds") > 0)
+                GROUP BY 1
+            ) s
+            LEFT JOIN landing_pages.landing_pages lp ON lp."Id" = s."LandingPageId" AND lp."CreatorId" = {creatorId}
+            WHERE s."LandingPageId" IS NULL OR lp."Id" IS NOT NULL
+            ORDER BY s."Count" DESC, lp."Title" NULLS FIRST, lp."Id"
+            """).AsNoTracking().ToListAsync(ct);
+    }
+
     public async Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct)
     {
         // Month starts are local `timestamp` values (now() AT TIME ZONE tz); each event is converted the same way,
@@ -253,5 +361,12 @@ public sealed class ContactsRepository : IContactsRepository
             """)
             .AsNoTracking()
             .ToListAsync(ct);
+    }
+
+    public async Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct)
+    {
+        return await _context.Set<ContactSummary>()
+            .AsNoTracking()
+            .AnyAsync(cs => cs.CreatorId == creatorId && cs.Email == email, ct);
     }
 }

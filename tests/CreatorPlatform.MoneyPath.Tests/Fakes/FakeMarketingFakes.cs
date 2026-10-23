@@ -61,17 +61,17 @@ public sealed class FakeAudienceService : IAudienceService
     public int GetAudienceEmailsCallCount { get; private set; }
 
     public Task<int> GetAudienceCountAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId, CancellationToken ct)
         => Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll().Count : Count);
 
     public Task<List<string>> GetAudienceEmailsAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId, CancellationToken ct)
     {
         GetAudienceEmailsCallCount++;
         return Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll() : Emails);
     }
 
-    public CampaignAudiencesDto Overview { get; set; } = new(new AllAudienceDto(0), [], []);
+    public CampaignAudiencesDto Overview { get; set; } = new(new AllAudienceDto(0), [], [], []);
 
     public Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(Overview);
@@ -82,8 +82,13 @@ public sealed class FakeAudienceService : IAudienceService
     /// <summary>Faithful in-memory keyset reimplementation over <see cref="PageableEmails"/> — sorts
     /// ordinally, slices strictly after <paramref name="afterEmail"/>, fetches one extra row to compute
     /// <c>HasMore</c>, exactly like the real query.</summary>
+    public (int OpenedAny, int OpenedThroughResends) NonOpenerReach { get; set; }
+
+    public Task<(int OpenedAny, int OpenedThroughResends)> GetNonOpenerReachAsync(int originalCampaignId, CancellationToken ct)
+        => Task.FromResult(NonOpenerReach);
+
     public Task<(List<string> Emails, bool HasMore)> GetAudiencePageAsync(
-        CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId,
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int creatorId,
         string? afterEmail, int limit, CancellationToken ct)
     {
         GetPageCalls.Add((audienceType, landingPageId, productId, creatorId, afterEmail, limit));
@@ -165,6 +170,25 @@ public sealed class FakeCampaignRepository : ICampaignRepository
     /// tracked EF query would after SaveChanges.</summary>
     public Task<Campaign?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
         => Task.FromResult(Campaigns.FirstOrDefault(c => c.PublicId == publicId));
+
+    public List<int> LockedCampaignIds { get; } = [];
+
+    public Task LockForUpdateAsync(int campaignId, CancellationToken ct)
+    {
+        LockedCampaignIds.Add(campaignId);
+        return Task.CompletedTask;
+    }
+
+    public Task<List<Campaign>> GetResendsAsync(int originalCampaignId, CancellationToken ct)
+        => Task.FromResult(Campaigns
+            .Where(c => c.SourceCampaignId == originalCampaignId)
+            .OrderBy(c => c.CreatedAt)
+            .ToList());
+
+    public Task<Dictionary<int, CampaignSourceSummary>> GetSourceSummariesAsync(IReadOnlyCollection<int> campaignIds, CancellationToken ct)
+        => Task.FromResult(Campaigns
+            .Where(c => campaignIds.Contains(c.Id))
+            .ToDictionary(c => c.Id, c => new CampaignSourceSummary(c.PublicId, c.Subject)));
 
     public Task<List<Campaign>> GetRecentByCreatorIdAsync(int creatorId, int take, CancellationToken ct)
         => Task.FromResult(Campaigns
@@ -265,6 +289,22 @@ public sealed class FakeCampaignRecipientRepository : ICampaignRecipientReposito
 
 public sealed class FakeMarketingUnitOfWork : IMarketingUnitOfWork
 {
+    public List<(int CreatorId, string Email)> ContactLocks { get; } = [];
+
+    public Task AcquireContactLockAsync(int creatorId, string normalizedEmail, CancellationToken ct)
+    {
+        ContactLocks.Add((creatorId, normalizedEmail));
+        return Task.CompletedTask;
+    }
+
+    public List<(int CreatorId, bool Exclusive)> CreatorContactsLocks { get; } = [];
+
+    public Task AcquireCreatorContactsLockAsync(int creatorId, bool exclusive, CancellationToken ct)
+    {
+        CreatorContactsLocks.Add((creatorId, exclusive));
+        return Task.CompletedTask;
+    }
+
     public int SaveChangesCallCount { get; private set; }
     public bool TransactionCommitted { get; private set; }
     public int? LockedCreatorId { get; private set; }
@@ -317,4 +357,51 @@ public sealed class FakeCampaignProgressProvider : ICampaignProgressProvider
         RequeueFailedCalls.Add((campaignPublicId, nextAttemptAt));
         return Task.FromResult(FailedCountByCampaign.GetValueOrDefault(campaignPublicId, 0));
     }
+}
+
+/// <summary>Assigns ids when links are added, like the real repository after the flush (the send pipeline embeds
+/// them in the tracked URLs).</summary>
+public sealed class FakeCampaignLinkRepository : ICampaignLinkRepository
+{
+    private static readonly PropertyInfo IdProperty = typeof(CampaignLink).GetProperty(nameof(CampaignLink.Id))!;
+
+    private int _nextId = 1;
+
+    public List<CampaignLink> Links { get; } = [];
+
+    public Task AddRangeAsync(IEnumerable<CampaignLink> links, CancellationToken ct)
+    {
+        foreach (var link in links)
+        {
+            IdProperty.SetValue(link, _nextId++);
+            Links.Add(link);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<List<CampaignLink>> GetByCampaignIdAsync(int campaignId, CancellationToken ct)
+        => Task.FromResult(Links.Where(l => l.CampaignId == campaignId).OrderBy(l => l.Position).ToList());
+
+    public Task<Dictionary<int, int>> GetLinkCountsAsync(IReadOnlyCollection<int> campaignIds, CancellationToken ct)
+        => Task.FromResult(Links.Where(l => campaignIds.Contains(l.CampaignId))
+            .GroupBy(l => l.CampaignId)
+            .ToDictionary(g => g.Key, g => g.Count()));
+
+    public Task<string?> GetTargetUrlAsync(int recipientId, int linkId, CancellationToken ct)
+        => Task.FromResult(Links.FirstOrDefault(l => l.Id == linkId)?.Url);
+
+    public Task RecordClickAsync(int recipientId, int linkId, CancellationToken ct) => Task.CompletedTask;
+}
+
+/// <summary>An in-memory unsubscribe list with the real repository's insert-once semantics.</summary>
+public sealed class FakeUnsubscribeRepository : IUnsubscribeRepository
+{
+    public HashSet<(int CreatorId, string Email)> Rows { get; } = [];
+
+    public Task<bool> AddIfNotExistsAsync(CreatorPlatform.Marketing.Domain.Unsubscribes.Unsubscribe unsubscribe, CancellationToken ct)
+        => Task.FromResult(Rows.Add((unsubscribe.CreatorId, unsubscribe.Email)));
+
+    public Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct)
+        => Task.FromResult(Rows.Contains((creatorId, email.Trim().ToLowerInvariant())));
 }

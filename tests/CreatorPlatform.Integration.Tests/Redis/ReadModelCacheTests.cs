@@ -13,7 +13,7 @@ using StackExchange.Redis;
 namespace CreatorPlatform.Integration.Tests.Redis;
 
 /// <summary>The four read-model caches on a real Redis: every DTO survives the JSON round trip, keys and TTLs are as
-/// documented, two API instances share entries and invalidations, and the trends generation drops every range.</summary>
+/// documented, and two API instances share entries and invalidations.</summary>
 [Collection(RedisCollection.Name)]
 public sealed class ReadModelCacheTests : IAsyncLifetime
 {
@@ -81,10 +81,6 @@ public sealed class ReadModelCacheTests : IAsyncLifetime
     private static List<LandingPageViewsSummaryDto> ViewsSummary(long views = 1_234) =>
         [new(Guid.NewGuid(), views, 987), new(Guid.NewGuid(), 0, 0)];
 
-    private static DashboardTrendsDto Trends(string range, long revenue = 4_900) =>
-        new(range, range.EndsWith('d') ? "day" : "month",
-            [new("2026-10-01", revenue, 12), new("2026-11-01", 0, 0)]);
-
     [Fact]
     public async Task HomeSummary_RoundTripsEveryProperty_UnderItsKey_ForFiveMinutes()
     {
@@ -130,66 +126,14 @@ public sealed class ReadModelCacheTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DashboardTrends_RoundTrip_UnderTheGenerationKey_ForOneMinute()
-    {
-        var cache = new DashboardTrendsCache(_instanceA.JsonCache);
-        var trends = Trends("30d");
-
-        await cache.SetAsync(CreatorId, "30d", trends, None);
-
-        AssertSameJson(trends, await cache.GetAsync(CreatorId, "30d", None));
-        // No generation yet means generation 0; the braces are a hash tag (one cluster slot per creator).
-        await AssertTtlAsync($"{_prefix}dashboard-trends:{{{CreatorId}}}:g0:30d", TimeSpan.FromSeconds(60));
-        Assert.False(await Raw.KeyExistsAsync($"{_prefix}dashboard-trends:gen:{{{CreatorId}}}"));
-    }
-
-    [Fact]
-    public async Task DashboardTrends_RemoveDropsEveryRange_AndARangeSetAfterwardsHits()
-    {
-        var cache = new DashboardTrendsCache(_instanceA.JsonCache);
-        await cache.SetAsync(CreatorId, "30d", Trends("30d"), None);
-        await cache.SetAsync(CreatorId, "6m", Trends("6m"), None);
-
-        await cache.RemoveAsync(CreatorId, None);
-
-        Assert.Null(await cache.GetAsync(CreatorId, "30d", None));
-        Assert.Null(await cache.GetAsync(CreatorId, "6m", None));
-        var twelveMonths = Trends("12m");
-        await cache.SetAsync(CreatorId, "12m", twelveMonths, None);
-        AssertSameJson(twelveMonths, await cache.GetAsync(CreatorId, "12m", None));
-
-        // Nothing was scanned or deleted: the old entries just expire, and the generation itself has a TTL.
-        Assert.True(await Raw.KeyExistsAsync($"{_prefix}dashboard-trends:{{{CreatorId}}}:g0:30d"));
-        Assert.True(await Raw.KeyExistsAsync($"{_prefix}dashboard-trends:{{{CreatorId}}}:g1:12m"));
-        var generationKey = $"{_prefix}dashboard-trends:gen:{{{CreatorId}}}";
-        Assert.Equal("1", (await Raw.StringGetAsync(generationKey)).ToString());
-        await AssertTtlAsync(generationKey, TimeSpan.FromHours(1));
-    }
-
-    [Fact]
-    public async Task DashboardTrends_OfAnotherCreator_AreNotDropped()
-    {
-        var cache = new DashboardTrendsCache(_instanceA.JsonCache);
-        await cache.SetAsync(CreatorId, "30d", Trends("30d"), None);
-        await cache.SetAsync(CreatorId + 1, "30d", Trends("30d", revenue: 1), None);
-
-        await cache.RemoveAsync(CreatorId, None);
-
-        Assert.Null(await cache.GetAsync(CreatorId, "30d", None));
-        Assert.Equal(1, (await cache.GetAsync(CreatorId + 1, "30d", None))!.Points[0].RevenueCents);
-    }
-
-    [Fact]
     public async Task TwoInstances_ShareEntries()
     {
         await new HomeSummaryCache(_instanceA.JsonCache).SetAsync(CreatorId, HomeSummary(), None);
         await new ViewsSummaryCache(_instanceA.JsonCache).SetAsync(CreatorId, ViewsSummary(), None);
-        await new DashboardTrendsCache(_instanceA.JsonCache).SetAsync(CreatorId, "30d", Trends("30d"), None);
         await new PayoutScheduleCache(_instanceA.JsonCache).SetAsync(CreatorId, new("daily", 2, null, null), None);
 
         Assert.NotNull(await new HomeSummaryCache(_instanceB.JsonCache).GetAsync(CreatorId, None));
         Assert.NotNull(await new ViewsSummaryCache(_instanceB.JsonCache).GetAsync(CreatorId, None));
-        Assert.NotNull(await new DashboardTrendsCache(_instanceB.JsonCache).GetAsync(CreatorId, "30d", None));
         Assert.NotNull(await new PayoutScheduleCache(_instanceB.JsonCache).GetAsync(CreatorId, None));
     }
 
@@ -198,18 +142,13 @@ public sealed class ReadModelCacheTests : IAsyncLifetime
     {
         var homeA = new HomeSummaryCache(_instanceA.JsonCache);
         var viewsA = new ViewsSummaryCache(_instanceA.JsonCache);
-        var trendsA = new DashboardTrendsCache(_instanceA.JsonCache);
         await homeA.SetAsync(CreatorId, HomeSummary(), None);
         await viewsA.SetAsync(CreatorId, ViewsSummary(), None);
-        await trendsA.SetAsync(CreatorId, "30d", Trends("30d"), None);
-        await trendsA.SetAsync(CreatorId, "6m", Trends("6m"), None);
 
         await new CreatorCacheInvalidator(_instanceB.JsonCache).InvalidateAsync(CreatorId, None);
 
         Assert.Null(await homeA.GetAsync(CreatorId, None));
         Assert.Null(await viewsA.GetAsync(CreatorId, None));
-        Assert.Null(await trendsA.GetAsync(CreatorId, "30d", None));
-        Assert.Null(await trendsA.GetAsync(CreatorId, "6m", None));
         Assert.False(await Raw.KeyExistsAsync($"{_prefix}home-summary:{CreatorId}"));
         Assert.False(await Raw.KeyExistsAsync($"{_prefix}views-summary:{CreatorId}"));
     }
@@ -240,18 +179,6 @@ public sealed class ReadModelCacheTests : IAsyncLifetime
         Assert.Null(read);
         Assert.False(await Raw.KeyExistsAsync(key));
         Assert.Single(_instanceA.JsonCacheLog.Entries, entry => entry.Level == LogLevel.Warning);
-    }
-
-    [Fact]
-    public async Task ATrendsValueThatNoLongerDeserializes_DropsTheEntryOfTheCurrentGeneration()
-    {
-        var cache = new DashboardTrendsCache(_instanceA.JsonCache);
-        await cache.RemoveAsync(CreatorId, None);
-        var key = $"{_prefix}dashboard-trends:{{{CreatorId}}}:g1:30d";
-        await Raw.StringSetAsync(key, "[1, 2]", TimeSpan.FromMinutes(1));
-
-        Assert.Null(await cache.GetAsync(CreatorId, "30d", None));
-        Assert.False(await Raw.KeyExistsAsync(key));
     }
 
     private async Task AssertTtlAsync(string key, TimeSpan expected)

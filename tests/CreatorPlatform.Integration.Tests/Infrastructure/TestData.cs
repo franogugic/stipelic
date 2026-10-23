@@ -3,8 +3,13 @@ using CreatorPlatform.Analytics.Infrastructure.Persistence;
 using CreatorPlatform.Analytics.Infrastructure.Repositories;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Creators.Infrastructure.Services;
+using CreatorPlatform.Email.Infrastructure.Options;
+using CreatorPlatform.Email.Infrastructure.Services;
+using CreatorPlatform.Marketing.Application.Options;
+using CreatorPlatform.Marketing.Infrastructure.Services;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using AnalyticsCreatorContextProvider = CreatorPlatform.Analytics.Infrastructure.Services.CreatorContextProvider;
 
 namespace CreatorPlatform.Integration.Tests.Infrastructure;
@@ -258,17 +263,33 @@ public sealed class TestData
             """);
     }
 
+    /// <summary>The Marketing options the test hosts use (secrets are test values).</summary>
+    public static readonly MarketingOptions Marketing = new()
+    {
+        UnsubscribeTokenSecret = "test-secret-value-1234567890",
+        OpenTrackingSecret = "test-open-secret-value-1234567890",
+        ClickTrackingSecret = "test-click-secret-value-1234567890",
+        ApiBaseUrl = "http://localhost:5000",
+        FrontendBaseUrl = "https://app.luma.test",
+    };
+
+    /// <summary>The production capture path: capture, contact limit and the lead page's document email.</summary>
+    public static EmailCaptureService CreateCaptureService(CreatorPlatformDbContext db) => new(
+        new EmailCaptureRepository(db),
+        new AnalyticsCreatorContextProvider(db),
+        new CreatorUsageService(db),
+        new AnalyticsUnitOfWork(db),
+        new LeadMagnetDelivery(
+            db,
+            new EmailOutboxService(db, Options.Create(new EmailOptions { FrontendBaseUrl = "https://app.luma.test" })),
+            new UnsubscribeTokenService(Options.Create(Marketing)),
+            Options.Create(Marketing)));
+
     /// <summary>A public sign-up through the production capture path.</summary>
     public async Task CaptureAsync(int creatorId, int landingPageId, string email)
     {
         await using var db = _fixture.CreateDbContext();
-        var service = new EmailCaptureService(
-            new EmailCaptureRepository(db),
-            new AnalyticsCreatorContextProvider(db),
-            new CreatorUsageService(db),
-            new AnalyticsUnitOfWork(db));
-
-        await service.CaptureAsync(landingPageId, null, creatorId, email, CancellationToken.None);
+        await CreateCaptureService(db).CaptureAsync(landingPageId, null, creatorId, email, CancellationToken.None);
     }
 
     public async Task UnsubscribeAsync(int creatorId, string email)

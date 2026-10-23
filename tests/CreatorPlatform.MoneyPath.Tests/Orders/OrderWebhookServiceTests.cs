@@ -32,6 +32,14 @@ public class OrderWebhookServiceTests
     private static (OrderWebhookService Service, FakeWebhookOrderRepository OrderRepository, FakeLedgerEntryRepository LedgerRepository)
         BuildService(Order order)
     {
+        var (service, orderRepository, ledgerRepository, _, _) = BuildServiceWithDelivery(order);
+        return (service, orderRepository, ledgerRepository);
+    }
+
+    private static (OrderWebhookService Service, FakeWebhookOrderRepository OrderRepository, FakeLedgerEntryRepository LedgerRepository,
+        FakeOrderAccessGrants Grants, FakeEmailOutboxService Outbox)
+        BuildServiceWithDelivery(Order order)
+    {
         var orderRepository = new FakeWebhookOrderRepository { Order = order };
         var ledgerRepository = new FakeLedgerEntryRepository();
         var payoutLedgerService = new PayoutLedgerService(ledgerRepository, NullLogger<PayoutLedgerService>.Instance);
@@ -39,7 +47,8 @@ public class OrderWebhookServiceTests
         var unitOfWork = new FakeOrdersUnitOfWork();
         var emailOutbox = new FakeEmailOutboxService();
         var homeSummaryCache = new FakeHomeSummaryCache();
-        var options = Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.example.com", ApiBaseUrl = "https://api.example.com" });
+        var options = Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.example.com" });
+        var grants = new FakeOrderAccessGrants();
 
         var service = new OrderWebhookService(
             orderRepository,
@@ -48,10 +57,11 @@ public class OrderWebhookServiceTests
             emailOutbox,
             homeSummaryCache,
             payoutLedgerService,
+            grants,
             options,
             NullLogger<OrderWebhookService>.Instance);
 
-        return (service, orderRepository, ledgerRepository);
+        return (service, orderRepository, ledgerRepository, grants, emailOutbox);
     }
 
     [Fact]
@@ -129,5 +139,42 @@ public class OrderWebhookServiceTests
         await service.HandleChargeRefundedAsync(data, CancellationToken.None);
 
         Assert.Equal(2, ledgerRepository.Entries.Count);
+    }
+
+    // ---- F8: the buyer's personal link ---------------------------------------------------------------------------
+
+    [Fact]
+    public async Task APaidOrder_GetsExactlyOneGrant_AndItsEmailLinksTheDownloadPage()
+    {
+        var order = BuildOrder(PayoutMode.StripeConnect);
+        var (service, _, _, grants, outbox) = BuildServiceWithDelivery(order);
+        var completed = new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1");
+
+        await service.HandleCheckoutSessionCompletedAsync(completed, CancellationToken.None);
+        await service.HandleCheckoutSessionCompletedAsync(completed, CancellationToken.None);
+
+        var grant = Assert.Single(grants.ByOrderId).Value;
+        Assert.Equal("buyer@example.com", grant.Email);
+        Assert.Null(grant.RevokedAt);
+        Assert.Equal(1, outbox.OrderAccessQueuedCount);
+        Assert.Equal($"https://app.example.com/d/{grant.Token}", outbox.LastOrderAccess!.DownloadUrl);
+        Assert.Equal("ZIP · 17.5 MB", outbox.LastOrderAccess.FileLabel);
+    }
+
+    [Fact]
+    public async Task ARefund_TurnsTheBuyersLinkOff_Once()
+    {
+        var order = BuildOrder(PayoutMode.BankTransfer);
+        var (service, _, _, grants, _) = BuildServiceWithDelivery(order);
+        await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1"), CancellationToken.None);
+
+        var refund = new OrderChargeRefundedDto("pi_1", "ch_1");
+        await service.HandleChargeRefundedAsync(refund, CancellationToken.None);
+        var revokedAt = Assert.Single(grants.ByOrderId).Value.RevokedAt;
+        await service.HandleChargeRefundedAsync(refund, CancellationToken.None);
+
+        Assert.NotNull(revokedAt);
+        Assert.Equal(revokedAt, grants.ByOrderId.Single().Value.RevokedAt);
+        Assert.Equal(1, grants.RevokeCallCount);
     }
 }

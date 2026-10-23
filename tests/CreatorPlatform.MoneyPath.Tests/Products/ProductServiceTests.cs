@@ -25,13 +25,13 @@ public class ProductServiceTests
         var unitOfWork = new FakeProductsUnitOfWork();
         var orderRepository = new FakeOrderContextProvider();
 
-        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository, new FakeLandingPageContextProvider());
+        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository, new FakeLandingPageContextProvider(), new FakeProductFiles());
 
         return (service, productRepository, orderRepository);
     }
 
     private static Product CreateProduct(string name = "Test Product")
-        => Product.Create(CreatorId, name, null, 1000, ProductType.Digital, null, null, DateTimeOffset.UtcNow);
+        => Product.Create(CreatorId, name, null, 1000, null, DateTimeOffset.UtcNow);
 
     [Fact]
     public async Task ListAsync_ProductWithMultiplePaidOrders_ReturnsExactRevenueSumAndCount()

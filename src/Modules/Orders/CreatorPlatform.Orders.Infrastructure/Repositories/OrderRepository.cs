@@ -6,6 +6,7 @@ using CreatorPlatform.Marketing.Domain.Unsubscribes;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Domain.Orders;
+using CreatorPlatform.Products.Domain.Access;
 using CreatorPlatform.Products.Domain.Products;
 using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -59,61 +60,40 @@ public sealed class OrderRepository : IOrderRepository
     public async Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,
         int ownerUserId,
-        Guid? productPublicId,
-        Guid? landingPagePublicId,
-        OrderStatus? status,
-        string? customerSearch,
-        DateTimeOffset? afterCreatedAt,
-        Guid? afterId,
+        OrderListFilter filter,
+        OrderListCursor? after,
         int limit,
         CancellationToken ct)
     {
-        // Left join on landing pages — Order.LandingPageId is nullable (direct-link/no-referrer
-        // orders have none), so this must not drop rows the way an inner join would.
-        // Filtered server-side (not client-side) so a status/product filter narrows the full order
-        // set, not just whatever page happens to be loaded — keyset pagination below still walks the
-        // filtered result set correctly since the cursor condition is applied on top of it. Product is
-        // filtered by PublicId directly on the already-joined `p` — no extra round trip to resolve it
-        // to an internal id first.
-        var query =
-            from o in _context.Set<Order>().AsNoTracking()
-            join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
-            join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
-            join lp in _context.Set<LandingPage>().AsNoTracking() on o.LandingPageId equals (int?)lp.Id into lpJoin
-            from lp in lpJoin.DefaultIfEmpty()
-            where c.Slug == creatorSlug
-                && c.OwnerUserId == ownerUserId
-                && (!productPublicId.HasValue || p.PublicId == productPublicId.Value)
-                && (!landingPagePublicId.HasValue || lp.PublicId == landingPagePublicId.Value)
-                && (!status.HasValue || o.Status == status.Value)
-            select new { o, ProductName = p.Name, LandingPageTitle = (string?)lp.Title };
+        var query = Filtered(creatorSlug, ownerUserId, filter, includeStatus: true);
 
-        if (customerSearch is not null)
+        // With a period the rows are ordered by the counted date (the period rule), else by when they were placed.
+        if (filter.Period is not null)
         {
-            // Case-insensitive substring match on email OR name. Written as lower(column) LIKE '%term%' so it
-            // matches the GIN trigram indexes on lower("Email") / lower("Name") exactly (see migration
-            // AddOrderCustomerSearchIndexes). The term's own %, _ and \ are escaped so they match literally.
-            var pattern = LikePatterns.Contains(customerSearch.ToLowerInvariant());
-            query = query.Where(x =>
-                (x.o.Email != null && EF.Functions.Like(x.o.Email.ToLower(), pattern, LikePatterns.EscapeCharacter))
-                || (x.o.Name != null && EF.Functions.Like(x.o.Name.ToLower(), pattern, LikePatterns.EscapeCharacter)));
+            if (after is not null)
+            {
+                var cursorAt = after.At;
+                var cursorId = after.PublicId;
+                query = query.Where(x => x.CountedAt < cursorAt || (x.CountedAt == cursorAt && x.o.PublicId.CompareTo(cursorId) < 0));
+            }
+            query = query.OrderByDescending(x => x.CountedAt).ThenByDescending(x => x.o.PublicId);
         }
-
-        if (afterCreatedAt.HasValue && afterId.HasValue)
+        else
         {
-            var cursorCreatedAt = afterCreatedAt.Value;
-            var cursorId = afterId.Value;
-
-            // Mirrors OrderKeysetCursor.IsBeforeCursor (see its tests) — inlined because EF Core
-            // can't translate a call to an extracted predicate into SQL.
-            query = query.Where(x =>
-                x.o.CreatedAt < cursorCreatedAt ||
-                (x.o.CreatedAt == cursorCreatedAt && x.o.PublicId.CompareTo(cursorId) < 0));
+            if (after is not null)
+            {
+                var cursorCreatedAt = after.At;
+                var cursorId = after.PublicId;
+                // Mirrors OrderKeysetCursor.IsBeforeCursor (see its tests) — inlined because EF Core
+                // can't translate a call to an extracted predicate into SQL.
+                query = query.Where(x =>
+                    x.o.CreatedAt < cursorCreatedAt ||
+                    (x.o.CreatedAt == cursorCreatedAt && x.o.PublicId.CompareTo(cursorId) < 0));
+            }
+            query = query.OrderByDescending(x => x.o.CreatedAt).ThenByDescending(x => x.o.PublicId);
         }
 
         return await query
-            .OrderByDescending(x => x.o.CreatedAt)
-            .ThenByDescending(x => x.o.PublicId)
             .Take(limit)
             .Select(x => new OrderDto(
                 x.o.PublicId,
@@ -127,8 +107,106 @@ public sealed class OrderRepository : IOrderRepository
                 x.o.PaidAt,
                 x.o.PlatformFeeCents,
                 x.o.AmountCents - x.o.PlatformFeeCents,
-                x.LandingPageTitle))
+                x.LandingPageTitle,
+                x.DownloadCount ?? 0,
+                x.LastDownloadedAt,
+                x.CountedAt,
+                x.o.Status == OrderStatus.Refunded ? x.o.UpdatedAt : null))
             .ToListAsync(ct);
+    }
+
+    public async Task<OrderStatusCountsDto> GetStatusCountsAsync(
+        string creatorSlug, int ownerUserId, OrderListFilter filter, CancellationToken ct)
+    {
+        var counts = await Filtered(creatorSlug, ownerUserId, filter, includeStatus: false)
+            .GroupBy(x => x.o.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        int Of(OrderStatus status) => counts.Where(c => c.Status == status).Sum(c => c.Count);
+        return new OrderStatusCountsDto(
+            counts.Sum(c => c.Count), Of(OrderStatus.Paid), Of(OrderStatus.Pending), Of(OrderStatus.Failed), Of(OrderStatus.Refunded));
+    }
+
+    public async Task<int?> GetProductIdAsync(int creatorId, Guid productPublicId, CancellationToken ct) =>
+        await _context.Set<Product>()
+            .AsNoTracking()
+            .Where(p => p.CreatorId == creatorId && p.PublicId == productPublicId)
+            .Select(p => (int?)p.Id)
+            .FirstOrDefaultAsync(ct);
+
+    // A member-init projection (not a positional record), so EF can keep composing filters and ordering on it.
+    private sealed class FilteredOrder
+    {
+        public required Order o { get; init; }
+        public required string ProductName { get; init; }
+        public string? LandingPageTitle { get; init; }
+        public int? DownloadCount { get; init; }
+        public DateTimeOffset? LastDownloadedAt { get; init; }
+        public DateTimeOffset CountedAt { get; init; }
+    }
+
+    /// <summary>The caller's orders under <paramref name="filter"/> (the status only with <paramref name="includeStatus"/>),
+    /// each with its counted date: PaidAt (else CreatedAt) when Paid, the refund time (UpdatedAt) when Refunded,
+    /// CreatedAt when Pending or Failed.</summary>
+    private IQueryable<FilteredOrder> Filtered(string creatorSlug, int ownerUserId, OrderListFilter filter, bool includeStatus)
+    {
+        var productPublicId = filter.ProductPublicId;
+        var landingPagePublicId = filter.LandingPagePublicId;
+        var status = includeStatus ? filter.Status : null;
+
+        // Left join on landing pages — Order.LandingPageId is nullable (direct-link/no-referrer
+        // orders have none), so this must not drop rows the way an inner join would.
+        // Filtered server-side (not client-side) so a status/product filter narrows the full order
+        // set, not just whatever page happens to be loaded — keyset pagination still walks the
+        // filtered result set correctly since the cursor condition is applied on top of it. Product is
+        // filtered by PublicId directly on the already-joined `p` — no extra round trip to resolve it
+        // to an internal id first.
+        var query =
+            from o in _context.Set<Order>().AsNoTracking()
+            join p in _context.Set<Product>().AsNoTracking() on o.ProductId equals p.Id
+            join c in _context.Set<Creator>().AsNoTracking() on o.CreatorId equals c.Id
+            join lp in _context.Set<LandingPage>().AsNoTracking() on o.LandingPageId equals (int?)lp.Id into lpJoin
+            from lp in lpJoin.DefaultIfEmpty()
+            // At most one grant per order (unique index), so this left join never multiplies rows.
+            join g in _context.Set<AccessGrant>().AsNoTracking() on (int?)o.Id equals g.OrderId into gJoin
+            from g in gJoin.DefaultIfEmpty()
+            where c.Slug == creatorSlug
+                && c.OwnerUserId == ownerUserId
+                && (!productPublicId.HasValue || p.PublicId == productPublicId.Value)
+                && (!landingPagePublicId.HasValue || lp.PublicId == landingPagePublicId.Value)
+                && (!status.HasValue || o.Status == status.Value)
+            select new FilteredOrder
+            {
+                o = o,
+                ProductName = p.Name,
+                LandingPageTitle = (string?)lp.Title,
+                DownloadCount = (int?)g.DownloadCount,
+                LastDownloadedAt = (DateTimeOffset?)g.LastDownloadedAt,
+                CountedAt = o.Status == OrderStatus.Paid ? (o.PaidAt ?? o.CreatedAt)
+                    : o.Status == OrderStatus.Refunded ? o.UpdatedAt
+                    : o.CreatedAt,
+            };
+
+        if (filter.CustomerSearch is { } customerSearch)
+        {
+            // Case-insensitive substring match on email OR name. Written as lower(column) LIKE '%term%' so it
+            // matches the GIN trigram indexes on lower("Email") / lower("Name") exactly (see migration
+            // AddOrderCustomerSearchIndexes). The term's own %, _ and \ are escaped so they match literally.
+            var pattern = LikePatterns.Contains(customerSearch.ToLowerInvariant());
+            query = query.Where(x =>
+                (x.o.Email != null && EF.Functions.Like(x.o.Email.ToLower(), pattern, LikePatterns.EscapeCharacter))
+                || (x.o.Name != null && EF.Functions.Like(x.o.Name.ToLower(), pattern, LikePatterns.EscapeCharacter)));
+        }
+
+        if (filter.Period is { } period)
+        {
+            var from = period.From;
+            var to = period.To;
+            query = query.Where(x => (from == null || x.CountedAt >= from) && x.CountedAt < to);
+        }
+
+        return query;
     }
 
     public async Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
@@ -140,81 +218,6 @@ public sealed class OrderRepository : IOrderRepository
                 && c.Status != CreatorStatus.Disabled)
             .Select(c => (int?)c.Id)
             .FirstOrDefaultAsync(ct);
-    }
-
-    // Both trend queries bucket on local `timestamp` values in the creator's timezone (AT TIME ZONE tz), never on
-    // timestamptz, so the result doesn't depend on the session TimeZone; firstBucket / lastBucket are the instants the
-    // first and last local buckets start. `unit` comes from a fixed
-    // server-side map ("day" / "month") and is still passed as a parameter. generate_series supplies every bucket;
-    // the LEFT JOIN leaves empty ones at 0.
-    public async Task<List<TrendBucketRow>> GetRevenueTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-    {
-        var step = "1 " + unit;
-        var windowEnd = NextBucketStart(unit, lastBucket, timezone);
-
-        // Revenue is booked when it was paid; orders from before PaidAt was recorded fall back to CreatedAt.
-        return await _context.Database.SqlQuery<TrendBucketRow>($"""
-            SELECT
-                to_char(b."BucketStart", 'YYYY-MM-DD') AS "BucketStart",
-                COALESCE(r."Total", 0)::bigint AS "Value"
-            FROM generate_series(
-                {firstBucket}::timestamptz AT TIME ZONE {timezone},
-                {lastBucket}::timestamptz AT TIME ZONE {timezone},
-                {step}::interval) AS b("BucketStart")
-            LEFT JOIN (
-                SELECT
-                    date_trunc({unit}, COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}) AS "Bucket",
-                    SUM(o."AmountCents") AS "Total"
-                FROM orders.orders o
-                WHERE o."CreatorId" = {creatorId}
-                  AND o."Status" = 'Paid'
-                  AND COALESCE(o."PaidAt", o."CreatedAt") >= {firstBucket}
-                  AND COALESCE(o."PaidAt", o."CreatedAt") < {windowEnd}
-                GROUP BY 1
-            ) r ON r."Bucket" = b."BucketStart"
-            ORDER BY b."BucketStart"
-            """)
-            .AsNoTracking()
-            .ToListAsync(ct);
-    }
-
-    public async Task<List<TrendBucketRow>> GetViewsTrendAsync(
-        int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-    {
-        var step = "1 " + unit;
-        var windowEnd = NextBucketStart(unit, lastBucket, timezone);
-
-        // (LandingPageId, ViewedAt) index per page of the creator; archived pages count too (their views happened).
-        return await _context.Database.SqlQuery<TrendBucketRow>($"""
-            SELECT
-                to_char(b."BucketStart", 'YYYY-MM-DD') AS "BucketStart",
-                COALESCE(v."Total", 0)::bigint AS "Value"
-            FROM generate_series(
-                {firstBucket}::timestamptz AT TIME ZONE {timezone},
-                {lastBucket}::timestamptz AT TIME ZONE {timezone},
-                {step}::interval) AS b("BucketStart")
-            LEFT JOIN (
-                SELECT
-                    date_trunc({unit}, pv."ViewedAt" AT TIME ZONE {timezone}) AS "Bucket",
-                    COUNT(*) AS "Total"
-                FROM analytics.page_views pv
-                JOIN landing_pages.landing_pages lp ON lp."Id" = pv."LandingPageId"
-                WHERE lp."CreatorId" = {creatorId}
-                  AND pv."ViewedAt" >= {firstBucket}
-                  AND pv."ViewedAt" < {windowEnd}
-                GROUP BY 1
-            ) v ON v."Bucket" = b."BucketStart"
-            ORDER BY b."BucketStart"
-            """)
-            .AsNoTracking()
-            .ToListAsync(ct);
-    }
-
-    private static DateTimeOffset NextBucketStart(string unit, DateTimeOffset lastBucket, string timezone)
-    {
-        var local = CreatorTimeZone.LocalNow(lastBucket, timezone);
-        return CreatorTimeZone.ToInstant(unit == "month" ? local.AddMonths(1) : local.AddDays(1), timezone);
     }
 
     public async Task<string> GetCreatorTimezoneAsync(int creatorId, CancellationToken ct) =>
@@ -263,6 +266,112 @@ public sealed class OrderRepository : IOrderRepository
 
         return ToSummaryDto(totals, await GetMonthlyTrendAsync(creator.Id, CreatorTimeZone.Resolve(creator.Timezone), ct));
     }
+
+    public async Task<OrderPeriodContext?> GetPeriodContextAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+    {
+        var row = (await _context.Database.SqlQuery<PeriodContextRow>($"""
+            SELECT c."Id" AS "Id", s."Timezone" AS "Timezone", c."DefaultCurrency" AS "Currency", c."CreatedAt" AS "CreatedAt"
+            FROM creators.creators c
+            LEFT JOIN creators.creator_settings s ON s."CreatorId" = c."Id"
+            WHERE c."Slug" = {creatorSlug} AND c."OwnerUserId" = {ownerUserId} AND c."Status" <> 'Disabled'
+            """).AsNoTracking().ToListAsync(ct)).SingleOrDefault();
+
+        return row is null ? null : new OrderPeriodContext(row.Id, CreatorTimeZone.Resolve(row.Timezone), row.Currency, row.CreatedAt);
+    }
+
+    public async Task<OrderPeriodRead> GetPeriodSummaryAsync(
+        int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct, int? productId = null)
+    {
+        var from = plan.TotalsFrom;
+        var to = plan.TotalsTo;
+        var previousFrom = plan.PreviousTotalsFrom;
+        var previousTo = plan.PreviousTotalsTo;
+
+        // One pass over the creator's orders (the (CreatorId, …) indexes), a FILTER per figure and window. Every count
+        // uses the counted date: PaidAt (else CreatedAt) for Paid, the refund time (UpdatedAt) for Refunded, CreatedAt
+        // for Pending and Failed — the same rule as the orders list.
+        var rows = await _context.Database.SqlQuery<PeriodTotalsRow>($"""
+            WITH counted AS (
+                SELECT o."Status", o."AmountCents", o."PlatformFeeCents",
+                       CASE o."Status" WHEN 'Paid' THEN COALESCE(o."PaidAt", o."CreatedAt")
+                                       WHEN 'Refunded' THEN o."UpdatedAt"
+                                       ELSE o."CreatedAt" END AS "At"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId})
+            ),
+            windows AS (
+                SELECT 'current' AS "Window", {from}::timestamptz AS "From", {to}::timestamptz AS "To"
+                UNION ALL
+                SELECT 'previous', {previousFrom}::timestamptz, {previousTo}::timestamptz WHERE {previousTo}::timestamptz IS NOT NULL
+            )
+            SELECT w."Window",
+                (COUNT(*) FILTER (WHERE c."Status" = 'Paid'))::int AS "PaidOrderCount",
+                COALESCE(SUM(c."AmountCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPaidAmountCents",
+                COALESCE(SUM(c."PlatformFeeCents") FILTER (WHERE c."Status" = 'Paid'), 0)::bigint AS "TotalPlatformFeeCents",
+                (COUNT(*) FILTER (WHERE c."Status" = 'Refunded'))::int AS "RefundedOrderCount",
+                COALESCE(SUM(c."AmountCents") FILTER (WHERE c."Status" = 'Refunded'), 0)::bigint AS "RefundedAmountCents",
+                (COUNT(*) FILTER (WHERE c."Status" = 'Pending'))::int AS "PendingOrderCount",
+                (COUNT(*) FILTER (WHERE c."Status" = 'Failed'))::int AS "FailedOrderCount"
+            FROM windows w
+            LEFT JOIN counted c ON (w."From" IS NULL OR c."At" >= w."From") AND c."At" < w."To"
+            GROUP BY w."Window"
+            """).AsNoTracking().ToListAsync(ct);
+
+        static OrderPeriodTotalsRow Totals(PeriodTotalsRow row) => new(
+            row.PaidOrderCount, row.TotalPaidAmountCents, row.TotalPlatformFeeCents, row.RefundedOrderCount,
+            row.RefundedAmountCents, row.PendingOrderCount, row.FailedOrderCount);
+        var totals = Totals(rows.Single(row => row.Window == "current"));
+        var previous = rows.SingleOrDefault(row => row.Window == "previous") is { } previousRow ? Totals(previousRow) : null;
+
+        // The buckets: one grouped pass for paid orders (by when they were paid) and one for refunds (by the refund's
+        // time), each binned with width_bucket over the plan's local bucket starts (see AnalyticsSeriesReader).
+        var starts = plan.Buckets;
+        var edges = AnalyticsPeriodPlan.ToEdges(starts);
+        var bucketsFrom = plan.TotalsFrom ?? plan.BucketsFrom;
+        var bucketRows = await _context.Database.SqlQuery<PeriodBucketRow>($"""
+            SELECT 'paid' AS "Kind",
+                   width_bucket(extract(epoch FROM (COALESCE(o."PaidAt", o."CreatedAt") AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   COALESCE(SUM(o."AmountCents"), 0)::bigint AS "GrossCents",
+                   COALESCE(SUM(o."PlatformFeeCents"), 0)::bigint AS "FeeCents",
+                   COUNT(*)::int AS "Count"
+            FROM orders.orders o
+            WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId}) AND o."Status" = 'Paid'
+              AND COALESCE(o."PaidAt", o."CreatedAt") >= {bucketsFrom} AND COALESCE(o."PaidAt", o."CreatedAt") < {to}
+            GROUP BY 2
+            UNION ALL
+            SELECT 'refunded' AS "Kind",
+                   width_bucket(extract(epoch FROM (o."UpdatedAt" AT TIME ZONE {timezone}))::float8, {edges}) AS "Bucket",
+                   COALESCE(SUM(o."AmountCents"), 0)::bigint, 0::bigint,
+                   COUNT(*)::int
+            FROM orders.orders o
+            WHERE o."CreatorId" = {creatorId} AND ({productId}::int IS NULL OR o."ProductId" = {productId}) AND o."Status" = 'Refunded'
+              AND o."UpdatedAt" >= {bucketsFrom} AND o."UpdatedAt" < {to}
+            GROUP BY 2
+            """).AsNoTracking().ToListAsync(ct);
+
+        var buckets = new Dictionary<DateTime, OrderBucketValues>();
+        foreach (var row in bucketRows)
+        {
+            // width_bucket numbers the bins from 1; 0 is an event before the first start, excluded by the range above.
+            if (row.Bucket < 1 || row.Bucket > starts.Count)
+                continue;
+            var key = starts[row.Bucket - 1];
+            var current = buckets.GetValueOrDefault(key) ?? new OrderBucketValues(0, 0, 0);
+            buckets[key] = row.Kind == "paid"
+                ? current with { GrossCents = row.GrossCents, FeeCents = row.FeeCents, PaidCount = row.Count }
+                : current with { RefundedCount = row.Count, RefundedCents = row.GrossCents };
+        }
+
+        return new OrderPeriodRead(totals, buckets, previous);
+    }
+
+    private sealed record PeriodContextRow(int Id, string? Timezone, string Currency, DateTimeOffset CreatedAt);
+
+    private sealed record PeriodBucketRow(string Kind, int Bucket, long GrossCents, long FeeCents, int Count);
+
+    private sealed record PeriodTotalsRow(
+        string Window, int PaidOrderCount, long TotalPaidAmountCents, long TotalPlatformFeeCents, int RefundedOrderCount,
+        long RefundedAmountCents, int PendingOrderCount, int FailedOrderCount);
 
     /// <summary>Gross / fees / net of Paid orders by the month they were paid, and refunds by the month they were
     /// refunded — 12 local months in <paramref name="timezone"/>, zero-filled by generate_series.</summary>
@@ -464,7 +573,10 @@ public sealed class OrderRepository : IOrderRepository
                 o.PaidAt,
                 o.PlatformFeeCents,
                 o.AmountCents - o.PlatformFeeCents,
-                null)
+                null,
+                0,
+                null,
+                o.PaidAt ?? o.CreatedAt)
         ).Take(5).ToListAsync(ct);
 
         // Top product by paid revenue (all-time).

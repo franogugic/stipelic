@@ -1,4 +1,3 @@
-using System.Globalization;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
@@ -19,19 +18,24 @@ public sealed class CampaignService : ICampaignService
     private readonly ICreatorUsageService _usageService;
     private readonly ICampaignRepository _campaignRepository;
     private readonly ICampaignProgressProvider _progressProvider;
+    private readonly CampaignAudienceTargets _targets;
+    private readonly CampaignDetailBuilder _detailBuilder;
 
     public CampaignService(
         ICreatorContextProvider creatorContextProvider,
         IAudienceService audienceService,
         ICreatorUsageService usageService,
         ICampaignRepository campaignRepository,
-        ICampaignProgressProvider progressProvider)
+        ICampaignProgressProvider progressProvider,
+        ICampaignLinkRepository linkRepository)
     {
         _creatorContextProvider = creatorContextProvider;
         _audienceService = audienceService;
         _usageService = usageService;
         _campaignRepository = campaignRepository;
         _progressProvider = progressProvider;
+        _targets = new CampaignAudienceTargets(creatorContextProvider, campaignRepository);
+        _detailBuilder = new CampaignDetailBuilder(creatorContextProvider, campaignRepository, audienceService, progressProvider, linkRepository);
     }
 
     public async Task<AudiencePreviewDto> GetAudiencePreviewAsync(
@@ -39,10 +43,10 @@ public sealed class CampaignService : ICampaignService
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
-        var (landingPageId, productId) = await ResolveTargetAsync(context.CreatorId, audienceType, targetPublicId, ct);
+        var target = await ResolveTargetAsync(context.CreatorId, audienceType, targetPublicId, ct);
 
         var recipientCount = await _audienceService.GetAudienceCountAsync(
-            audienceType, landingPageId, productId, context.CreatorId, ct);
+            audienceType, target.LandingPageId, target.ProductId, target.SourceCampaignId, context.CreatorId, ct);
 
         var monthlyLimit = await _creatorContextProvider.GetActivePlanLimitAsync(
             context.CreatorId, MonthlyEmailSendsLimitKey, ct) ?? 0;
@@ -59,12 +63,13 @@ public sealed class CampaignService : ICampaignService
     {
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
-        var (landingPageId, productId) = await ResolveTargetAsync(context.CreatorId, audienceType, targetPublicId, ct);
+        var target = await ResolveTargetAsync(context.CreatorId, audienceType, targetPublicId, ct);
 
         var clampedLimit = limit <= 0 ? DefaultRecipientsPageLimit : Math.Min(limit, MaxRecipientsPageLimit);
 
         var (emails, hasMore) = await _audienceService.GetAudiencePageAsync(
-            audienceType, landingPageId, productId, context.CreatorId, afterEmail, clampedLimit, ct);
+            audienceType, target.LandingPageId, target.ProductId, target.SourceCampaignId, context.CreatorId,
+            afterEmail, clampedLimit, ct);
 
         return new AudienceRecipientsPageDto(emails, hasMore);
     }
@@ -81,19 +86,8 @@ public sealed class CampaignService : ICampaignService
         var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
 
         var campaigns = await _campaignRepository.GetRecentByCreatorIdAsync(context.CreatorId, ListPageSize, ct);
-        if (campaigns.Count == 0)
-            return [];
 
-        var landingPageIds = campaigns.Where(c => c.LandingPageId is not null).Select(c => c.LandingPageId!.Value).Distinct().ToList();
-        var productIds = campaigns.Where(c => c.ProductId is not null).Select(c => c.ProductId!.Value).Distinct().ToList();
-
-        var landingPagePublicIds = await _creatorContextProvider.GetLandingPagePublicIdsAsync(landingPageIds, ct);
-        var productPublicIds = await _creatorContextProvider.GetProductPublicIdsAsync(productIds, ct);
-        var progress = await _progressProvider.GetProgressAsync(campaigns.Select(c => c.PublicId).ToList(), ct);
-
-        return campaigns
-            .Select(c => ToListItemDto(c, landingPagePublicIds, productPublicIds, progress))
-            .ToList();
+        return await _detailBuilder.BuildListAsync(campaigns, ct);
     }
 
     public async Task<CampaignDetailDto> GetAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct)
@@ -103,10 +97,7 @@ public sealed class CampaignService : ICampaignService
         if (campaign is null || campaign.CreatorId != context.CreatorId)
             throw new NotFoundException("Campaign not found.");
 
-        var targetPublicId = await ResolveTargetPublicIdAsync(campaign, ct);
-        var progress = await _progressProvider.GetProgressAsync([campaign.PublicId], ct);
-
-        return ToDetailDto(campaign, targetPublicId, progress[campaign.PublicId]);
+        return await _detailBuilder.BuildDetailAsync(campaign, ct);
     }
 
     public async Task<List<FailedRecipientDto>> GetFailedRecipientsAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct)
@@ -128,100 +119,15 @@ public sealed class CampaignService : ICampaignService
         return context;
     }
 
-    private async Task<(int? LandingPageId, int? ProductId)> ResolveTargetAsync(
+    /// <summary>A non-opener preview needs a sent original (409 with the reason code otherwise); its timing and slot
+    /// rules only apply to the send itself.</summary>
+    private async Task<ResolvedAudienceTarget> ResolveTargetAsync(
         int creatorId, CampaignAudienceType audienceType, Guid targetPublicId, CancellationToken ct)
     {
-        if (audienceType == CampaignAudienceType.All)
-        {
-            if (targetPublicId != Guid.Empty)
-                throw new BadRequestException("The All audience does not take a target.");
+        var target = await _targets.ResolveAsync(creatorId, audienceType, targetPublicId, ct);
+        if (target.Source is { } source)
+            CampaignAudienceTargets.EnsureResendableSource(source);
 
-            return (null, null);
-        }
-
-        if (targetPublicId == Guid.Empty)
-            throw new BadRequestException("A target is required for this audience.");
-
-        if (audienceType == CampaignAudienceType.LandingPage)
-        {
-            var landingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, targetPublicId, ct);
-            if (landingPageId is null)
-                throw new NotFoundException("Landing page not found.");
-
-            return (landingPageId, null);
-        }
-
-        var productId = await _creatorContextProvider.ResolveProductIdAsync(creatorId, targetPublicId, ct);
-        if (productId is null)
-            throw new NotFoundException("Product not found.");
-
-        return (null, productId);
-    }
-
-    private async Task<Guid?> ResolveTargetPublicIdAsync(Campaign campaign, CancellationToken ct)
-    {
-        if (campaign.LandingPageId is not null)
-        {
-            var map = await _creatorContextProvider.GetLandingPagePublicIdsAsync([campaign.LandingPageId.Value], ct);
-            return map[campaign.LandingPageId.Value];
-        }
-
-        // All-audience sends target neither a landing page nor a product.
-        if (campaign.ProductId is null)
-            return null;
-
-        var productMap = await _creatorContextProvider.GetProductPublicIdsAsync([campaign.ProductId!.Value], ct);
-        return productMap[campaign.ProductId.Value];
-    }
-
-    private static CampaignListItemDto ToListItemDto(
-        Campaign campaign,
-        Dictionary<int, Guid> landingPagePublicIds,
-        Dictionary<int, Guid> productPublicIds,
-        Dictionary<Guid, CampaignProgressDto> progress)
-    {
-        var targetPublicId = campaign.LandingPageId is not null
-            ? landingPagePublicIds[campaign.LandingPageId.Value]
-            : campaign.ProductId is not null
-                ? productPublicIds[campaign.ProductId.Value]
-                : (Guid?)null;
-        var campaignProgress = progress[campaign.PublicId];
-
-        return new CampaignListItemDto(
-            campaign.PublicId,
-            campaign.Subject,
-            campaign.Status.ToString(),
-            campaign.AudienceType.ToString(),
-            targetPublicId,
-            campaign.RecipientCount,
-            campaign.QueuedAt,
-            campaign.ScheduledAt,
-            campaign.Note,
-            campaign.CreatedAt,
-            campaignProgress.SentCount,
-            campaignProgress.FailedCount,
-            campaign.UniqueOpenCount);
-    }
-
-    private static CampaignDetailDto ToDetailDto(Campaign campaign, Guid? targetPublicId, CampaignProgressDto progress)
-    {
-        return new CampaignDetailDto(
-            campaign.PublicId,
-            campaign.Subject,
-            campaign.BodyText,
-            campaign.CtaLabel,
-            campaign.CtaUrl,
-            campaign.AudienceType.ToString(),
-            targetPublicId,
-            campaign.Status.ToString(),
-            campaign.RecipientCount,
-            campaign.QueuedAt,
-            campaign.ScheduledAt,
-            campaign.Note,
-            campaign.CreatedAt,
-            campaign.UpdatedAt,
-            progress.SentCount,
-            progress.FailedCount,
-            campaign.UniqueOpenCount);
+        return target;
     }
 }

@@ -14,7 +14,7 @@ public sealed class FakeOrdersCreatorContextProvider : ICreatorContextProvider
         => Task.FromResult(ProductInfo);
 
     public OrderEmailContext? OrderEmailContext { get; set; } =
-        new("Product", "Digital download", null, "Creator", null, null, null);
+        new("Product", "application/zip", 18_350_080, null, "Creator", null, null, null);
 
     public Task<OrderEmailContext?> GetOrderEmailContextAsync(int productId, CancellationToken ct)
         => Task.FromResult(OrderEmailContext);
@@ -75,25 +75,33 @@ public sealed class FakeOrderRepository : IOrderRepository
         => Task.FromResult<Order?>(null);
 
     public Task<List<OrderDto>> GetByCreatorSlugAsync(
-        string creatorSlug, int ownerUserId, Guid? productPublicId, Guid? landingPagePublicId, OrderStatus? status, string? customerSearch, DateTimeOffset? afterCreatedAt, Guid? afterId, int limit, CancellationToken ct)
+        string creatorSlug, int ownerUserId, OrderListFilter filter, OrderListCursor? after, int limit, CancellationToken ct)
         => Task.FromResult(new List<OrderDto>());
+
+    public Task<OrderStatusCountsDto> GetStatusCountsAsync(string creatorSlug, int ownerUserId, OrderListFilter filter, CancellationToken ct)
+        => Task.FromResult(new OrderStatusCountsDto(0, 0, 0, 0, 0));
+
+    public Task<int?> GetProductIdAsync(int creatorId, Guid productPublicId, CancellationToken ct)
+        => Task.FromResult<int?>(1);
 
     public Task<string> GetCreatorTimezoneAsync(int creatorId, CancellationToken ct) => Task.FromResult("UTC");
 
     public Task<int?> GetCreatorIdForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult<int?>(null);
 
-    public Task<List<TrendBucketRow>> GetRevenueTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-        => Task.FromResult(new List<TrendBucketRow>());
 
-    public Task<List<TrendBucketRow>> GetViewsTrendAsync(int creatorId, string unit, DateTimeOffset firstBucket, DateTimeOffset lastBucket, string timezone, CancellationToken ct)
-        => Task.FromResult(new List<TrendBucketRow>());
 
     public Task<bool> CreatorExistsForOwnerAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(true);
 
     public Task<OrderSummaryDto> GetSummaryByCreatorSlugAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
         => Task.FromResult(new OrderSummaryDto(0, 0, null, 0, 0, 0, 0, 0, 0, 0, []));
+
+    public Task<OrderPeriodContext?> GetPeriodContextAsync(string creatorSlug, int ownerUserId, CancellationToken ct)
+        => Task.FromResult<OrderPeriodContext?>(null);
+
+    public Task<OrderPeriodRead> GetPeriodSummaryAsync(int creatorId, string timezone, AnalyticsPeriodPlan plan, CancellationToken ct, int? productId = null)
+        => Task.FromResult(new OrderPeriodRead(new OrderPeriodTotalsRow(0, 0, 0, 0, 0, 0, 0), []));
 
     public Task<LandingPageSalesByPeriodDto> GetSalesByPeriodForLandingPageAsync(int landingPageId, StatsPeriods periods, CancellationToken ct)
     {

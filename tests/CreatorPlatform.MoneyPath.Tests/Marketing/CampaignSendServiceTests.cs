@@ -32,7 +32,8 @@ public class CampaignSendServiceTests
         FakeEmailOutboxService EmailOutboxService,
         FakeMarketingUnitOfWork UnitOfWork,
         UnsubscribeTokenService TokenService,
-        FakeCampaignProgressProvider ProgressProvider);
+        FakeCampaignProgressProvider ProgressProvider,
+        FakeCampaignLinkRepository LinkRepository);
 
     private static Harness BuildHarness(string? supportEmail = "support@acme.test")
     {
@@ -64,6 +65,9 @@ public class CampaignSendServiceTests
             }));
         var openTrackingTokenService = new OpenTrackingTokenService(
             Options.Create(new MarketingOptions { OpenTrackingSecret = "test-open-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
+        var clickTrackingTokenService = new ClickTrackingTokenService(
+            Options.Create(new MarketingOptions { ClickTrackingSecret = "test-click-secret-value-1234567890", ApiBaseUrl = "http://localhost:5000" }));
+        var linkRepository = new FakeCampaignLinkRepository();
 
         var service = new CampaignSendService(
             contextProvider,
@@ -78,11 +82,13 @@ public class CampaignSendServiceTests
             openTrackingTokenService,
             progressProvider,
             unitOfWork,
+            clickTrackingTokenService,
+            linkRepository,
             NullLogger<CampaignSendService>.Instance);
 
         return new Harness(
             service, contextProvider, templateRepository, campaignRepository, recipientRepository,
-            audienceService, usageService, emailOutboxService, unitOfWork, tokenService, progressProvider);
+            audienceService, usageService, emailOutboxService, unitOfWork, tokenService, progressProvider, linkRepository);
     }
 
     private static EmailTemplate BuildActiveTemplate(DateTimeOffset now) => EmailTemplate.Create(
@@ -396,6 +402,144 @@ public class CampaignSendServiceTests
         Assert.Empty(h.CampaignRepository.Campaigns);
         Assert.Empty(h.RecipientRepository.Recipients);
         Assert.Empty(h.EmailOutboxService.QueuedCampaignMessages);
+    }
+
+    // --- Buyers of a landing page (soft opt-in) ---
+
+    private static SendCampaignRequestDto BuildBuyersRequest(
+        Guid templatePublicId, Guid? target = null, DateTimeOffset? scheduledAt = null) => new()
+    {
+        TemplatePublicId = templatePublicId,
+        AudienceType = "LandingPageBuyers",
+        TargetPublicId = target ?? LandingPagePublicId,
+        ScheduledAt = scheduledAt,
+    };
+
+    [Fact]
+    public async Task SendAsync_BuyersAudience_TargetsThePageAndSaysTheyBought()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com", "b@test.com"];
+
+        var result = await h.Service.SendAsync(Slug, OwnerUserId, BuildBuyersRequest(template.PublicId), CancellationToken.None);
+
+        Assert.Equal("LandingPageBuyers", result.AudienceType);
+        Assert.Equal(LandingPagePublicId, result.TargetPublicId);
+        Assert.Equal(2, result.RecipientCount);
+        var campaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.Equal(CampaignAudienceType.LandingPageBuyers, campaign.AudienceType);
+        Assert.Equal(10, campaign.LandingPageId);
+        Assert.Null(campaign.ProductId);
+        Assert.All(h.EmailOutboxService.QueuedCampaignMessages, m =>
+        {
+            Assert.Contains("because you bought from Acme", m.HtmlBody);
+            Assert.Contains("because you bought from Acme", m.PlainTextBody);
+            Assert.DoesNotContain("signed up", m.HtmlBody);
+            Assert.DoesNotContain("signed up", m.PlainTextBody);
+            Assert.Contains("Unsubscribe", m.PlainTextBody);
+        });
+    }
+
+    [Fact]
+    public async Task SendAsync_PageSignUpsAudience_StillSaysTheySignedUp()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await h.Service.SendAsync(Slug, OwnerUserId, BuildRequest(template.PublicId), CancellationToken.None);
+
+        var message = Assert.Single(h.EmailOutboxService.QueuedCampaignMessages);
+        Assert.Contains("because you signed up at Acme", message.HtmlBody);
+        Assert.Contains("because you signed up at Acme", message.PlainTextBody);
+        Assert.DoesNotContain("you bought from", message.HtmlBody);
+    }
+
+    [Fact]
+    public async Task SendAsync_BuyersAudienceOfAPageThatIsNotTheCreators_IsNotFound_NothingWritten()
+    {
+        var h = BuildHarness();
+        h.ContextProvider.LandingPageId = null; // the page is not in this creator's workspace
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildBuyersRequest(template.PublicId), CancellationToken.None));
+
+        Assert.Empty(h.CampaignRepository.Campaigns);
+        Assert.Empty(h.EmailOutboxService.QueuedCampaignMessages);
+        Assert.Equal(0, h.AudienceService.GetAudienceEmailsCallCount);
+    }
+
+    [Fact]
+    public async Task SendAsync_BuyersAudienceWithoutATarget_IsBadRequest()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        var request = BuildBuyersRequest(template.PublicId, target: Guid.Empty);
+
+        await Assert.ThrowsAsync<BadRequestException>(() => h.Service.SendAsync(Slug, OwnerUserId, request, CancellationToken.None));
+
+        Assert.Empty(h.CampaignRepository.Campaigns);
+    }
+
+    [Fact]
+    public async Task SendAsync_BuyersAudienceOverTheMonthlyLimit_IsRejected_AndNothingIsConsumedOrQueued()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = ["a@test.com", "b@test.com", "c@test.com"];
+        h.ContextProvider.PlanLimit = 2;
+        h.UsageService.Used[(CreatorId, "max_email_sends_per_month")] = 1;
+
+        await Assert.ThrowsAsync<ConflictException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildBuyersRequest(template.PublicId), CancellationToken.None));
+
+        Assert.Equal(1, h.UsageService.Used[(CreatorId, "max_email_sends_per_month")]);
+        Assert.Empty(h.CampaignRepository.Campaigns);
+        Assert.Empty(h.RecipientRepository.Recipients);
+        Assert.Empty(h.EmailOutboxService.QueuedCampaignMessages);
+    }
+
+    [Fact]
+    public async Task SendAsync_BuyersAudienceNobodyBought_IsBadRequest()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        h.AudienceService.Emails = [];
+
+        await Assert.ThrowsAsync<BadRequestException>(
+            () => h.Service.SendAsync(Slug, OwnerUserId, BuildBuyersRequest(template.PublicId), CancellationToken.None));
+
+        Assert.Empty(h.CampaignRepository.Campaigns);
+    }
+
+    [Fact]
+    public async Task DispatchScheduledAsync_BuyersAudience_ResolvesTheBuyersAtDispatch_AndSaysTheyBought()
+    {
+        var h = BuildHarness();
+        var template = BuildActiveTemplate(DateTimeOffset.UtcNow);
+        h.TemplateRepository.Templates.Add(template);
+        var request = BuildBuyersRequest(template.PublicId, scheduledAt: DateTimeOffset.UtcNow.AddMinutes(10));
+        var scheduled = await h.Service.SendAsync(Slug, OwnerUserId, request, CancellationToken.None);
+        Assert.Equal(0, scheduled.RecipientCount);
+        Assert.Equal(0, h.AudienceService.GetAudienceEmailsCallCount);
+
+        // A buyer who bought (or unsubscribed) after scheduling is honoured: the list is read now.
+        h.AudienceService.Emails = ["late@test.com", "buyer@test.com"];
+        await h.Service.DispatchScheduledAsync(scheduled.PublicId, CancellationToken.None);
+
+        var campaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.Equal(CampaignStatus.Queued, campaign.Status);
+        Assert.Equal(2, campaign.RecipientCount);
+        Assert.All(h.EmailOutboxService.QueuedCampaignMessages, m => Assert.Contains("because you bought from Acme", m.HtmlBody));
     }
 
     // --- Task 14: scheduled sends ---
@@ -744,4 +888,52 @@ public class CampaignSendServiceTests
         TargetPublicId = LandingPagePublicId,
         ScheduledAt = scheduledAt,
     };
+
+    [Fact]
+    public async Task SendAsync_CreatesTheLinksOnce_AndGivesEachRecipientItsOwnTrackedUrls()
+    {
+        var h = BuildHarness();
+        h.AudienceService.Emails = ["a@test.com", "b@test.com"];
+
+        await h.Service.SendAsync(
+            Slug, OwnerUserId,
+            BuildInlineRequest("Hi", "Read https://blog.test/post.", "Buy", "https://shop.test/buy"),
+            CancellationToken.None);
+
+        var campaign = Assert.Single(h.CampaignRepository.Campaigns);
+        Assert.True(campaign.ClickTracked);
+        Assert.Equal(
+            [(1, "https://blog.test/post", CampaignLinkKind.Text, (string?)null), (2, "https://shop.test/buy", CampaignLinkKind.Button, "Buy")],
+            h.LinkRepository.Links.Select(l => ((int)l.Position, l.Url, l.Kind, l.Label)));
+        Assert.All(h.LinkRepository.Links, l => Assert.Equal(campaign.Id, l.CampaignId));
+
+        var messages = h.EmailOutboxService.QueuedCampaignMessages;
+        Assert.Equal(2, messages.Count);
+        var trackedUrls = messages.Select(m => System.Text.RegularExpressions.Regex.Matches(m.HtmlBody, "http://localhost:5000/api/public/c/[A-Za-z0-9_.-]+")
+            .Select(x => x.Value).Distinct().ToList()).ToList();
+        Assert.All(trackedUrls, urls => Assert.Equal(2, urls.Count));
+        Assert.Empty(trackedUrls[0].Intersect(trackedUrls[1]));
+        foreach (var (message, urls) in messages.Zip(trackedUrls))
+        {
+            Assert.DoesNotContain("href=\"https://blog.test", message.HtmlBody);
+            Assert.DoesNotContain("href=\"https://shop.test", message.HtmlBody);
+            Assert.DoesNotContain("{{LINK_", message.HtmlBody);
+            Assert.All(urls, url => Assert.Contains(url, message.PlainTextBody));
+            Assert.DoesNotContain("https://blog.test", message.PlainTextBody);
+            Assert.Contains("/unsubscribe/", message.PlainTextBody);
+            Assert.DoesNotContain("/api/public/c/", message.ListUnsubscribeUrl);
+        }
+    }
+
+    [Fact]
+    public async Task SendAsync_WithoutLinks_IsStillClickTracked_WithNoLinks()
+    {
+        var h = BuildHarness();
+        h.AudienceService.Emails = ["a@test.com"];
+
+        await h.Service.SendAsync(Slug, OwnerUserId, BuildInlineRequest("Hi", "Just text."), CancellationToken.None);
+
+        Assert.True(Assert.Single(h.CampaignRepository.Campaigns).ClickTracked);
+        Assert.Empty(h.LinkRepository.Links);
+    }
 }

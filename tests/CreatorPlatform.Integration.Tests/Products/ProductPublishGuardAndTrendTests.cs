@@ -29,7 +29,8 @@ public sealed class ProductPublishGuardAndTrendTests
         new CreatorContextProvider(db),
         new ProductsUnitOfWork(db),
         new OrderContextProvider(db),
-        new LandingPageContextProvider(db));
+        new LandingPageContextProvider(db),
+        new ProductFiles(db, new InMemoryProductFileStorage()));
 
     private static DateTimeOffset MonthStart()
     {
@@ -67,7 +68,7 @@ public sealed class ProductPublishGuardAndTrendTests
 
         await using var db = _fixture.CreateDbContext();
         var service = CreateService(db);
-        UpdateProductRequestDto Draft(string name) => new() { Name = name, PriceCents = 1000, Type = "Digital", Status = "Draft" };
+        UpdateProductRequestDto Draft(string name) => new() { Name = name, PriceCents = 1000, Status = "Draft" };
 
         var ex = await Assert.ThrowsAsync<ConflictException>(() =>
             service.UpdateAsync(creator.Slug, blocked.PublicId, creator.OwnerUserId, Draft("Blocked"), CancellationToken.None));
@@ -117,8 +118,8 @@ public sealed class ProductPublishGuardAndTrendTests
         var publicId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         var id = (await db.Database.SqlQuery<int>($"""
-            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "CreatedAt", "UpdatedAt")
-            VALUES ({publicId}, {creatorId}, {$"Product {publicId:N}"[..20]}, 1000, 'Digital', {status}, {now}, {now})
+            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "CreatedAt", "UpdatedAt")
+            VALUES ({publicId}, {creatorId}, {$"Product {publicId:N}"[..20]}, 1000, {status}, 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
         return new SeededProduct(id, publicId);

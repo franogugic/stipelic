@@ -10,6 +10,9 @@ public sealed class MarketingUnitOfWork : IMarketingUnitOfWork
     // 42001 so the two locks never collide, even for the same creator id.
     private const int CampaignLockNamespace = 42002;
 
+    // Namespace for the per-creator contact-list lock (contacts import exclusive, unsubscribe shared).
+    private const int ContactsLockNamespace = 42004;
+
     private readonly CreatorPlatformDbContext _context;
 
     public MarketingUnitOfWork(CreatorPlatformDbContext context)
@@ -40,5 +43,18 @@ public sealed class MarketingUnitOfWork : IMarketingUnitOfWork
     public async Task ReloadAsync(object entity, CancellationToken ct)
     {
         await _context.Entry(entity).ReloadAsync(ct);
+    }
+
+    public Task AcquireContactLockAsync(int creatorId, string normalizedEmail, CancellationToken ct) =>
+        ContactLocks.AcquireAsync(_context, creatorId, normalizedEmail, ct);
+
+    public async Task AcquireCreatorContactsLockAsync(int creatorId, bool exclusive, CancellationToken ct)
+    {
+        if (exclusive)
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({ContactsLockNamespace}, {creatorId})", ct);
+        else
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock_shared({ContactsLockNamespace}, {creatorId})", ct);
     }
 }

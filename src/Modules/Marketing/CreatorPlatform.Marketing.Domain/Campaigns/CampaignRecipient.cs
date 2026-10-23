@@ -37,4 +37,9 @@ public sealed class CampaignRecipient
     /// this type, so there is deliberately no public mutator. Apple Mail Privacy Protection and image
     /// proxies pre-load pixels, so this over-reports opens for some clients.</summary>
     public DateTimeOffset? FirstOpenedAt { get; private set; }
+
+    /// <summary>When this recipient first clicked any tracked link of the campaign — set once by the click endpoint's
+    /// raw SQL (together with <see cref="Campaign.UniqueClickCount"/>). Link scanners can pre-click, so this
+    /// over-reports somewhat.</summary>
+    public DateTimeOffset? FirstClickedAt { get; private set; }
 }

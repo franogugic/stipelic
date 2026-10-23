@@ -29,7 +29,8 @@ public sealed class ContactSearchTests
             new MarketingCreatorContextProvider(db),
             new ContactsRepository(db),
             new MarketingUnitOfWork(db),
-            new CreatorUsageService(db)));
+            new CreatorUsageService(db),
+            new UnsubscribeRepository(db)));
     }
 
     private Task<List<string>> SearchAsync(

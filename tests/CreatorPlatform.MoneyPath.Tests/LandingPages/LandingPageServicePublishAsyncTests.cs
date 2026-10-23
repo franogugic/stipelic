@@ -19,6 +19,9 @@ public class LandingPageServicePublishAsyncTests
         var repository = new FakeLandingPageRepository { PageForUpdate = landingPage };
         var sectionRepository = new FakeLandingPageSectionRepository();
         var contextProvider = new FakeLandingPagesCreatorContextProvider { Context = context };
+        // A lead page gives away an Active free product; a Sales page sells a paid one.
+        if (type == LandingPageType.LeadGen)
+            contextProvider.Product = new ProductInfo(Guid.Empty, "Guide", 0, null, IsActive: true);
         var unitOfWork = new FakeLandingPagesUnitOfWork();
 
         var service = new LandingPageService(repository, sectionRepository, contextProvider, unitOfWork);

@@ -57,7 +57,7 @@ public sealed class PublicLandingPageService : IPublicLandingPageService
             Status = landingPage.Status.ToString(),
             CustomDomain = landingPage.CustomDomain,
             Creator = ToDto(brand),
-            Product = productInfo is null ? null : new PublicProductDto(productInfo.Type, brand.Currency),
+            Product = productInfo is null ? null : new PublicProductDto(productInfo.IsFree, brand.Currency),
             Sections = sections
                 .OrderBy(s => s.SortOrder)
                 .Select(s => new LandingPageSectionResponseDto

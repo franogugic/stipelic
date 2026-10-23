@@ -9,7 +9,7 @@ using StackExchange.Redis;
 namespace CreatorPlatform.Integration.Tests.Redis;
 
 /// <summary>The Redis code on a clustered Redis, where every multi-key command and script must stay in one hash slot:
-/// the trends scripts (hash-tagged keys) and the invalidator's batch (one key per command) run without CROSSSLOT.</summary>
+/// the invalidator's batch (one key per command) runs without CROSSSLOT.</summary>
 public sealed class ClusteredRedisTests : IClassFixture<RedisClusterFixture>, IAsyncLifetime
 {
     private const int CreatorId = 42;
@@ -44,37 +44,17 @@ public sealed class ClusteredRedisTests : IClassFixture<RedisClusterFixture>, IA
     }
 
     [Fact]
-    public async Task DashboardTrends_ReadWriteAndRemove_OnACluster()
-    {
-        var cache = new DashboardTrendsCache(_redis.JsonCache);
-        var trends = new DashboardTrendsDto("30d", "day", [new("2026-10-01", 4_900, 12)]);
-
-        await cache.SetAsync(CreatorId, "30d", trends, None);
-        var hit = await cache.GetAsync(CreatorId, "30d", None);
-        await cache.RemoveAsync(CreatorId, None);
-        var afterRemove = await cache.GetAsync(CreatorId, "30d", None);
-
-        Assert.Equal(4_900, hit?.Points[0].RevenueCents);
-        Assert.Null(afterRemove);
-        Assert.DoesNotContain(_redis.JsonCacheLog.Entries, entry => entry.Level >= LogLevel.Warning);
-        Assert.True(_redis.Availability.IsAvailable);
-    }
-
-    [Fact]
     public async Task TheInvalidator_DropsEverySummary_OnACluster()
     {
         var home = new HomeSummaryCache(_redis.JsonCache);
         var views = new ViewsSummaryCache(_redis.JsonCache);
-        var trends = new DashboardTrendsCache(_redis.JsonCache);
         await home.SetAsync(CreatorId, HomeSummary(), None);
         await views.SetAsync(CreatorId, [new(Guid.NewGuid(), 3, 2)], None);
-        await trends.SetAsync(CreatorId, "6m", new DashboardTrendsDto("6m", "month", []), None);
 
         await new CreatorCacheInvalidator(_redis.JsonCache).InvalidateAsync(CreatorId, None);
 
         Assert.Null(await home.GetAsync(CreatorId, None));
         Assert.Null(await views.GetAsync(CreatorId, None));
-        Assert.Null(await trends.GetAsync(CreatorId, "6m", None));
         Assert.DoesNotContain(_redis.JsonCacheLog.Entries, entry => entry.Level >= LogLevel.Warning);
     }
 }

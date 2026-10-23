@@ -19,6 +19,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
     private readonly IEmailOutboxService _emailOutboxService;
     private readonly IHomeSummaryCache _homeSummaryCache;
     private readonly IPayoutLedgerService _payoutLedgerService;
+    private readonly IOrderAccessGrants _accessGrants;
     private readonly OrdersOptions _options;
     private readonly ILogger<OrderWebhookService> _logger;
 
@@ -29,6 +30,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
         IEmailOutboxService emailOutboxService,
         IHomeSummaryCache homeSummaryCache,
         IPayoutLedgerService payoutLedgerService,
+        IOrderAccessGrants accessGrants,
         IOptions<OrdersOptions> options,
         ILogger<OrderWebhookService> logger)
     {
@@ -38,6 +40,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
         _emailOutboxService = emailOutboxService;
         _homeSummaryCache = homeSummaryCache;
         _payoutLedgerService = payoutLedgerService;
+        _accessGrants = accessGrants;
         _options = options.Value;
         _logger = logger;
     }
@@ -90,7 +93,9 @@ public sealed class OrderWebhookService : IOrderWebhookService
                     order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.Currency, paidAt, ct);
             }
 
-            var accessUrl = $"{_options.ApiBaseUrl.TrimEnd('/')}/api/access/{order.PublicId}";
+            // The buyer's personal link, created with the payment: no paid order without one.
+            var token = _accessGrants.CreateForPaidOrder(order.CreatorId, order.ProductId, order.Id, buyerEmail, paidAt);
+            var downloadUrl = $"{_options.FrontendBaseUrl.TrimEnd('/')}/d/{token}";
             var emailContext = await _creatorContextProvider.GetOrderEmailContextAsync(order.ProductId, ct);
 
             await _emailOutboxService.QueueOrderAccessAsync(
@@ -101,12 +106,12 @@ public sealed class OrderWebhookService : IOrderWebhookService
                     order.Name,
                     buyerEmail,
                     emailContext?.ProductName ?? "your purchase",
-                    emailContext?.ProductTypeLabel ?? "Digital download",
+                    EmailFileLabel.From(emailContext?.FileContentType, emailContext?.FileSizeBytes),
                     emailContext?.ProductThumbnailUrl,
                     order.AmountCents,
                     order.Currency.ToString(),
                     paidAt,
-                    accessUrl,
+                    downloadUrl,
                     emailContext?.CreatorName ?? "Luma",
                     emailContext?.BrandColor,
                     emailContext?.LogoUrl,
@@ -148,6 +153,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
             var refundedAt = DateTimeOffset.UtcNow;
             order.MarkRefunded(refundedAt);
+            await _accessGrants.RevokeForOrderAsync(order.Id, refundedAt, ct);
 
             // Partial refunds are not modeled (same limitation as MarkRefunded) — a refund always reverses
             // the full sale + fee for a BankTransfer order.

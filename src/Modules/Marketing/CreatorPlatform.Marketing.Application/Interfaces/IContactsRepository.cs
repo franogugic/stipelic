@@ -1,16 +1,19 @@
 namespace CreatorPlatform.Marketing.Application.Interfaces;
 
+/// <param name="ImportedAt">When a CSV import created the contact; null for page sign-ups.</param>
 public sealed record ContactRow(
     string Email,
     DateTimeOffset FirstCapturedAt,
     int SourcesCount,
     string Sources,
     bool IsUnsubscribed,
-    List<ContactSourceRow> SourceList);
+    List<ContactSourceRow> SourceList,
+    DateTimeOffset? ImportedAt);
 
 public sealed record ContactSourceRow(Guid LandingPagePublicId, string Title);
 
-public sealed record ContactStatsCountsRow(int Total, int Active, int NewThisMonth, int Unsubscribed);
+public sealed record ContactStatsCountsRow(
+    int Total, int Active, int NewThisMonth, int Unsubscribed, int ImportedThisMonth, int Imported);
 
 /// <param name="Month">"yyyy-MM".</param>
 public sealed record ContactGrowthRow(string Month, int Total);
@@ -24,6 +27,18 @@ public enum ContactStatusFilter
     Active,
     Unsubscribed
 }
+
+/// <param name="Imported">Of <paramref name="Joined"/>, contacts a CSV import created.</param>
+public sealed record ContactBucketRow(int Joined, int Unsubscribed, int Imported = 0);
+
+/// <summary>A period's subscriber totals (R6.6): the directory at its start, and joined / unsubscribed / imported in it and in
+/// the window before (0 when there is none).</summary>
+public sealed record ContactPeriodTotalsRow(
+    int StartTotal, int Joined, int Unsubscribed, int Imported, int PreviousJoined, int PreviousUnsubscribed, int PreviousImported);
+
+/// <summary>Who joined in a period, by the source of their first capture (R6.6): a page, or an import
+/// (<paramref name="LandingPagePublicId"/> null).</summary>
+public sealed record ContactPeriodSourceRow(Guid? LandingPagePublicId, string? Title, int Count);
 
 public sealed record ContactSourceCountRow(Guid LandingPagePublicId, string Title, int Count);
 
@@ -62,9 +77,30 @@ public interface IContactsRepository
     /// (a resolved IANA name), oldest first, zero-filled.</summary>
     Task<List<ContactMonthRow>> GetMonthlyAsync(int creatorId, string timezone, CancellationToken ct);
 
+    /// <summary>Joined and unsubscribed per bucket, keyed by the local bucket start, for the events from
+    /// <paramref name="from"/> up to <paramref name="to"/> (<paramref name="bucketStarts"/>: local starts, oldest first).</summary>
+    Task<Dictionary<DateTime, ContactBucketRow>> GetBucketsAsync(
+        int creatorId, string timezone, IReadOnlyList<DateTime> bucketStarts, DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+
+    /// <summary>Contacts first captured before <paramref name="before"/> (and still in the directory).</summary>
+    Task<int> CountCapturedBeforeAsync(int creatorId, DateTimeOffset before, CancellationToken ct);
+
+    /// <summary>One pass over the creator's contacts and opt-outs: the directory at <paramref name="from"/> (0 for all time),
+    /// and joined / unsubscribed / imported in [<paramref name="from"/>, <paramref name="to"/>) and in the previous
+    /// window (when given).</summary>
+    Task<ContactPeriodTotalsRow> GetPeriodTotalsAsync(
+        int creatorId, DateTimeOffset? from, DateTimeOffset to, DateTimeOffset? previousFrom, DateTimeOffset? previousTo, CancellationToken ct);
+
+    /// <summary>The contacts that joined in [<paramref name="from"/>, <paramref name="to"/>), each counted once at the
+    /// source of its first capture (an imported contact at the import), most first.</summary>
+    Task<List<ContactPeriodSourceRow>> GetPeriodSourcesAsync(int creatorId, DateTimeOffset? from, DateTimeOffset to, CancellationToken ct);
+
     /// <summary>Deletes the contact's summary row and every capture of <paramref name="email"/> (already
     /// normalised) on this creator's landing pages. Never touches unsubscribes or campaign recipients. False —
     /// with nothing deleted — when the creator has no such contact. Two statements: the caller must run this
     /// inside a transaction.</summary>
     Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct);
+
+    /// <summary>Whether the creator has a contact with this (normalised) email.</summary>
+    Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct);
 }

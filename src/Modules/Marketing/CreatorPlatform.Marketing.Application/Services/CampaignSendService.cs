@@ -32,9 +32,13 @@ public sealed class CampaignSendService : ICampaignSendService
     private readonly IEmailOutboxService _emailOutboxService;
     private readonly IUnsubscribeTokenService _unsubscribeTokenService;
     private readonly IOpenTrackingTokenService _openTrackingTokenService;
+    private readonly IClickTrackingTokenService _clickTrackingTokenService;
+    private readonly ICampaignLinkRepository _linkRepository;
     private readonly ICampaignProgressProvider _progressProvider;
     private readonly IMarketingUnitOfWork _unitOfWork;
     private readonly ILogger<CampaignSendService> _logger;
+    private readonly CampaignAudienceTargets _targets;
+    private readonly CampaignDetailBuilder _detailBuilder;
 
     public CampaignSendService(
         ICreatorContextProvider creatorContextProvider,
@@ -49,6 +53,8 @@ public sealed class CampaignSendService : ICampaignSendService
         IOpenTrackingTokenService openTrackingTokenService,
         ICampaignProgressProvider progressProvider,
         IMarketingUnitOfWork unitOfWork,
+        IClickTrackingTokenService clickTrackingTokenService,
+        ICampaignLinkRepository linkRepository,
         ILogger<CampaignSendService> logger)
     {
         _creatorContextProvider = creatorContextProvider;
@@ -61,9 +67,13 @@ public sealed class CampaignSendService : ICampaignSendService
         _emailOutboxService = emailOutboxService;
         _unsubscribeTokenService = unsubscribeTokenService;
         _openTrackingTokenService = openTrackingTokenService;
+        _clickTrackingTokenService = clickTrackingTokenService;
+        _linkRepository = linkRepository;
         _progressProvider = progressProvider;
         _unitOfWork = unitOfWork;
         _logger = logger;
+        _targets = new CampaignAudienceTargets(creatorContextProvider, campaignRepository);
+        _detailBuilder = new CampaignDetailBuilder(creatorContextProvider, campaignRepository, audienceService, progressProvider, linkRepository);
     }
 
     public async Task<CampaignDetailDto> SendAsync(string slug, int ownerUserId, SendCampaignRequestDto request, CancellationToken ct)
@@ -92,14 +102,20 @@ public sealed class CampaignSendService : ICampaignSendService
             // content the snapshot comes from the template, as before.
             var content = inlineContent ?? new MailContent(template!.Subject, template.BodyText, template.CtaLabel, template.CtaUrl);
 
-            var (landingPageId, productId) = await ResolveTargetAsync(context.CreatorId, audienceType, request.TargetPublicId, ct);
+            var target = await _targets.ResolveAsync(context.CreatorId, audienceType, request.TargetPublicId, ct);
+            var (landingPageId, productId, sourceCampaignId) = (target.LandingPageId, target.ProductId, target.SourceCampaignId);
 
             var now = DateTimeOffset.UtcNow;
 
+            if (request.ScheduledAt is { } requestedAt)
+                ValidateScheduledAt(requestedAt, now);
+
+            var resendRound = target.Source is { } source
+                ? await ReserveNonOpenerResendAsync(source, request.ScheduledAt, now, ct)
+                : (int?)null;
+
             if (request.ScheduledAt is { } scheduledAt)
             {
-                ValidateScheduledAt(scheduledAt, now);
-
                 // Content snapshot only — audience/limit/recipients/outbox are deliberately untouched
                 // here, resolved again at dispatch time so a late unsubscribe is always honored.
                 campaign = Campaign.CreateScheduled(
@@ -113,7 +129,9 @@ public sealed class CampaignSendService : ICampaignSendService
                     landingPageId,
                     productId,
                     scheduledAt,
-                    now);
+                    now,
+                    sourceCampaignId,
+                    resendRound);
 
                 await _campaignRepository.AddAsync(campaign, ct);
                 await _unitOfWork.SaveChangesAsync(ct);
@@ -122,7 +140,7 @@ public sealed class CampaignSendService : ICampaignSendService
 
             // Immediate send — behavior unchanged from before scheduling existed.
             var emails = (await _audienceService.GetAudienceEmailsAsync(
-                audienceType, landingPageId, productId, context.CreatorId, ct))
+                audienceType, landingPageId, productId, sourceCampaignId, context.CreatorId, ct))
                 .Distinct()
                 .ToList();
 
@@ -156,7 +174,9 @@ public sealed class CampaignSendService : ICampaignSendService
                 landingPageId,
                 productId,
                 emails.Count,
-                now);
+                now,
+                sourceCampaignId,
+                resendRound);
 
             await _campaignRepository.AddAsync(campaign, ct);
 
@@ -167,7 +187,36 @@ public sealed class CampaignSendService : ICampaignSendService
             await CreateRecipientsAndQueueOutboxAsync(campaign, emails, context, now, ct);
         }, ct);
 
-        return await BuildDetailDtoAsync(campaign!, ct);
+        return await _detailBuilder.BuildDetailAsync(campaign!, ct);
+    }
+
+    /// <summary>
+    /// The non-opener resend rules for a send of <paramref name="source"/>: a sent original, a free slot, nothing
+    /// else scheduled, inside the time window, someone left to reach (409 with the reason code otherwise), and a
+    /// schedule no later than the window's end. Runs under the creator's lock and a row lock on the original, so
+    /// two parallel requests cannot both take the last slot. Returns the new resend's round.
+    /// </summary>
+    private async Task<int> ReserveNonOpenerResendAsync(
+        Campaign source, DateTimeOffset? scheduledAt, DateTimeOffset now, CancellationToken ct)
+    {
+        CampaignAudienceTargets.EnsureResendableSource(source);
+
+        await _campaignRepository.LockForUpdateAsync(source.Id, ct);
+
+        var resends = await _campaignRepository.GetResendsAsync(source.Id, ct);
+        var recipientCount = await _audienceService.GetAudienceCountAsync(
+            CampaignAudienceType.CampaignNonOpeners, null, null, source.Id, source.CreatorId, ct);
+        var decision = NonOpenerResendPolicy.Evaluate(source, resends, recipientCount, now);
+
+        if (decision.Reason is { } reason)
+            throw new ConflictException(NonOpenerResendReasons.Message(reason), reason);
+
+        if (scheduledAt > decision.EligibleUntil)
+            throw new ConflictException(
+                $"A resend must go out by {decision.EligibleUntil:u}, {NonOpenerResendPolicy.Window.TotalDays:0} days after the original.",
+                NonOpenerResendReasons.TooLate);
+
+        return decision.Used + 1;
     }
 
     public async Task DispatchScheduledAsync(Guid campaignPublicId, CancellationToken ct)
@@ -244,7 +293,7 @@ public sealed class CampaignSendService : ICampaignSendService
             await _unitOfWork.SaveChangesAsync(ct);
         }, ct);
 
-        return await BuildDetailDtoAsync(campaign!, ct);
+        return await _detailBuilder.BuildDetailAsync(campaign!, ct);
     }
 
     public async Task<ResendFailedResultDto> ResendFailedAsync(string slug, int ownerUserId, Guid campaignPublicId, CancellationToken ct)
@@ -300,8 +349,9 @@ public sealed class CampaignSendService : ICampaignSendService
     /// campaign directly Queued (see <see cref="SendAsync"/>).</summary>
     private async Task ExecuteSendPipelineAsync(Campaign campaign, MarketingCreatorContext context, CancellationToken ct)
     {
+        // A scheduled non-opener resend resolves its people now: whoever opened in the meantime is left out.
         var emails = (await _audienceService.GetAudienceEmailsAsync(
-            campaign.AudienceType, campaign.LandingPageId, campaign.ProductId, campaign.CreatorId, ct))
+            campaign.AudienceType, campaign.LandingPageId, campaign.ProductId, campaign.SourceCampaignId, campaign.CreatorId, ct))
             .Distinct()
             .ToList();
 
@@ -334,12 +384,6 @@ public sealed class CampaignSendService : ICampaignSendService
     private async Task CreateRecipientsAndQueueOutboxAsync(
         Campaign campaign, List<string> emails, MarketingCreatorContext context, DateTimeOffset now, CancellationToken ct)
     {
-        var recipients = emails.Select(email => CampaignRecipient.Create(campaign.Id, email, now)).ToList();
-        await _recipientRepository.AddRangeAsync(recipients, ct);
-
-        // Flush again so each recipient gets its own DB-generated Id — CorrelationKey embeds that id.
-        await _unitOfWork.SaveChangesAsync(ct);
-
         var replyTo = context.SupportEmail ?? context.OwnerEmail;
         var rendered = _renderer.Render(
             campaign.Subject,
@@ -349,7 +393,21 @@ public sealed class CampaignSendService : ICampaignSendService
             context.BrandName,
             context.LogoUrl,
             context.PrimaryColor,
-            context.SupportEmail);
+            context.SupportEmail,
+            campaign.AudienceType == CampaignAudienceType.LandingPageBuyers ? CampaignAudienceReason.Bought : CampaignAudienceReason.SignedUp);
+
+        // The campaign's links, once per campaign; each recipient gets its own tracked URL for each of them.
+        var links = rendered.Links
+            .Select(link => (Rendered: link, Entity: CampaignLink.Create(campaign.Id, link.Position, link.Url, link.Kind, link.Label, now)))
+            .ToList();
+        await _linkRepository.AddRangeAsync(links.Select(link => link.Entity), ct);
+
+        var recipients = emails.Select(email => CampaignRecipient.Create(campaign.Id, email, now)).ToList();
+        await _recipientRepository.AddRangeAsync(recipients, ct);
+
+        // Flush again so each recipient and link gets its DB-generated Id — the CorrelationKey and the tracked
+        // URLs embed them.
+        await _unitOfWork.SaveChangesAsync(ct);
 
         foreach (var recipient in recipients)
         {
@@ -360,13 +418,23 @@ public sealed class CampaignSendService : ICampaignSendService
             var openPixelUrl = _openTrackingTokenService.BuildPixelUrl(recipient.Id);
             var correlationKey = $"{campaign.PublicId}:{recipient.Id}";
 
+            var htmlBody = rendered.HtmlBody
+                .Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl)
+                .Replace("{{OPEN_PIXEL_URL}}", openPixelUrl);
+            var plainTextBody = rendered.PlainTextBody.Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl);
+
+            foreach (var (link, entity) in links)
+            {
+                var trackedUrl = _clickTrackingTokenService.BuildTrackedUrl(recipient.Id, entity.Id);
+                htmlBody = htmlBody.Replace(link.Placeholder, trackedUrl);
+                plainTextBody = plainTextBody.Replace(link.Placeholder, trackedUrl);
+            }
+
             await _emailOutboxService.QueueCampaignAsync(
                 recipient.Email,
                 rendered.Subject,
-                rendered.HtmlBody
-                    .Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl)
-                    .Replace("{{OPEN_PIXEL_URL}}", openPixelUrl),
-                rendered.PlainTextBody.Replace("{{UNSUBSCRIBE_URL}}", unsubscribeUrl),
+                htmlBody,
+                plainTextBody,
                 replyTo,
                 oneClickUnsubscribeUrl,
                 correlationKey,
@@ -443,65 +511,5 @@ public sealed class CampaignSendService : ICampaignSendService
             throw new BadRequestException($"Invalid audience type. Valid values: {string.Join(", ", Enum.GetNames<CampaignAudienceType>())}.");
 
         return audienceType;
-    }
-
-    private async Task<(int? LandingPageId, int? ProductId)> ResolveTargetAsync(
-        int creatorId, CampaignAudienceType audienceType, Guid targetPublicId, CancellationToken ct)
-    {
-        if (audienceType == CampaignAudienceType.All)
-        {
-            if (targetPublicId != Guid.Empty)
-                throw new BadRequestException("The All audience does not take a target.");
-
-            return (null, null);
-        }
-
-        if (targetPublicId == Guid.Empty)
-            throw new BadRequestException("A target is required for this audience.");
-
-        if (audienceType == CampaignAudienceType.LandingPage)
-        {
-            var landingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, targetPublicId, ct);
-            if (landingPageId is null)
-                throw new NotFoundException("Landing page not found.");
-
-            return (landingPageId, null);
-        }
-
-        var productId = await _creatorContextProvider.ResolveProductIdAsync(creatorId, targetPublicId, ct);
-        if (productId is null)
-            throw new NotFoundException("Product not found.");
-
-        return (null, productId);
-    }
-
-    private async Task<CampaignDetailDto> BuildDetailDtoAsync(Campaign campaign, CancellationToken ct)
-    {
-        var targetPublicId = campaign.LandingPageId is not null
-            ? (await _creatorContextProvider.GetLandingPagePublicIdsAsync([campaign.LandingPageId.Value], ct))[campaign.LandingPageId.Value]
-            : campaign.ProductId is not null
-                ? (await _creatorContextProvider.GetProductPublicIdsAsync([campaign.ProductId.Value], ct))[campaign.ProductId.Value]
-                : (Guid?)null;
-
-        var progress = (await _progressProvider.GetProgressAsync([campaign.PublicId], ct))[campaign.PublicId];
-
-        return new CampaignDetailDto(
-            campaign.PublicId,
-            campaign.Subject,
-            campaign.BodyText,
-            campaign.CtaLabel,
-            campaign.CtaUrl,
-            campaign.AudienceType.ToString(),
-            targetPublicId,
-            campaign.Status.ToString(),
-            campaign.RecipientCount,
-            campaign.QueuedAt,
-            campaign.ScheduledAt,
-            campaign.Note,
-            campaign.CreatedAt,
-            campaign.UpdatedAt,
-            progress.SentCount,
-            progress.FailedCount,
-            campaign.UniqueOpenCount);
     }
 }

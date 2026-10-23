@@ -18,16 +18,16 @@ namespace CreatorPlatform.Api.Controllers;
 public sealed class PublicUnsubscribeController : ControllerBase
 {
     private readonly IUnsubscribeTokenService _tokenService;
-    private readonly IUnsubscribeRepository _unsubscribeRepository;
+    private readonly IUnsubscribeService _unsubscribeService;
     private readonly IUnsubscribePageService _unsubscribePageService;
 
     public PublicUnsubscribeController(
         IUnsubscribeTokenService tokenService,
-        IUnsubscribeRepository unsubscribeRepository,
+        IUnsubscribeService unsubscribeService,
         IUnsubscribePageService unsubscribePageService)
     {
         _tokenService = tokenService;
-        _unsubscribeRepository = unsubscribeRepository;
+        _unsubscribeService = unsubscribeService;
         _unsubscribePageService = unsubscribePageService;
     }
 
@@ -66,8 +66,7 @@ public sealed class PublicUnsubscribeController : ControllerBase
         var payload = _tokenService.TryParse(token)
             ?? throw new BadRequestException("This unsubscribe link is invalid or has expired.");
 
-        await _unsubscribeRepository.AddIfNotExistsAsync(
-            Unsubscribe.Create(payload.CreatorId, payload.Email, UnsubscribeSource.OneClick, DateTimeOffset.UtcNow), ct);
+        await _unsubscribeService.UnsubscribeAsync(payload.CreatorId, payload.Email, UnsubscribeSource.OneClick, ct);
 
         return Ok();
     }

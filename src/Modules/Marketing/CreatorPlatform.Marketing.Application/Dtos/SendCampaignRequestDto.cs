@@ -15,7 +15,8 @@ public sealed class SendCampaignRequestDto
 
     public string AudienceType { get; init; } = string.Empty;
 
-    /// <summary>Landing page / product public id; must be empty for the <c>All</c> audience.</summary>
+    /// <summary>Landing page / product public id, or the original campaign's public id for
+    /// <c>CampaignNonOpeners</c>; must be empty for the <c>All</c> audience.</summary>
     public Guid TargetPublicId { get; init; }
 
     /// <summary>Null = send immediately (unchanged behavior). Set = schedule for later; must be at least

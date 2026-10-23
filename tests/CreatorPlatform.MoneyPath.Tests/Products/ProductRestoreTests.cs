@@ -24,14 +24,14 @@ public class ProductRestoreTests
         var unitOfWork = new FakeProductsUnitOfWork();
         var orderRepository = new FakeOrderContextProvider();
 
-        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository, new FakeLandingPageContextProvider());
+        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository, new FakeLandingPageContextProvider(), new FakeProductFiles());
 
         return (service, productRepository);
     }
 
     private static Product CreateArchivedProduct()
     {
-        var product = Product.Create(CreatorId, "Test Product", null, 1000, ProductType.Digital, null, null, DateTimeOffset.UtcNow);
+        var product = Product.Create(CreatorId, "Test Product", null, 1000, null, DateTimeOffset.UtcNow);
         product.Archive(DateTimeOffset.UtcNow);
         return product;
     }
@@ -66,7 +66,7 @@ public class ProductRestoreTests
     public async Task RestoreAsync_NonArchivedProduct_Throws()
     {
         var (service, productRepository) = BuildService(maxProducts: 5, activeProductCount: 0);
-        var product = Product.Create(CreatorId, "Draft Product", null, 1000, ProductType.Digital, null, null, DateTimeOffset.UtcNow);
+        var product = Product.Create(CreatorId, "Draft Product", null, 1000, null, DateTimeOffset.UtcNow);
         productRepository.Seed(product);
 
         await Assert.ThrowsAsync<BadRequestException>(
@@ -78,7 +78,7 @@ public class ProductRestoreTests
     {
         var (service, productRepository) = BuildService(maxProducts: 5, activeProductCount: 1);
         var archived = CreateArchivedProduct();
-        var active = Product.Create(CreatorId, "Active Product", null, 1000, ProductType.Digital, null, null, DateTimeOffset.UtcNow);
+        var active = Product.Create(CreatorId, "Active Product", null, 1000, null, DateTimeOffset.UtcNow);
         productRepository.Seed(archived);
         productRepository.Seed(active);
 
@@ -93,7 +93,7 @@ public class ProductRestoreTests
     {
         var (service, productRepository) = BuildService(maxProducts: 5, activeProductCount: 1);
         var archived = CreateArchivedProduct();
-        var active = Product.Create(CreatorId, "Active Product", null, 1000, ProductType.Digital, null, null, DateTimeOffset.UtcNow);
+        var active = Product.Create(CreatorId, "Active Product", null, 1000, null, DateTimeOffset.UtcNow);
         productRepository.Seed(archived);
         productRepository.Seed(active);
 

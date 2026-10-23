@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Marketing.Application.Dtos;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Shared.Application.Analytics;
 using CreatorPlatform.Shared.Application.Exceptions;
 using CreatorPlatform.Shared.Application.Time;
 
@@ -9,6 +10,9 @@ namespace CreatorPlatform.Marketing.Application.Services;
 
 public sealed class ContactsService : IContactsService
 {
+    /// <summary>The title of the import row in a period's "Where they joined".</summary>
+    public const string ImportSourceTitle = "Import";
+
     private const int DefaultLimit = 50;
     private const int MaxLimit = 100;
     private const int GrowthMonths = 12;
@@ -20,17 +24,20 @@ public sealed class ContactsService : IContactsService
     private readonly IContactsRepository _contactsRepository;
     private readonly IMarketingUnitOfWork _unitOfWork;
     private readonly ICreatorUsageService _usageService;
+    private readonly IUnsubscribeRepository _unsubscribeRepository;
 
     public ContactsService(
         ICreatorContextProvider creatorContextProvider,
         IContactsRepository contactsRepository,
         IMarketingUnitOfWork unitOfWork,
-        ICreatorUsageService usageService)
+        ICreatorUsageService usageService,
+        IUnsubscribeRepository unsubscribeRepository)
     {
         _creatorContextProvider = creatorContextProvider;
         _contactsRepository = contactsRepository;
         _unitOfWork = unitOfWork;
         _usageService = usageService;
+        _unsubscribeRepository = unsubscribeRepository;
     }
 
     public async Task<ContactsPageDto> SearchAsync(
@@ -118,7 +125,8 @@ public sealed class ContactsService : IContactsService
         row.SourcesCount,
         row.Sources,
         row.IsUnsubscribed,
-        row.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList());
+        row.SourceList.Select(s => new ContactSourceDto(s.LandingPagePublicId, s.Title)).ToList(),
+        row.ImportedAt);
 
     public async Task<ContactStatsDto> GetStatsAsync(string slug, int ownerUserId, CancellationToken ct)
     {
@@ -145,7 +153,66 @@ public sealed class ContactsService : IContactsService
             counts.Unsubscribed,
             growth.Select(g => new ContactGrowthPointDto(g.Month, g.Total)).ToList(),
             sources.Select(s => new ContactSourceCountDto(s.LandingPagePublicId, s.Title, s.Count)).ToList(),
-            monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList());
+            monthly.Select(m => new ContactMonthDto(m.Month, m.Joined, m.Unsubscribed)).ToList(),
+            counts.ImportedThisMonth,
+            counts.Imported);
+    }
+
+    public async Task<ContactPeriodStatsDto> GetPeriodStatsAsync(string slug, int ownerUserId, string period, CancellationToken ct)
+    {
+        var periodKey = period.Trim().ToLowerInvariant();
+        if (!AnalyticsPeriodPlan.Periods.Contains(periodKey))
+            throw new BadRequestException($"Invalid period. Valid values: {string.Join(", ", AnalyticsPeriodPlan.Periods)}.");
+
+        var context = await GetCreatorContextAsync(slug, ownerUserId, ct);
+
+        var plan = AnalyticsPeriodPlan.Create(periodKey, DateTimeOffset.UtcNow, context.Timezone, context.CreatedAt);
+        var local = CreatorTimeZone.LocalNow(DateTimeOffset.UtcNow, context.Timezone);
+        var currentMonthStart = CreatorTimeZone.ToInstant(new DateTime(local.Year, local.Month, 1), context.Timezone);
+        var bucketsFrom = plan.TotalsFrom ?? plan.BucketsFrom;
+
+        // Sequential on purpose: the queries share one scoped DbContext, which allows no concurrent use.
+        var counts = await _contactsRepository.GetStatsCountsAsync(context.CreatorId, currentMonthStart, ct);
+        var sources = await _contactsRepository.GetPeriodSourcesAsync(context.CreatorId, plan.TotalsFrom, plan.TotalsTo, ct);
+        var read = await _contactsRepository.GetBucketsAsync(
+            context.CreatorId, context.Timezone, plan.Buckets, bucketsFrom, plan.TotalsTo, ct);
+        var before = await _contactsRepository.CountCapturedBeforeAsync(context.CreatorId, bucketsFrom, ct);
+        var totals = await _contactsRepository.GetPeriodTotalsAsync(
+            context.CreatorId, plan.TotalsFrom, plan.TotalsTo, plan.PreviousTotalsFrom, plan.PreviousTotalsTo, ct);
+
+        var running = before;
+        var buckets = new List<ContactBucketDto>(plan.Buckets.Count);
+        foreach (var start in plan.Buckets)
+        {
+            var values = read.GetValueOrDefault(start) ?? new ContactBucketRow(0, 0);
+            running += values.Joined;
+            buckets.Add(new ContactBucketDto(start.ToString("yyyy-MM-dd'T'HH:mm"), values.Joined, values.Unsubscribed, running, values.Imported));
+        }
+
+        return new ContactPeriodStatsDto(
+            counts.Total,
+            counts.Active,
+            counts.NewThisMonth,
+            counts.Unsubscribed,
+            sources.Select(s => s.LandingPagePublicId is { } pageId
+                    ? new ContactPeriodSourceDto("page", pageId, s.Title ?? string.Empty, s.Count)
+                    : new ContactPeriodSourceDto("import", null, ImportSourceTitle, s.Count))
+                .ToList(),
+            periodKey,
+            plan.Step,
+            context.Timezone,
+            new ContactPeriodRangeDto(plan.RangeFrom, plan.RangeTo),
+            buckets,
+            counts.ImportedThisMonth,
+            counts.Imported,
+            plan.PreviousTotalsFrom is { } previousFrom ? new ContactPeriodRangeDto(previousFrom, plan.PreviousRangeTo!.Value) : null,
+            totals.StartTotal,
+            totals.Joined,
+            totals.Unsubscribed,
+            totals.Imported,
+            plan.PreviousTotalsFrom is null
+                ? null
+                : new ContactPeriodPreviousDto(totals.PreviousJoined, totals.PreviousUnsubscribed, totals.PreviousImported));
     }
 
     public async Task DeleteAsync(string slug, int ownerUserId, string email, CancellationToken ct)
@@ -159,18 +226,21 @@ public sealed class ContactsService : IContactsService
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
+            // Same lock as a sign-up and an unsubscribe of this email, so "is it unsubscribed?" below can't race them.
+            await _unitOfWork.AcquireContactLockAsync(context.CreatorId, normalizedEmail, ct);
+
             var deleted = await _contactsRepository.DeleteAsync(context.CreatorId, normalizedEmail, ct);
 
             // Nothing was deleted, so throwing here (rolling back an empty transaction) is safe.
             if (!deleted)
                 throw new NotFoundException(ContactNotFoundMessage);
 
-            // Give the contact's plan slot back in the same transaction: max_contacts counts unique contacts
-            // (EmailCaptureService consumes one unit when a sign-up creates the summary row), so one deleted
-            // contact refunds exactly one. AllTime counters have a single fixed period row, so asOf selects
-            // nothing here.
-            await _usageService.RefundAsync(
-                context.CreatorId, MaxContactsLimitKey, 1, UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
+            // max_contacts counts contacts that are not unsubscribed (F5.0): deleting an active contact gives its
+            // place back, deleting an unsubscribed one gives nothing (it held none). The unsubscribe itself is kept.
+            // AllTime counters have a single fixed period row, so asOf selects nothing here.
+            if (!await _unsubscribeRepository.ExistsAsync(context.CreatorId, normalizedEmail, ct))
+                await _usageService.RefundAsync(
+                    context.CreatorId, MaxContactsLimitKey, 1, UsagePeriod.AllTime, DateTimeOffset.UtcNow, ct);
         }, ct);
     }
 

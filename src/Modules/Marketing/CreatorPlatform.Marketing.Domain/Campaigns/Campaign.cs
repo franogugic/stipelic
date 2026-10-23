@@ -10,6 +10,9 @@ namespace CreatorPlatform.Marketing.Domain.Campaigns;
 /// nothing constructs one anymore.</summary>
 public sealed class Campaign
 {
+    /// <summary>Non-opener resends allowed per original (owner, 2026-10-22).</summary>
+    public const int MaxNonOpenerResends = 5;
+
     private Campaign()
     {
     }
@@ -29,7 +32,9 @@ public sealed class Campaign
         int recipientCount,
         DateTimeOffset? queuedAt,
         DateTimeOffset? scheduledAt,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        int? sourceCampaignId,
+        int? resendRound)
     {
         PublicId = publicId;
         CreatorId = creatorId;
@@ -47,6 +52,10 @@ public sealed class Campaign
         ScheduledAt = scheduledAt;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
+        SourceCampaignId = sourceCampaignId;
+        ResendRound = resendRound;
+        // An immediate send creates its tracked links in the same transaction.
+        ClickTracked = status == CampaignStatus.Queued;
     }
 
     /// <summary>Snapshots the template's current content (read by the caller just before this call) and
@@ -73,7 +82,7 @@ public sealed class Campaign
     /// link) — there is no Draft step anymore; the send pipeline resolves the audience and consumes the
     /// usage limit before ever calling this, so <paramref name="recipientCount"/> is already known and
     /// final. <paramref name="templateId"/> is only a reference to the template the content came from, if
-    /// any.</summary>
+    /// any. A non-opener resend also carries its original (<paramref name="sourceCampaignId"/>) and its round.</summary>
     public static Campaign CreateQueued(
         int creatorId,
         int? templateId,
@@ -85,10 +94,12 @@ public sealed class Campaign
         int? landingPageId,
         int? productId,
         int recipientCount,
-        DateTimeOffset queuedAt)
+        DateTimeOffset queuedAt,
+        int? sourceCampaignId = null,
+        int? resendRound = null)
     {
         MailContentRules.Validate(subject, bodyText, ctaLabel, ctaUrl);
-        ValidateAudience(audienceType, landingPageId, productId);
+        ValidateAudience(audienceType, landingPageId, productId, sourceCampaignId, resendRound);
 
         if (recipientCount <= 0)
             throw new ArgumentOutOfRangeException(nameof(recipientCount), recipientCount, "Recipient count must be positive.");
@@ -108,7 +119,9 @@ public sealed class Campaign
             recipientCount,
             queuedAt,
             scheduledAt: null,
-            createdAt: queuedAt);
+            createdAt: queuedAt,
+            sourceCampaignId,
+            resendRound);
     }
 
     /// <summary>Snapshots the given content (same principle as <see cref="CreateQueued"/>; the content is a
@@ -129,10 +142,12 @@ public sealed class Campaign
         int? landingPageId,
         int? productId,
         DateTimeOffset scheduledAt,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        int? sourceCampaignId = null,
+        int? resendRound = null)
     {
         MailContentRules.Validate(subject, bodyText, ctaLabel, ctaUrl);
-        ValidateAudience(audienceType, landingPageId, productId);
+        ValidateAudience(audienceType, landingPageId, productId, sourceCampaignId, resendRound);
 
         return new Campaign(
             Guid.NewGuid(),
@@ -149,7 +164,9 @@ public sealed class Campaign
             recipientCount: 0,
             queuedAt: null,
             scheduledAt,
-            createdAt);
+            createdAt,
+            sourceCampaignId,
+            resendRound);
     }
 
     /// <summary>Dispatch-time transition once the audience has actually been resolved and the usage limit
@@ -167,6 +184,8 @@ public sealed class Campaign
         RecipientCount = recipientCount;
         QueuedAt = queuedAt;
         UpdatedAt = queuedAt;
+        // The dispatch creates the tracked links, whenever the send was scheduled.
+        ClickTracked = true;
     }
 
     /// <summary>Dispatch of a scheduled send failed (no recipients, limit reached, etc.) — same
@@ -191,13 +210,30 @@ public sealed class Campaign
         UpdatedAt = cancelledAt;
     }
 
-    private static void ValidateAudience(CampaignAudienceType audienceType, int? landingPageId, int? productId)
+    private static void ValidateAudience(
+        CampaignAudienceType audienceType, int? landingPageId, int? productId, int? sourceCampaignId, int? resendRound)
     {
+        if (audienceType == CampaignAudienceType.CampaignNonOpeners)
+        {
+            if (sourceCampaignId is null or <= 0 || landingPageId is not null || productId is not null)
+                throw new ArgumentException("A CampaignNonOpeners campaign must set SourceCampaignId and leave LandingPageId and ProductId null.");
+            if (resendRound is null or < 1 or > MaxNonOpenerResends)
+                throw new ArgumentOutOfRangeException(nameof(resendRound), resendRound, $"A resend's round must be between 1 and {MaxNonOpenerResends}.");
+            return;
+        }
+
+        if (sourceCampaignId is not null || resendRound is not null)
+            throw new ArgumentException("Only a CampaignNonOpeners campaign has a source campaign and a resend round.");
+
         switch (audienceType)
         {
             case CampaignAudienceType.LandingPage:
                 if (landingPageId is null or <= 0 || productId is not null)
                     throw new ArgumentException("A LandingPage-audience campaign must set LandingPageId and leave ProductId null.");
+                break;
+            case CampaignAudienceType.LandingPageBuyers:
+                if (landingPageId is null or <= 0 || productId is not null)
+                    throw new ArgumentException("A LandingPageBuyers-audience campaign must set LandingPageId and leave ProductId null.");
                 break;
             case CampaignAudienceType.Product:
                 if (productId is null or <= 0 || landingPageId is not null)
@@ -236,6 +272,16 @@ public sealed class Campaign
 
     public int? ProductId { get; private set; }
 
+    /// <summary>The original campaign of a non-opener resend (never another resend); null for every other
+    /// audience.</summary>
+    public int? SourceCampaignId { get; private set; }
+
+    /// <summary>Which resend of its original this is (1–<see cref="MaxNonOpenerResends"/>), fixed when it is
+    /// created; null unless <see cref="SourceCampaignId"/> is set.</summary>
+    public int? ResendRound { get; private set; }
+
+    public bool IsNonOpenerResend => AudienceType == CampaignAudienceType.CampaignNonOpeners;
+
     public CampaignStatus Status { get; private set; }
 
     public int RecipientCount { get; private set; }
@@ -248,6 +294,14 @@ public sealed class Campaign
     /// raw SQL, in the same statement that stamps <see cref="CampaignRecipient.FirstOpenedAt"/>, so it
     /// never drifts from the recipient rows.</summary>
     public int UniqueOpenCount { get; private set; }
+
+    /// <summary>Recipients who clicked at least one tracked link — incremented only by the click endpoint's raw SQL,
+    /// in the same statement that stamps <see cref="CampaignRecipient.FirstClickedAt"/>.</summary>
+    public int UniqueClickCount { get; private set; }
+
+    /// <summary>True once the send created its tracked links (every send since click tracking, F2.1). False for
+    /// sends from before it and for a scheduled send not dispatched yet — "not tracked" rather than "no links".</summary>
+    public bool ClickTracked { get; private set; }
 
     /// <summary>Failure reason, set only by <see cref="MarkFailed"/> — null for every other status.</summary>
     public string? Note { get; private set; }

@@ -2,18 +2,20 @@ using static CreatorPlatform.Email.Application.Templates.EmailLayout;
 
 namespace CreatorPlatform.Email.Application.Templates;
 
+/// <param name="FileLabel">"ZIP · 17.5 MB" (<see cref="EmailFileLabel"/>); null when the product has no file.</param>
+/// <param name="DownloadUrl">The buyer's personal access link (<c>{FrontendBaseUrl}/d/{token}</c>).</param>
 /// <summary>Everything the buyer's order email shows. The creator's brand fields may be missing (no settings saved).</summary>
 public sealed record OrderAccessEmail(
     string OrderNumber,
     string? BuyerName,
     string BuyerEmail,
     string ProductName,
-    string ProductTypeLabel,
+    string? FileLabel,
     string? ProductThumbnailUrl,
     int AmountCents,
     string Currency,
     DateTimeOffset PaidAt,
-    string AccessUrl,
+    string DownloadUrl,
     string CreatorName,
     string? BrandColor,
     string? LogoUrl,
@@ -23,10 +25,11 @@ public sealed record OrderAccessEmail(
 /// text), logo or monogram, name and support address; Luma's accent when they have no colour.</summary>
 public static class OrderAccessTemplate
 {
-    public const string Subject = "Your purchase is ready";
+    public static string SubjectFor(string productName) => $"Your {productName}";
 
     public static RenderedEmail Render(OrderAccessEmail order)
     {
+        var subject = SubjectFor(order.ProductName);
         var brand = BrandPalette.From(order.BrandColor);
         var firstName = FirstName(order.BuyerName);
         var price = EmailMoney.Format(order.AmountCents, order.Currency);
@@ -35,14 +38,17 @@ public static class OrderAccessTemplate
             ? $"""<td width="80" height="80" bgcolor="{brand.Fill}" style="width:80px; height:80px; border-radius:10px; background-color:{brand.Fill};">&nbsp;</td>"""
             : $"""<td width="80" height="80" style="width:80px; height:80px;"><img src="{E(order.ProductThumbnailUrl)}" width="80" height="80" alt="" style="display:block; width:80px; height:80px; border:0; border-radius:10px; object-fit:cover;"></td>""";
 
+        var fileLabel = order.FileLabel is null
+            ? string.Empty
+            : $"""<p class="muted" style="margin:4px 0 0; font-size:13px; line-height:20px; color:#6B695F;">{E(order.FileLabel)}</p>""";
+
         var product = $"""
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bg-soft" style="margin:24px 0 0; background-color:#F4F3EE; border-radius:14px;"><tr>
                               <td class="stack" width="96" style="padding:16px; width:96px;">
                                 <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>{thumbnail}</tr></table>
                               </td>
                               <td class="stack" style="padding:16px 18px 16px 0; font-family:Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
-                                <p class="text" style="margin:0; font-size:16px; line-height:22px; font-weight:600; color:#17160F;">{E(order.ProductName)}</p>
-                                <p class="muted" style="margin:4px 0 0; font-size:13px; line-height:20px; color:#6B695F;">{E(order.ProductTypeLabel)}</p>
+                                <p class="text" style="margin:0; font-size:16px; line-height:22px; font-weight:600; color:#17160F;">{E(order.ProductName)}</p>{fileLabel}
                                 <p class="text" style="margin:8px 0 0; font-family:'Instrument Serif', Georgia, 'Times New Roman', serif; font-size:26px; line-height:28px; color:#17160F;">{E(price)}</p>
                               </td>
                             </tr></table>
@@ -58,10 +64,10 @@ public static class OrderAccessTemplate
 
         var card =
             heading +
-            Paragraph($"Your order is confirmed. Here’s your access to {Strong(order.ProductName)} — it’s yours to keep.") +
+            Paragraph($"Your order is confirmed and your download started in your browser. Here’s your personal link to download {Strong(order.ProductName)} again — any time, on any device.") +
             product +
-            Button("Access your product", order.AccessUrl, brand) +
-            FallbackLink(order.AccessUrl) +
+            Button("Download your file", order.DownloadUrl, brand) +
+            FallbackLink(order.DownloadUrl) +
             KeyValues(
                 Row("Order", $"#{order.OrderNumber}"),
                 Row("Paid", $"{price} · {Date(order.PaidAt)}"),
@@ -69,11 +75,11 @@ public static class OrderAccessTemplate
             questions;
 
         var html = Document(
-            Subject,
-            "Thank you for your order — here’s your access link.",
+            subject,
+            "Thank you for your order — here’s your download link.",
             CreatorHeader(order.CreatorName, order.LogoUrl, brand),
             card,
-            $"Sold by {E(order.CreatorName)} through Luma · Card payment processed by Stripe<br>Keep this email — your access link is in it.",
+            $"Sold by {E(order.CreatorName)} through Luma · Card payment processed by Stripe<br>{KeepThisEmail}",
             brand.TextDark);
 
         var support = string.IsNullOrWhiteSpace(order.SupportEmail)
@@ -82,21 +88,24 @@ public static class OrderAccessTemplate
         var text = $"""
             {(firstName is null ? "Thank you!" : $"Thank you, {firstName}!")}
 
-            Your order is confirmed. Here’s your access to {order.ProductName} — it’s yours to keep.
+            Your order is confirmed and your download started in your browser. Here’s your personal link to download {order.ProductName} again — any time, on any device.
 
-            Access your product:
-            {order.AccessUrl}
+            Download your file:
+            {order.DownloadUrl}
 
             Order: #{order.OrderNumber}
             Paid: {price} · {Date(order.PaidAt)}
             Sent to: {order.BuyerEmail}
             {support}
             Sold by {order.CreatorName} through Luma · Card payment processed by Stripe
-            Keep this email — your access link is in it.
+            {KeepThisEmail}
             """;
 
-        return new RenderedEmail(Subject, html, text);
+        return new RenderedEmail(subject, html, text);
     }
+
+    /// <summary>Shared with the lead-magnet email: both carry a personal download link.</summary>
+    public const string KeepThisEmail = "Keep this email — your download link is in it. It’s personal, so please don’t share it.";
 
     private static string? FirstName(string? name)
     {

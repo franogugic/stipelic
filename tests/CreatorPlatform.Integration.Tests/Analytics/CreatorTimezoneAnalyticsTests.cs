@@ -11,7 +11,7 @@ using MarketingCreatorContextProvider = CreatorPlatform.Marketing.Infrastructure
 
 namespace CreatorPlatform.Integration.Tests.Analytics;
 
-/// <summary>The dashboard trends, the home summary's "this month" and the contact growth use the creator's months:
+/// <summary>The home summary's "this month" and the contact growth use the creator's months:
 /// 23:30 UTC on a month's last day is already the next month in Europe/Zagreb.</summary>
 [Collection(PostgresCollection.Name)]
 public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
@@ -35,7 +35,7 @@ public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
     public async Task DisposeAsync() => await _redis.DisposeAsync();
 
     private OrderService Orders(Shared.Infrastructure.Persistence.CreatorPlatformDbContext db) =>
-        new(new OrderRepository(db), new HomeSummaryCache(_redis.JsonCache), new DashboardTrendsCache(_redis.JsonCache));
+        new(new OrderRepository(db), new HomeSummaryCache(_redis.JsonCache));
 
     /// <summary>23:30 UTC on the last day of the previous UTC month, and the local month it falls in.</summary>
     private static (DateTimeOffset At, string LocalMonth, string UtcMonth) LateNight()
@@ -43,23 +43,6 @@ public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
         var now = DateTimeOffset.UtcNow;
         var at = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(-1).AddMinutes(-30);
         return (at, TimeZoneInfo.ConvertTime(at, Zone).ToString("yyyy-MM"), at.ToString("yyyy-MM"));
-    }
-
-    [Fact]
-    public async Task DashboardTrends_BucketByTheCreatorsMonths()
-    {
-        var creator = await SeedCreatorAsync();
-        var productId = await AddProductAsync(creator.CreatorId);
-        var (at, localMonth, utcMonth) = LateNight();
-        await AddOrderAsync(creator.CreatorId, productId, 2500, at);
-
-        await using var db = _fixture.CreateDbContext();
-        var trends = await Orders(db).GetDashboardTrendsAsync(creator.Slug, creator.OwnerUserId, "12m", CancellationToken.None);
-
-        Assert.Equal(12, trends.Points.Count);
-        Assert.Equal(2500, trends.Points.Single(p => p.BucketStart == $"{localMonth}-01").RevenueCents);
-        Assert.DoesNotContain(trends.Points, p => p.BucketStart == $"{utcMonth}-01" && p.RevenueCents > 0);
-        Assert.Equal(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).ToString("yyyy-MM") + "-01", trends.Points[^1].BucketStart);
     }
 
     [Fact]
@@ -94,7 +77,7 @@ public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
 
         await using var read = _fixture.CreateDbContext();
         var stats = await new ContactsService(
-                new MarketingCreatorContextProvider(read), new ContactsRepository(read), new MarketingUnitOfWork(read), new CreatorUsageService(read))
+                new MarketingCreatorContextProvider(read), new ContactsRepository(read), new MarketingUnitOfWork(read), new CreatorUsageService(read), new UnsubscribeRepository(read))
             .GetStatsAsync(creator.Slug, creator.OwnerUserId, CancellationToken.None);
 
         Assert.Equal(0, stats.Growth.Single(g => g.Month == utcMonth).Total);
@@ -118,8 +101,8 @@ public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
         await using var db = _fixture.CreateDbContext();
         var now = DateTimeOffset.UtcNow;
         return (await db.Database.SqlQuery<int>($"""
-            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Type", "Status", "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', 1000, 'Digital', 'Active', {now}, {now})
+            INSERT INTO products.products ("PublicId", "CreatorId", "Name", "PriceCents", "Status", "FileBlobPath", "FileName", "FileSizeBytes", "FileContentType", "FileUploadedAt", "CreatedAt", "UpdatedAt")
+            VALUES ({Guid.NewGuid()}, {creatorId}, 'Product', 1000, 'Active', 'productfile/test/guide.pdf', 'guide.pdf', 1024, 'application/pdf', now(), {now}, {now})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }

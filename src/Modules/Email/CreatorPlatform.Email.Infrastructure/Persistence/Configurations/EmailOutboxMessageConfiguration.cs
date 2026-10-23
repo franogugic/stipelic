@@ -21,8 +21,9 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
             .HasMaxLength(100)
             .IsRequired();
 
+        // 254: the longest address a sign-up or a buyer can have (RFC 5321).
         builder.Property(message => message.ToEmail)
-            .HasMaxLength(100)
+            .HasMaxLength(254)
             .IsRequired();
 
         builder.Property(message => message.Subject)

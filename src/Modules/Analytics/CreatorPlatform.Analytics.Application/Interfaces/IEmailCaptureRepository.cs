@@ -26,6 +26,9 @@ public interface IEmailCaptureRepository
     /// the row was inserted — a contact this creator has never captured before — and false when an existing
     /// contact was updated.</summary>
     Task<bool> UpsertContactSummaryAsync(int creatorId, int landingPageId, string email, DateTimeOffset capturedAt, CancellationToken ct);
+
+    /// <summary>Whether the creator's contact with this (normalised) email has unsubscribed.</summary>
+    Task<bool> IsUnsubscribedAsync(int creatorId, string email, CancellationToken ct);
 }
 
 public sealed record NewestCaptureRow(string Email, DateTimeOffset CapturedAt, bool Unsubscribed);
