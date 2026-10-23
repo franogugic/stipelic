@@ -86,7 +86,7 @@ public sealed class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
 
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_campaigns_Audience_Matches_Fk",
-            "(\"AudienceType\" = 'LandingPage' AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) " +
+            "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) " +
             "OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) " +
             "OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)"));
 

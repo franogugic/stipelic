@@ -22,12 +22,45 @@ public sealed class AudienceService : IAudienceService
     public async Task<int> GetAudienceCountAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
     {
+        if (audienceType == CampaignAudienceType.LandingPageBuyers)
+        {
+            return (await _context.Database.SqlQuery<int>($"""
+                SELECT COUNT(*)::int AS "Value" FROM (
+                    SELECT DISTINCT lower(btrim(o."Email")) AS "Email"
+                    FROM orders.orders o
+                    WHERE o."LandingPageId" = {landingPageId} AND o."CreatorId" = {creatorId}
+                      AND o."Status" = 'Paid' AND o."Email" IS NOT NULL AND btrim(o."Email") <> ''
+                ) b
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM marketing.unsubscribes u
+                    WHERE u."CreatorId" = {creatorId} AND u."Email" = b."Email"
+                )
+                """).ToListAsync(ct)).Single();
+        }
+
         return await BuildAudienceQuery(audienceType, landingPageId, productId, creatorId).CountAsync(ct);
     }
 
     public async Task<List<string>> GetAudienceEmailsAsync(
         CampaignAudienceType audienceType, int? landingPageId, int? productId, int creatorId, CancellationToken ct)
     {
+        if (audienceType == CampaignAudienceType.LandingPageBuyers)
+        {
+            return (await _context.Database.SqlQuery<EmailRow>($"""
+                SELECT b."Email" AS "Email" FROM (
+                    SELECT DISTINCT lower(btrim(o."Email")) AS "Email"
+                    FROM orders.orders o
+                    WHERE o."LandingPageId" = {landingPageId} AND o."CreatorId" = {creatorId}
+                      AND o."Status" = 'Paid' AND o."Email" IS NOT NULL AND btrim(o."Email") <> ''
+                ) b
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM marketing.unsubscribes u
+                    WHERE u."CreatorId" = {creatorId} AND u."Email" = b."Email"
+                )
+                ORDER BY b."Email"
+                """).AsNoTracking().ToListAsync(ct)).Select(r => r.Email).ToList();
+        }
+
         return await BuildAudienceQuery(audienceType, landingPageId, productId, creatorId).ToListAsync(ct);
     }
 
@@ -53,6 +86,24 @@ public sealed class AudienceService : IAudienceService
                       WHERE u."CreatorId" = {creatorId} AND u."Email" = cs."Email"
                   )
                 ORDER BY cs."Email"
+                LIMIT {fetchLimit}
+                """)
+                .AsNoTracking()
+                .ToListAsync(ct)
+            : audienceType == CampaignAudienceType.LandingPageBuyers
+            ? await _context.Database.SqlQuery<EmailRow>($"""
+                SELECT b."Email" AS "Email" FROM (
+                    SELECT DISTINCT lower(btrim(o."Email")) AS "Email"
+                    FROM orders.orders o
+                    WHERE o."LandingPageId" = {landingPageId} AND o."CreatorId" = {creatorId}
+                      AND o."Status" = 'Paid' AND o."Email" IS NOT NULL AND btrim(o."Email") <> ''
+                ) b
+                WHERE b."Email" > {after}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM marketing.unsubscribes u
+                      WHERE u."CreatorId" = {creatorId} AND u."Email" = b."Email"
+                  )
+                ORDER BY b."Email"
                 LIMIT {fetchLimit}
                 """)
                 .AsNoTracking()
@@ -151,10 +202,35 @@ public sealed class AudienceService : IAudienceService
             .AsNoTracking()
             .ToListAsync(ct);
 
+        // Buyers: the creator's Sales pages with their paid-order buyers (same normalisation and suppression as
+        // GetAudienceCountAsync). Archived pages drop out unless they still have buyers. One query for every page.
+        var buyers = await _context.Database.SqlQuery<LandingPageAudienceRow>($"""
+            SELECT lp."PublicId" AS "PublicId", lp."Title" AS "Title", COUNT(DISTINCT b."Email")::int AS "RecipientCount"
+            FROM landing_pages.landing_pages lp
+            LEFT JOIN (
+                SELECT o."LandingPageId" AS "LandingPageId", lower(btrim(o."Email")) AS "Email"
+                FROM orders.orders o
+                WHERE o."CreatorId" = {creatorId} AND o."Status" = 'Paid' AND o."LandingPageId" IS NOT NULL
+                  AND o."Email" IS NOT NULL AND btrim(o."Email") <> ''
+            ) b
+                ON b."LandingPageId" = lp."Id"
+               AND NOT EXISTS (
+                   SELECT 1 FROM marketing.unsubscribes u
+                   WHERE u."CreatorId" = {creatorId} AND u."Email" = b."Email"
+               )
+            WHERE lp."CreatorId" = {creatorId} AND lp."Type" = 'Sales'
+            GROUP BY lp."Id", lp."PublicId", lp."Title", lp."Status"
+            HAVING lp."Status" <> 'Archived' OR COUNT(DISTINCT b."Email") > 0
+            ORDER BY "RecipientCount" DESC, lp."Title", lp."Id"
+            """)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
         return new CampaignAudiencesDto(
             new AllAudienceDto(allCount),
             landingPages.Select(r => new LandingPageAudienceDto(r.PublicId, r.Title, r.RecipientCount)).ToList(),
-            products.Select(r => new ProductAudienceDto(r.PublicId, r.Name, r.RecipientCount)).ToList());
+            products.Select(r => new ProductAudienceDto(r.PublicId, r.Name, r.RecipientCount)).ToList(),
+            buyers.Select(r => new LandingPageAudienceDto(r.PublicId, r.Title, r.RecipientCount)).ToList());
     }
 
     private sealed record EmailRow(string Email);

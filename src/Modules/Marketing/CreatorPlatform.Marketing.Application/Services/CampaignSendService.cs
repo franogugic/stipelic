@@ -349,7 +349,8 @@ public sealed class CampaignSendService : ICampaignSendService
             context.BrandName,
             context.LogoUrl,
             context.PrimaryColor,
-            context.SupportEmail);
+            context.SupportEmail,
+            campaign.AudienceType == CampaignAudienceType.LandingPageBuyers ? CampaignAudienceReason.Bought : CampaignAudienceReason.SignedUp);
 
         foreach (var recipient in recipients)
         {
@@ -459,7 +460,7 @@ public sealed class CampaignSendService : ICampaignSendService
         if (targetPublicId == Guid.Empty)
             throw new BadRequestException("A target is required for this audience.");
 
-        if (audienceType == CampaignAudienceType.LandingPage)
+        if (audienceType is CampaignAudienceType.LandingPage or CampaignAudienceType.LandingPageBuyers)
         {
             var landingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, targetPublicId, ct);
             if (landingPageId is null)

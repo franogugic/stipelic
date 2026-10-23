@@ -71,7 +71,7 @@ public sealed class FakeAudienceService : IAudienceService
         return Task.FromResult(audienceType == CampaignAudienceType.All ? ResolveAll() : Emails);
     }
 
-    public CampaignAudiencesDto Overview { get; set; } = new(new AllAudienceDto(0), [], []);
+    public CampaignAudiencesDto Overview { get; set; } = new(new AllAudienceDto(0), [], [], []);
 
     public Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(Overview);

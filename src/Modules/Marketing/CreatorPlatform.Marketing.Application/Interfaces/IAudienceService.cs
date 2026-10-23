@@ -9,7 +9,9 @@ namespace CreatorPlatform.Marketing.Application.Interfaces;
 /// creation time, or read it back off the already-validated Campaign row at send time) and pass it in
 /// directly. Exactly one of <paramref name="landingPageId"/>/<paramref name="productId"/> is expected,
 /// matching <paramref name="audienceType"/> — same invariant the Campaign entity itself enforces; for
-/// <see cref="CampaignAudienceType.All"/> both are null.</summary>
+/// <see cref="CampaignAudienceType.All"/> both are null. <see cref="CampaignAudienceType.LandingPageBuyers"/> takes the
+/// landing page like <see cref="CampaignAudienceType.LandingPage"/>, but its recipients are the paid-order buyers of
+/// that page (normalised email, minus unsubscribes).</summary>
 public interface IAudienceService
 {
     /// <summary>COUNT(DISTINCT email) — never materializes the audience list.</summary>
@@ -28,7 +30,8 @@ public interface IAudienceService
         string? afterEmail, int limit, CancellationToken ct);
 
     /// <summary>Recipient counts for the All audience plus every Published landing page and Active product
-    /// of the creator, with the same semantics as <see cref="GetAudienceCountAsync"/> (deduplicated, minus
-    /// unsubscribes) — resolved with a fixed three queries, never one per target.</summary>
+    /// of the creator (and the buyers of every Sales page), with the same semantics as
+    /// <see cref="GetAudienceCountAsync"/> (deduplicated, minus unsubscribes) — resolved with a fixed four queries,
+    /// never one per target.</summary>
     Task<CampaignAudiencesDto> GetAudienceOverviewAsync(int creatorId, CancellationToken ct);
 }

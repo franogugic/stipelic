@@ -1325,7 +1325,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.ToTable("campaigns", "marketing", t =>
                         {
-                            t.HasCheckConstraint("CK_campaigns_Audience_Matches_Fk", "(\"AudienceType\" = 'LandingPage' AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
+                            t.HasCheckConstraint("CK_campaigns_Audience_Matches_Fk", "(\"AudienceType\" IN ('LandingPage', 'LandingPageBuyers') AND \"LandingPageId\" IS NOT NULL AND \"ProductId\" IS NULL) OR (\"AudienceType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"LandingPageId\" IS NULL) OR (\"AudienceType\" = 'All' AND \"LandingPageId\" IS NULL AND \"ProductId\" IS NULL)");
                         });
                 });
 

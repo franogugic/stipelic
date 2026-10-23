@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using CreatorPlatform.Email.Application.Templates;
+using CreatorPlatform.Marketing.Application.Interfaces;
 using CreatorPlatform.Marketing.Infrastructure.Services;
 
 namespace CreatorPlatform.MoneyPath.Tests.Email;
@@ -110,6 +111,36 @@ public class SystemEmailTemplateTests
         Assert.Contains("bgcolor=\"#4F74D9\"", content.HtmlBody);
         Assert.Contains("Reply to hello@acme.test", content.HtmlBody);
         Assert.Contains("First line.", content.PlainTextBody);
+    }
+
+    [Fact]
+    public void TheCampaignFooter_SaysWhyTheRecipientGetsIt_ByAudience()
+    {
+        var renderer = new CampaignEmailRenderer();
+
+        var signedUp = renderer.Render("Hi", "Body.", null, null, "Acme", null, "#4F74D9", "hello@acme.test");
+        var bought = renderer.Render("Hi", "Body.", null, null, "Acme", null, "#4F74D9", "hello@acme.test", CampaignAudienceReason.Bought);
+
+        Assert.Contains("You’re receiving this because you signed up at Acme.", signedUp.HtmlBody);
+        Assert.Contains("You’re receiving this because you signed up at Acme.", signedUp.PlainTextBody);
+        Assert.DoesNotContain("you bought from", signedUp.HtmlBody);
+        Assert.Contains("You’re receiving this because you bought from Acme.", bought.HtmlBody);
+        Assert.Contains("You’re receiving this because you bought from Acme.", bought.PlainTextBody);
+        Assert.DoesNotContain("you signed up at", bought.HtmlBody);
+        Assert.DoesNotContain("you signed up at", bought.PlainTextBody);
+        // The unsubscribe link stays on both.
+        Assert.Contains("href=\"{{UNSUBSCRIBE_URL}}\"", bought.HtmlBody);
+        Assert.Contains("Unsubscribe: {{UNSUBSCRIBE_URL}}", bought.PlainTextBody);
+    }
+
+    [Fact]
+    public void TheBuyersFooter_EncodesTheBrandName()
+    {
+        var bought = new CampaignEmailRenderer().Render(
+            "Hi", "Body.", null, null, "<b>Acme</b> & Co", null, "#4F74D9", null, CampaignAudienceReason.Bought);
+
+        Assert.Contains("you bought from &lt;b&gt;Acme&lt;/b&gt; &amp; Co.", bought.HtmlBody);
+        Assert.DoesNotContain("<b>Acme</b> & Co.<br>", bought.HtmlBody);
     }
 
     [Fact]

@@ -24,7 +24,8 @@ public sealed class CampaignEmailRenderer : ICampaignEmailRenderer
         string brandName,
         string? logoUrl,
         string primaryColor,
-        string? supportEmail = null)
+        string? supportEmail = null,
+        CampaignAudienceReason reason = CampaignAudienceReason.SignedUp)
     {
         var brand = BrandPalette.From(primaryColor);
         var hasCta = !string.IsNullOrWhiteSpace(ctaLabel) && !string.IsNullOrWhiteSpace(ctaUrl);
@@ -34,8 +35,10 @@ public sealed class CampaignEmailRenderer : ICampaignEmailRenderer
             + (hasCta ? Button(ctaLabel!, ctaUrl!, brand) : string.Empty);
 
         var replyTo = string.IsNullOrWhiteSpace(supportEmail) ? string.Empty : $" · Reply to {E(supportEmail)}";
+        // Why they get it: they signed up at the brand, or (buyers audience) they bought from it.
+        var why = reason == CampaignAudienceReason.Bought ? "you bought from" : "you signed up at";
         var footer =
-            $"You’re receiving this because you signed up at {E(brandName)}.<br>" +
+            $"You’re receiving this because {why} {E(brandName)}.<br>" +
             $"""<a class="muted" href="{UnsubscribePlaceholder}" style="color:#6B695F; text-decoration:underline;">Unsubscribe</a>{replyTo}<br><br>Sent with Luma""";
 
         var html = Document(subject, FirstLine(lines), CreatorHeader(brandName, logoUrl, brand), card, footer, brand.TextDark)
@@ -43,7 +46,7 @@ public sealed class CampaignEmailRenderer : ICampaignEmailRenderer
 
         var plainText = string.Join("\n\n", lines)
             + (hasCta ? $"\n\n{ctaLabel}: {ctaUrl}" : string.Empty)
-            + $"\n\n---\nYou’re receiving this because you signed up at {brandName}.\nUnsubscribe: {UnsubscribePlaceholder}"
+            + $"\n\n---\nYou’re receiving this because {why} {brandName}.\nUnsubscribe: {UnsubscribePlaceholder}"
             + (string.IsNullOrWhiteSpace(supportEmail) ? string.Empty : $"\nReply to {supportEmail}")
             + "\nSent with Luma\n";
 

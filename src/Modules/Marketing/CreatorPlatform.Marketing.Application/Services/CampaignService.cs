@@ -142,7 +142,7 @@ public sealed class CampaignService : ICampaignService
         if (targetPublicId == Guid.Empty)
             throw new BadRequestException("A target is required for this audience.");
 
-        if (audienceType == CampaignAudienceType.LandingPage)
+        if (audienceType is CampaignAudienceType.LandingPage or CampaignAudienceType.LandingPageBuyers)
         {
             var landingPageId = await _creatorContextProvider.ResolveLandingPageIdAsync(creatorId, targetPublicId, ct);
             if (landingPageId is null)

@@ -199,6 +199,10 @@ public sealed class Campaign
                 if (landingPageId is null or <= 0 || productId is not null)
                     throw new ArgumentException("A LandingPage-audience campaign must set LandingPageId and leave ProductId null.");
                 break;
+            case CampaignAudienceType.LandingPageBuyers:
+                if (landingPageId is null or <= 0 || productId is not null)
+                    throw new ArgumentException("A LandingPageBuyers-audience campaign must set LandingPageId and leave ProductId null.");
+                break;
             case CampaignAudienceType.Product:
                 if (productId is null or <= 0 || landingPageId is not null)
                     throw new ArgumentException("A Product-audience campaign must set ProductId and leave LandingPageId null.");

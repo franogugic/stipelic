@@ -245,4 +245,36 @@ public class CampaignTests
         campaign.Cancel(Now);
         return campaign;
     }
+
+    [Fact]
+    public void CreateQueuedFromTemplate_ValidBuyersAudience_SetsTheLandingPageAndNoProduct()
+    {
+        var campaign = Campaign.CreateQueuedFromTemplate(
+            1, 7, "Subject", "Body", null, null, CampaignAudienceType.LandingPageBuyers, 10, null, 3, Now);
+
+        Assert.Equal(CampaignAudienceType.LandingPageBuyers, campaign.AudienceType);
+        Assert.Equal(10, campaign.LandingPageId);
+        Assert.Null(campaign.ProductId);
+    }
+
+    [Fact]
+    public void CreateQueuedFromTemplate_BuyersAudienceWithProductIdSet_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => Campaign.CreateQueuedFromTemplate(
+            1, 7, "Subject", "Body", null, null, CampaignAudienceType.LandingPageBuyers, 10, 5, 3, Now));
+    }
+
+    [Fact]
+    public void CreateQueuedFromTemplate_BuyersAudienceWithoutLandingPageId_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => Campaign.CreateQueuedFromTemplate(
+            1, 7, "Subject", "Body", null, null, CampaignAudienceType.LandingPageBuyers, null, null, 3, Now));
+    }
+
+    [Fact]
+    public void CreateScheduled_BuyersAudienceWithoutLandingPageId_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => Campaign.CreateScheduled(
+            1, 7, "Subject", "Body", null, null, CampaignAudienceType.LandingPageBuyers, null, null, Now.AddMinutes(10), Now));
+    }
 }
