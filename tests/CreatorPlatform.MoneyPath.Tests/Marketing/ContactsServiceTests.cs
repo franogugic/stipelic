@@ -33,7 +33,7 @@ public class ContactsServiceTests
         var repository = new FakeContactsRepository();
         var unitOfWork = new FakeMarketingUnitOfWork();
         var usageService = new FakeCreatorUsageService();
-        var service = new ContactsService(contextProvider, repository, unitOfWork, usageService);
+        var service = new ContactsService(contextProvider, repository, unitOfWork, usageService, new FakeUnsubscribeRepository());
 
         return (service, contextProvider, repository, unitOfWork, usageService);
     }

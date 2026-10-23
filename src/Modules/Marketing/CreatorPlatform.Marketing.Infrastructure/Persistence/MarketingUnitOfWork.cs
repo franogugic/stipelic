@@ -41,4 +41,7 @@ public sealed class MarketingUnitOfWork : IMarketingUnitOfWork
     {
         await _context.Entry(entity).ReloadAsync(ct);
     }
+
+    public Task AcquireContactLockAsync(int creatorId, string normalizedEmail, CancellationToken ct) =>
+        ContactLocks.AcquireAsync(_context, creatorId, normalizedEmail, ct);
 }

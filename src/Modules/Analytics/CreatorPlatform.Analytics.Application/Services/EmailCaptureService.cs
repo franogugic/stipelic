@@ -61,6 +61,13 @@ public sealed class EmailCaptureService : IEmailCaptureService
             if (!isNewContact)
                 return;
 
+            // An unsubscribed email that signs up again stays unsubscribed, and unsubscribed contacts take no place
+            // (F5.0): it is a contact again, but not counted and never blocked by the limit. Under the contact lock,
+            // so a concurrent unsubscribe or delete of the same email can't miss this sign-up (or the other way round).
+            await _unitOfWork.AcquireContactLockAsync(creatorId, capture.Email, ct);
+            if (await _repository.IsUnsubscribedAsync(creatorId, capture.Email, ct))
+                return;
+
             // TryConsumeAsync is a conditional atomic upsert, so parallel sign-ups can't overshoot the limit.
             // Throwing rolls back the capture and summary inserted above.
             var consumed = await _usageService.TryConsumeAsync(

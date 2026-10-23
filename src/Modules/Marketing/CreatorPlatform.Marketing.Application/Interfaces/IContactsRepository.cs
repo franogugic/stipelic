@@ -67,4 +67,7 @@ public interface IContactsRepository
     /// with nothing deleted — when the creator has no such contact. Two statements: the caller must run this
     /// inside a transaction.</summary>
     Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct);
+
+    /// <summary>Whether the creator has a contact with this (normalised) email.</summary>
+    Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct);
 }

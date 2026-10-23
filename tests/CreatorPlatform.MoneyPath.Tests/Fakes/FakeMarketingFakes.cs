@@ -289,6 +289,14 @@ public sealed class FakeCampaignRecipientRepository : ICampaignRecipientReposito
 
 public sealed class FakeMarketingUnitOfWork : IMarketingUnitOfWork
 {
+    public List<(int CreatorId, string Email)> ContactLocks { get; } = [];
+
+    public Task AcquireContactLockAsync(int creatorId, string normalizedEmail, CancellationToken ct)
+    {
+        ContactLocks.Add((creatorId, normalizedEmail));
+        return Task.CompletedTask;
+    }
+
     public int SaveChangesCallCount { get; private set; }
     public bool TransactionCommitted { get; private set; }
     public int? LockedCreatorId { get; private set; }
@@ -376,4 +384,16 @@ public sealed class FakeCampaignLinkRepository : ICampaignLinkRepository
         => Task.FromResult(Links.FirstOrDefault(l => l.Id == linkId)?.Url);
 
     public Task RecordClickAsync(int recipientId, int linkId, CancellationToken ct) => Task.CompletedTask;
+}
+
+/// <summary>An in-memory unsubscribe list with the real repository's insert-once semantics.</summary>
+public sealed class FakeUnsubscribeRepository : IUnsubscribeRepository
+{
+    public HashSet<(int CreatorId, string Email)> Rows { get; } = [];
+
+    public Task<bool> AddIfNotExistsAsync(CreatorPlatform.Marketing.Domain.Unsubscribes.Unsubscribe unsubscribe, CancellationToken ct)
+        => Task.FromResult(Rows.Add((unsubscribe.CreatorId, unsubscribe.Email)));
+
+    public Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct)
+        => Task.FromResult(Rows.Contains((creatorId, email.Trim().ToLowerInvariant())));
 }

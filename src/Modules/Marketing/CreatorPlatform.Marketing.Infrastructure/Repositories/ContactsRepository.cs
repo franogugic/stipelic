@@ -1,5 +1,6 @@
 using CreatorPlatform.LandingPages.Domain.LandingPages;
 using CreatorPlatform.Marketing.Application.Interfaces;
+using CreatorPlatform.Marketing.Domain.Contacts;
 using CreatorPlatform.Marketing.Domain.Unsubscribes;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -253,5 +254,12 @@ public sealed class ContactsRepository : IContactsRepository
             """)
             .AsNoTracking()
             .ToListAsync(ct);
+    }
+
+    public async Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct)
+    {
+        return await _context.Set<ContactSummary>()
+            .AsNoTracking()
+            .AnyAsync(cs => cs.CreatorId == creatorId && cs.Email == email, ct);
     }
 }

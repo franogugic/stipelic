@@ -94,7 +94,7 @@ public sealed class CreatorTimezoneAnalyticsTests : IAsyncLifetime
 
         await using var read = _fixture.CreateDbContext();
         var stats = await new ContactsService(
-                new MarketingCreatorContextProvider(read), new ContactsRepository(read), new MarketingUnitOfWork(read), new CreatorUsageService(read))
+                new MarketingCreatorContextProvider(read), new ContactsRepository(read), new MarketingUnitOfWork(read), new CreatorUsageService(read), new UnsubscribeRepository(read))
             .GetStatsAsync(creator.Slug, creator.OwnerUserId, CancellationToken.None);
 
         Assert.Equal(0, stats.Growth.Single(g => g.Month == utcMonth).Total);

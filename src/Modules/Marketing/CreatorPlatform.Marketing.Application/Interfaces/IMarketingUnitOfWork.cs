@@ -17,4 +17,8 @@ public interface IMarketingUnitOfWork
     /// dispatch path to re-check a campaign's Status strictly after acquiring the creator lock (a plain
     /// re-query would return the already-tracked instance unchanged, per EF Core's identity map).</summary>
     Task ReloadAsync(object entity, CancellationToken ct);
+
+    /// <summary>Serialises the contact-limit bookkeeping of one contact (sign-up, unsubscribe, delete) until the
+    /// transaction ends. Call inside <see cref="ExecuteInTransactionAsync"/>.</summary>
+    Task AcquireContactLockAsync(int creatorId, string normalizedEmail, CancellationToken ct);
 }

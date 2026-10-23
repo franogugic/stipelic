@@ -34,6 +34,9 @@ public sealed class FakeContactsRepository : IContactsRepository
     public bool ContactExists { get; set; }
     public (int CreatorId, string Email)? LastDeleteCall { get; private set; }
 
+    public Task<bool> ExistsAsync(int creatorId, string email, CancellationToken ct)
+        => Task.FromResult(ContactExists);
+
     public Task<bool> DeleteAsync(int creatorId, string email, CancellationToken ct)
     {
         LastDeleteCall = (creatorId, email);

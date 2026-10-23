@@ -25,4 +25,7 @@ public sealed class AnalyticsUnitOfWork : IAnalyticsUnitOfWork
 
         await transaction.CommitAsync(ct);
     }
+
+    public Task AcquireContactLockAsync(int creatorId, string normalizedEmail, CancellationToken ct) =>
+        ContactLocks.AcquireAsync(_context, creatorId, normalizedEmail, ct);
 }

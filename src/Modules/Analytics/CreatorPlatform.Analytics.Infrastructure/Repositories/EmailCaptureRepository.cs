@@ -98,4 +98,14 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
 
         return inserted.Single();
     }
+
+    public async Task<bool> IsUnsubscribedAsync(int creatorId, string email, CancellationToken ct)
+    {
+        return await _context.Database.SqlQuery<bool>($"""
+            SELECT EXISTS (
+                SELECT 1 FROM marketing.unsubscribes u WHERE u."CreatorId" = {creatorId} AND u."Email" = {email}
+            ) AS "Value"
+            """)
+            .SingleAsync(ct);
+    }
 }

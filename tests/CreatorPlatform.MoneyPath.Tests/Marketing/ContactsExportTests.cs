@@ -19,7 +19,7 @@ public class ContactsExportTests
             Context = new MarketingCreatorContext(CreatorId, Guid.NewGuid(), "Acme", Slug, null, "Acme", null, "#111111", "owner@acme.test"),
         };
         var repository = new FakeContactsRepository();
-        return (new ContactsService(contextProvider, repository, new FakeMarketingUnitOfWork(), new FakeCreatorUsageService()), contextProvider, repository);
+        return (new ContactsService(contextProvider, repository, new FakeMarketingUnitOfWork(), new FakeCreatorUsageService(), new FakeUnsubscribeRepository()), contextProvider, repository);
     }
 
     [Fact]
