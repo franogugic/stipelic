@@ -18,6 +18,9 @@ public sealed class AuthService : IAuthService
     private const string InvalidEmailVerificationTokenMessage = "Invalid or expired email verification token.";
     private const string EmailVerifiedSuccessfullyMessage = "Email verified successfully.";
     private const string EmailVerificationLinkExpiredMessage = "This verification link has expired.";
+    private const string EmailVerificationLinkReplacedMessage = "This verification link was replaced by a newer one. Use the latest email.";
+    public const string VerificationLinkReplacedCode = "VERIFICATION_LINK_REPLACED";
+    public const string VerificationLinkExpiredCode = "VERIFICATION_LINK_EXPIRED";
     private const string LoggedOutSuccessfullyMessage = "Logged out successfully.";
     private const string ResendEmailVerificationMessage = "If an account exists and requires verification, a new email will be sent.";
     private const string InvalidLoginCredentialsMessage = "Invalid email or password.";
@@ -216,17 +219,14 @@ public sealed class AuthService : IAuthService
         if (user.IsEmailVerified)
             return CreateEmailVerifiedResponse(user);
 
-        // A real token mailed to this address, but no longer usable: tell the holder which address it was for
-        // (they received it there) so a fresh link can be sent. Nothing is written.
-        if (emailVerificationToken.IsUsed || emailVerificationToken.IsExpired(now))
-        {
-            return new VerifyEmailResponseDto
-            {
-                Message = EmailVerificationLinkExpiredMessage,
-                Outcome = VerifyEmailOutcome.Expired,
-                Email = user.Email
-            };
-        }
+        // A real token, but no longer usable; the code says why, so the page can say what to do. Nothing is written.
+        // For a user who is not verified yet, a used token can only have been invalidated by a resend — a real use
+        // verifies the user — so it was replaced by a newer link.
+        if (emailVerificationToken.IsUsed)
+            throw new BadRequestException(EmailVerificationLinkReplacedMessage, VerificationLinkReplacedCode);
+
+        if (emailVerificationToken.IsExpired(now))
+            throw new BadRequestException(EmailVerificationLinkExpiredMessage, VerificationLinkExpiredCode);
 
         user.VerifyEmail(now);
         emailVerificationToken.MarkAsUsed(now);
