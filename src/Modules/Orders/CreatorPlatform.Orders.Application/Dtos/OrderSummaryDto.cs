@@ -50,8 +50,9 @@ public sealed record OrderMonthDto(string Month, long GrossCents, long FeeCents,
 /// <param name="PendingOrderCount">Orders created in the period that are still waiting for payment.</param>
 /// <param name="FailedOrderCount">Orders created in the period whose payment failed.</param>
 /// <param name="TotalOrderCount">Paid + refunded + pending + failed above.</param>
-/// <param name="Buckets">Oldest first, zero-filled: every hour so far for "today", every day, 7-day weeks anchored at the
-/// window's first day for 2m / 3m / 6m, or the last 12 months for "all".</param>
+/// <param name="Buckets">Oldest first, zero-filled: every hour so far for "today", every day, 7-day weeks for 2m / 3m and
+/// months for 6m (anchored at the window's first day, the day after the same date N months ago), or the last 12 months
+/// for "all".</param>
 public sealed record OrderPeriodSummaryDto(
     string Period,
     string Step,

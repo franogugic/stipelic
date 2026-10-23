@@ -10,10 +10,11 @@ namespace CreatorPlatform.Analytics.Application.Series;
 /// <param name="Since">When the page, product or workspace was created — the start of "all".</param>
 /// <param name="Range">The period: "today" and the day periods end now; "all" starts at <paramref name="Since"/>.</param>
 /// <param name="PreviousRange">The period before: yesterday up to the same local time for "today", the N days before
-/// for the day periods and the 2m / 3m / 6m windows; null for "all".</param>
+/// for the day periods, the N calendar months before for 2m / 3m / 6m; null for "all".</param>
 /// <param name="Buckets">Oldest first, zero-filled. "today": every local hour so far; "7d"/"15d"/"30d": every local
-/// day; "2m"/"3m"/"6m": 7-day buckets anchored at the window's first day, the last one ending now; "all": the last 12
-/// local months, or since the page/product's month when that is shorter.</param>
+/// day; "2m"/"3m": 7-day buckets and "6m": monthly buckets, anchored at the window's first day (the day after the same
+/// date N months ago), the last one ending now; "all": the last 12 local months, or since the page/product's month when
+/// that is shorter.</param>
 /// <param name="PreviousBuckets">Yesterday's 24 hours, or the buckets of the window before; null for "all".</param>
 /// <param name="BestMonth">"all" only: the strongest of <paramref name="Buckets"/> per metric (null when it is 0).</param>
 /// <param name="Product">Product scope only: refunds in the period and the creator's revenue in the same period.</param>

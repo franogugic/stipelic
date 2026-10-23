@@ -116,7 +116,7 @@ public sealed class ContactStatusAndMonthlyTests
     }
 
     [Fact]
-    public async Task ALongPeriod_IsWeeks_AndPeriodsAreValidated()
+    public async Task ThreeMonths_AreWeeksOfCalendarMonthsBack_AndPeriodsAreValidated()
     {
         var creator = await _data.CreateCreatorAsync();
         await SetTimezoneAsync(creator.CreatorId, Zagreb);
@@ -124,7 +124,9 @@ public sealed class ContactStatusAndMonthlyTests
 
         var stats = await WithServiceAsync(s => s.GetPeriodStatsAsync(creator.Slug, creator.OwnerUserId, "3m", CancellationToken.None));
 
-        Assert.Equal(("week", 13), (stats.Step, stats.Buckets.Count));
+        var today = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(Zagreb)).Date;
+        var days = (today - today.AddMonths(-3).AddDays(1)).Days + 1;           // 3m: the day after the same date 3 months ago
+        Assert.Equal(("week", (days + 6) / 7), (stats.Step, stats.Buckets.Count));
         Assert.Equal(1, stats.Buckets.Sum(b => b.Joined));
         Assert.Equal(1, stats.Buckets[^1].Total);
         await Assert.ThrowsAsync<BadRequestException>(() =>

@@ -50,8 +50,9 @@ public sealed record ContactSourceCountDto(Guid LandingPagePublicId, string Titl
 /// <param name="Step">"hour" | "day" | "week" | "month" — the bucket size.</param>
 /// <param name="Timezone">The IANA zone the buckets are in.</param>
 /// <param name="Range">The period: the day and long periods end now; "all" starts when the workspace was created.</param>
-/// <param name="Buckets">Oldest first, zero-filled: every hour so far for "today", every day, 7-day weeks anchored at the
-/// window's first day for 2m / 3m / 6m, or the last 12 months for "all".</param>
+/// <param name="Buckets">Oldest first, zero-filled: every hour so far for "today", every day, 7-day weeks for 2m / 3m and
+/// months for 6m (anchored at the window's first day, the day after the same date N months ago), or the last 12 months
+/// for "all".</param>
 public sealed record ContactPeriodStatsDto(
     int Total,
     int Active,

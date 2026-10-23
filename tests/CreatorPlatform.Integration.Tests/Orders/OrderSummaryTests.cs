@@ -165,14 +165,16 @@ public sealed class OrderSummaryTests
         var creator = await _data.CreateCreatorAsync();
         await SetTimezoneAsync(creator.CreatorId, Zagreb);
         var productId = await AddProductAsync(creator.CreatorId);
-        await AddOrderAsync(creator.CreatorId, productId, "Paid", 1000, 100, LocalNoon(-59), LocalNoon(-59)); // the window's first day
-        await AddOrderAsync(creator.CreatorId, productId, "Paid", 2000, 200, LocalNoon(-53), LocalNoon(-53)); // its seventh day: still week 1
-        await AddOrderAsync(creator.CreatorId, productId, "Paid", 3000, 300, LocalNoon(-52), LocalNoon(-52)); // the eighth: week 2
-        await AddOrderAsync(creator.CreatorId, productId, "Paid", 9000, 900, LocalNoon(-61), LocalNoon(-61)); // before the window
+        var today = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(Zagreb)).Date;
+        var firstOffset = (today.AddMonths(-2).AddDays(1) - today).Days;   // 2m starts the day after the same date 2 months ago
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 1000, 100, LocalNoon(firstOffset), LocalNoon(firstOffset));         // the window's first day
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 2000, 200, LocalNoon(firstOffset + 6), LocalNoon(firstOffset + 6)); // its seventh day: still week 1
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 3000, 300, LocalNoon(firstOffset + 7), LocalNoon(firstOffset + 7)); // the eighth: week 2
+        await AddOrderAsync(creator.CreatorId, productId, "Paid", 9000, 900, LocalNoon(firstOffset - 1), LocalNoon(firstOffset - 1)); // before the window
 
         var (_, read, plan) = await PeriodAsync(creator, "2m");
 
-        Assert.Equal(("week", 9), (plan.Step, plan.Buckets.Count));
+        Assert.Equal(("week", (-firstOffset + 1 + 6) / 7), (plan.Step, plan.Buckets.Count));
         Assert.Equal(3000L, read.Buckets[plan.Buckets[0]].GrossCents);
         Assert.Equal(3000L, read.Buckets[plan.Buckets[1]].GrossCents);
         Assert.Equal(2, read.Buckets.Count);

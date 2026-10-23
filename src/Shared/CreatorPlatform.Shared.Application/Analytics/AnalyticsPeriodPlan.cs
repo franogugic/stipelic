@@ -2,8 +2,9 @@ namespace CreatorPlatform.Shared.Application.Analytics;
 
 /// <summary>One period turned into UTC ranges and local bucket starts, for the creator's timezone. Pure: the
 /// analytics, orders and contacts reads take the numbers for exactly these ranges and fill these buckets. Hours, days
-/// and months are calendar buckets; the long periods (2m / 3m / 6m) use 7-day buckets anchored at the window's first
-/// day, the last one ending now.</summary>
+/// and the "all" months are calendar buckets. The long periods are calendar months back: the window starts the day after
+/// the same date N months ago and ends now; 2m / 3m use 7-day buckets and 6m monthly buckets, both anchored at the
+/// window's first day, the last one ending now. The previous window is the N calendar months before.</summary>
 public sealed record AnalyticsPeriodPlan(
     string Period,
     string Step,
@@ -35,12 +36,12 @@ public sealed record AnalyticsPeriodPlan(
         ["30d"] = 30,
     };
 
-    // 2 / 3 / 6 months as whole local days; the buckets are weeks.
-    private static readonly IReadOnlyDictionary<string, int> WeekPeriods = new Dictionary<string, int>
+    // The long periods in calendar months; 2m / 3m are bucketed in weeks, 6m in months.
+    private static readonly IReadOnlyDictionary<string, int> MonthPeriods = new Dictionary<string, int>
     {
-        ["2m"] = 60,
-        ["3m"] = 90,
-        ["6m"] = 182,
+        ["2m"] = 2,
+        ["3m"] = 3,
+        ["6m"] = 6,
     };
 
     private static readonly DateTime EpochOrigin = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
@@ -98,17 +99,31 @@ public sealed record AnalyticsPeriodPlan(
             case "3m":
             case "6m":
             {
-                var days = WeekPeriods[period];
-                var first = today.AddDays(-(days - 1));
-                var previousFirst = first.AddDays(-days);
-                // Weeks anchored at each window's own first day; the last one is partial (up to now / up to the
+                var months = MonthPeriods[period];
+                // The day after the same date N months ago (on 23 Oct, 2m starts on 24 Aug): N whole months ending today.
+                var first = today.AddMonths(-months).AddDays(1);
+                var previousFirst = first.AddMonths(-months);
+                // Buckets anchored at each window's own first day; the last one is partial (up to now / up to the
                 // current window's start). Local calendar arithmetic, so a DST change never shifts a bucket.
-                var current = Weeks(first, days);
-                var previous = Weeks(previousFirst, days);
+                List<DateTime> current, previous;
+                string step;
+                if (period == "6m")
+                {
+                    // Bucket i starts at first.AddMonths(i), always from the first day, so a 31st never drifts.
+                    current = Enumerable.Range(0, months).Select(month => first.AddMonths(month)).ToList();
+                    previous = Enumerable.Range(0, months).Select(month => first.AddMonths(month - months)).ToList();
+                    step = "month";
+                }
+                else
+                {
+                    current = Weeks(first, (today - first).Days + 1);
+                    previous = Weeks(previousFirst, (first - previousFirst).Days);
+                    step = "week";
+                }
                 var from = ToUtc(first, zone);
                 var previousFrom = ToUtc(previousFirst, zone);
                 return new AnalyticsPeriodPlan(
-                    period, "week", from, now, from, now, previousFrom, now, current,
+                    period, step, from, now, from, now, previousFrom, now, current,
                     previousFrom, from, from, previous);
             }
             case "all":

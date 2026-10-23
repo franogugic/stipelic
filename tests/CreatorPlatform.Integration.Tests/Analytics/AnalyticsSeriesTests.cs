@@ -174,40 +174,66 @@ public sealed class AnalyticsSeriesTests
     }
 
     [Theory]
-    [InlineData("2m", 60, 9)]
-    [InlineData("3m", 90, 13)]
-    [InlineData("6m", 182, 26)]
-    public async Task LongPeriods_AreWeeksAnchoredAtTheWindowsFirstDay_AndEveryEventLandsInItsOwnWeek(string period, int days, int weeks)
+    [InlineData("2m", 2)]
+    [InlineData("3m", 3)]
+    public async Task TwoAndThreeMonths_AreWeeksFromTheDayAfterTheSameDateNMonthsAgo_AndEveryEventLandsInItsOwnWeek(string period, int months)
     {
         var (creator, productId, page) = await SeedCreatorWithPageAsync();
+        var today = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date;
+        var first = today.AddMonths(-months).AddDays(1);
+        var previousFirst = first.AddMonths(-months);
+        int Offset(DateTime day) => (day - today).Days;
 
-        // Day offsets from today: 0 = today (the last, partial bucket for 60 and 90 days), the first day of the window,
-        // a day in the middle, and the previous window's first and last days (offsets -days and -(2 * days) + 1).
-        var inWindow = new[] { 0, -(days - 1), -(days / 2) };
-        var inPrevious = new[] { -days, -(2 * days - 1) };
+        // Today (the last, partial week), the window's first day, a day in the middle; the previous window's first and
+        // last days; and a day before both windows.
+        var inWindow = new[] { 0, Offset(first), Offset(first) / 2 };
+        var inPrevious = new[] { Offset(previousFirst), Offset(first) - 1 };
         foreach (var offset in inWindow.Concat(inPrevious))
             await AddOrderAsync(creator.CreatorId, productId, page.Id, 1000, LocalNoon(offset));
-        await AddOrderAsync(creator.CreatorId, productId, page.Id, 99000, LocalNoon(-2 * days)); // before both windows
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 99000, LocalNoon(Offset(previousFirst) - 1));
 
         var series = await SeriesAsync(creator, "page", page.PublicId, period);
 
-        Assert.Equal(("week", weeks, weeks), (series.Step, series.Buckets.Count, series.PreviousBuckets!.Count));
+        var weeks = ((today - first).Days + 1 + 6) / 7;
+        var previousWeeks = ((first - previousFirst).Days + 6) / 7;
+        Assert.Equal(("week", weeks, previousWeeks), (series.Step, series.Buckets.Count, series.PreviousBuckets!.Count));
         Assert.Equal((3L, 3000L), (series.Totals.Sales, series.Totals.RevenueCents));
         Assert.Equal((2L, 2000L), (series.PreviousTotals!.Sales, series.PreviousTotals.RevenueCents));
-
-        // Each bucket starts exactly a week after the one before; the sums per bucket add up to the totals.
-        Assert.Equal(3L, series.Buckets.Sum(b => b.Sales));
-        Assert.Equal(2L, series.PreviousBuckets.Sum(b => b.Sales));
-        var first = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date.AddDays(-(days - 1));
         Assert.Equal(first.ToString("yyyy-MM-dd'T'00:00"), series.Buckets[0].Start);
         Assert.Equal(first.AddDays(7).ToString("yyyy-MM-dd'T'00:00"), series.Buckets[1].Start);
+        Assert.Equal(previousFirst.ToString("yyyy-MM-dd'T'00:00"), series.PreviousBuckets[0].Start);
         foreach (var offset in inWindow)
-            Assert.Equal(1L, series.Buckets[(offset + days - 1) / 7].Sales);
-
-        Assert.Equal(1L, series.Buckets[0].Sales);                  // the window's first day opens the first week
-        Assert.Equal(1L, series.Buckets[^1].Sales);                 // today closes the last (partial) week
+            Assert.Equal(1L, series.Buckets[(offset - Offset(first)) / 7].Sales);
         Assert.Equal(1L, series.PreviousBuckets[0].Sales);          // the previous window's first day
-        Assert.Equal(1L, series.PreviousBuckets[^1].Sales);         // its last day
+        Assert.Equal(1L, series.PreviousBuckets[^1].Sales);         // its last day, the day before the window
+    }
+
+    [Fact]
+    public async Task SixMonths_AreSixMonthlyBucketsAnchoredAtTheFirstDay_ComparedWithTheSixMonthsBefore()
+    {
+        var (creator, productId, page) = await SeedCreatorWithPageAsync();
+        var today = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date;
+        var first = today.AddMonths(-6).AddDays(1);
+        int Offset(DateTime day) => (day - today).Days;
+
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 1000, LocalNoon(Offset(first)));                 // month 1, first day
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 2000, LocalNoon(Offset(first.AddMonths(1)) - 1)); // month 1, last day
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 3000, LocalNoon(Offset(first.AddMonths(1))));     // month 2
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 4000, LocalNoon(0));                              // month 6 (today)
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 5000, LocalNoon(Offset(first) - 1));              // the previous window's last day
+        await AddOrderAsync(creator.CreatorId, productId, page.Id, 6000, LocalNoon(Offset(first.AddMonths(-6))));    // its first day
+
+        var series = await SeriesAsync(creator, "page", page.PublicId, "6m");
+
+        Assert.Equal(("month", 6, 6), (series.Step, series.Buckets.Count, series.PreviousBuckets!.Count));
+        Assert.Equal(
+            Enumerable.Range(0, 6).Select(i => first.AddMonths(i).ToString("yyyy-MM-dd'T'00:00")),
+            series.Buckets.Select(b => b.Start));
+        Assert.Equal([3000L, 3000L, 0L, 0L, 0L, 4000L], series.Buckets.Select(b => b.RevenueCents));
+        Assert.Equal((4L, 10000L), (series.Totals.Sales, series.Totals.RevenueCents));
+        Assert.Equal(6000L, series.PreviousBuckets[0].RevenueCents);
+        Assert.Equal(5000L, series.PreviousBuckets[^1].RevenueCents);
+        Assert.Equal(11000L, series.PreviousTotals!.RevenueCents);
     }
 
     [Fact]

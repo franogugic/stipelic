@@ -80,56 +80,104 @@ public class AnalyticsPeriodPlanTests
     }
 
     [Theory]
-    [InlineData("2m", 60, 9)]
-    [InlineData("3m", 90, 13)]
-    [InlineData("6m", 182, 26)]
-    public void LongPeriods_AreSevenDayBucketsAnchoredAtTheWindowsFirstDay(string period, int days, int weeks)
+    // On 11 Oct: 2m = 12 Aug → today (61 days), 3m = 12 Jul → today (92 days).
+    [InlineData("2m", 2026, 8, 12, 61, 9)]
+    [InlineData("3m", 2026, 7, 12, 92, 14)]
+    public void TwoAndThreeMonths_AreCalendarMonthsBack_InSevenDayBucketsFromTheFirstDay(
+        string period, int year, int month, int day, int days, int weeks)
     {
         var plan = AnalyticsPeriodPlan.Create(period, Now, Zagreb, Since);
 
-        var firstDay = new DateTime(2026, 10, 11).AddDays(-(days - 1));
+        var firstDay = new DateTime(year, month, day);
         Assert.Equal("week", plan.Step);
+        Assert.Equal((new DateTime(2026, 10, 11) - firstDay).Days + 1, days);
         Assert.Equal(weeks, plan.Buckets.Count);
         Assert.Equal(firstDay, plan.Buckets[0]);
         Assert.All(plan.Buckets.Zip(plan.Buckets.Skip(1)), pair => Assert.Equal(pair.First.AddDays(7), pair.Second));
         Assert.True(plan.Buckets[^1] <= new DateTime(2026, 10, 11)); // the last bucket holds today (partial unless days % 7 == 0)
         Assert.True(plan.Buckets[^1].AddDays(7) > new DateTime(2026, 10, 11));
+        Assert.Equal(new DateTimeOffset(firstDay.AddHours(-2), TimeSpan.Zero), plan.TotalsFrom); // local midnight, UTC+2
         Assert.Equal(Now, plan.TotalsTo);
         Assert.Equal(Now, plan.RangeTo);
         Assert.Equal(plan.TotalsFrom, plan.RangeFrom);
     }
 
     [Theory]
-    [InlineData("2m", 60)]
-    [InlineData("3m", 90)]
-    [InlineData("6m", 182)]
-    public void LongPeriods_ArePreceededByTheSameNumberOfDays_BucketedTheSameWay(string period, int days)
+    // The N calendar months before: 12 Jun → 11 Aug (61 days) and 12 Apr → 11 Jul (91 days).
+    [InlineData("2m", 2026, 6, 12, 9)]
+    [InlineData("3m", 2026, 4, 12, 13)]
+    public void TwoAndThreeMonths_ArePrecededByTheSameCalendarMonths_InTheirOwnWeeks(string period, int year, int month, int day, int weeks)
     {
         var plan = AnalyticsPeriodPlan.Create(period, Now, Zagreb, Since);
 
-        var firstDay = new DateTime(2026, 10, 11).AddDays(-(days - 1));
-        Assert.Equal(plan.Buckets.Count, plan.PreviousBuckets!.Count);
-        Assert.Equal(firstDay.AddDays(-days), plan.PreviousBuckets[0]);
+        Assert.Equal(weeks, plan.PreviousBuckets!.Count);
+        Assert.Equal(new DateTime(year, month, day), plan.PreviousBuckets[0]);
         Assert.Equal(plan.TotalsFrom, plan.PreviousTotalsTo);   // the windows are back to back
         Assert.Equal(plan.TotalsFrom, plan.PreviousRangeTo);
         // The previous window's last bucket is cut where the current window starts.
-        Assert.True(plan.PreviousBuckets[^1] < firstDay);
-        Assert.True(plan.PreviousBuckets[^1].AddDays(7) >= firstDay);
+        Assert.True(plan.PreviousBuckets[^1] < plan.Buckets[0]);
+        Assert.True(plan.PreviousBuckets[^1].AddDays(7) >= plan.Buckets[0]);
         Assert.Equal(plan.PreviousTotalsFrom, plan.BucketsFrom);
+    }
+
+    [Fact]
+    public void SixMonths_AreSixMonthlyBucketsFromTheDayAfterTheSameDateSixMonthsAgo_AfterTheSixMonthsBefore()
+    {
+        var plan = AnalyticsPeriodPlan.Create("6m", Now, Zagreb, Since);
+
+        Assert.Equal("month", plan.Step);
+        Assert.Equal(
+            [new DateTime(2026, 4, 12), new DateTime(2026, 5, 12), new DateTime(2026, 6, 12),
+             new DateTime(2026, 7, 12), new DateTime(2026, 8, 12), new DateTime(2026, 9, 12)],
+            plan.Buckets);                                              // the last one holds today
+        Assert.Equal(
+            [new DateTime(2025, 10, 12), new DateTime(2025, 11, 12), new DateTime(2025, 12, 12),
+             new DateTime(2026, 1, 12), new DateTime(2026, 2, 12), new DateTime(2026, 3, 12)],
+            plan.PreviousBuckets);
+        Assert.Equal(new DateTimeOffset(2026, 4, 11, 22, 0, 0, TimeSpan.Zero), plan.TotalsFrom);   // 12 Apr 00:00, UTC+2
+        Assert.Equal(new DateTimeOffset(2025, 10, 11, 22, 0, 0, TimeSpan.Zero), plan.PreviousTotalsFrom);
+        Assert.Equal(plan.TotalsFrom, plan.PreviousTotalsTo);
+    }
+
+    [Fact]
+    public void SixMonths_StartingOnA31st_NeverDrift_EachBucketCountsFromTheFirstDay()
+    {
+        // 30 Apr 2026: six months back is 30 Oct 2025, so the window starts on 31 Oct; November and February have no
+        // 31st, but each bucket is first.AddMonths(i), so March is back on the 31st.
+        var plan = AnalyticsPeriodPlan.Create("6m", new DateTimeOffset(2026, 4, 30, 10, 0, 0, TimeSpan.Zero), Zagreb, Since);
+
+        Assert.Equal(
+            [new DateTime(2025, 10, 31), new DateTime(2025, 11, 30), new DateTime(2025, 12, 31),
+             new DateTime(2026, 1, 31), new DateTime(2026, 2, 28), new DateTime(2026, 3, 31)],
+            plan.Buckets);
+        Assert.Equal(new DateTime(2025, 4, 30), plan.PreviousBuckets![0]);
+        Assert.Equal(new DateTime(2025, 9, 30), plan.PreviousBuckets[^1]);
+        Assert.All(plan.AllBucketStarts.Zip(plan.AllBucketStarts.Skip(1)), pair => Assert.True(pair.First < pair.Second));
+    }
+
+    [Fact]
+    public void SixMonths_OnTheLastDayOfAShortMonth_StartOnTheFirstOfTheNextMonth()
+    {
+        // 31 Aug 2026: six months back is 28 Feb (no 31st), so the window starts on 1 Mar.
+        var plan = AnalyticsPeriodPlan.Create("6m", new DateTimeOffset(2026, 8, 31, 10, 0, 0, TimeSpan.Zero), Zagreb, Since);
+
+        Assert.Equal(new DateTime(2026, 3, 1), plan.Buckets[0]);
+        Assert.Equal(new DateTime(2026, 8, 1), plan.Buckets[^1]);
+        Assert.Equal(6, plan.Buckets.Count);
     }
 
     [Fact]
     public void ADstChangeInsideA2mWindow_MovesNoBucket_AndTheBoundariesAreRealLocalMidnights()
     {
-        // 27 Oct 2026 12:00 UTC: Zagreb went back to winter time on Sunday 25 Oct, so the window (29 Aug → 27 Oct)
+        // 27 Oct 2026 12:00 UTC: Zagreb went back to winter time on Sunday 25 Oct, so the window (28 Aug → 27 Oct)
         // starts in summer time (UTC+2) and ends in winter time (UTC+1).
         var now = new DateTimeOffset(2026, 10, 27, 12, 0, 0, TimeSpan.Zero);
 
         var plan = AnalyticsPeriodPlan.Create("2m", now, Zagreb, Since);
 
-        Assert.Equal(new DateTime(2026, 8, 29), plan.Buckets[0]);
-        Assert.Equal(new DateTimeOffset(2026, 8, 28, 22, 0, 0, TimeSpan.Zero), plan.TotalsFrom); // 00:00 at UTC+2
-        Assert.Equal(new DateTime(2026, 10, 24), plan.Buckets[^1]); // 8 weeks after the 29th, the day before the change
+        Assert.Equal(new DateTime(2026, 8, 28), plan.Buckets[0]);
+        Assert.Equal(new DateTimeOffset(2026, 8, 27, 22, 0, 0, TimeSpan.Zero), plan.TotalsFrom); // 00:00 at UTC+2
+        Assert.Equal(new DateTime(2026, 10, 23), plan.Buckets[^1]); // 8 weeks after the 28th, two days before the change
         Assert.All(plan.Buckets, bucket => Assert.Equal(TimeSpan.Zero, bucket.TimeOfDay));
         // Wall-clock edges stay exactly a week apart across the change; no bucket is 167 or 169 hours wide.
         var edges = AnalyticsPeriodPlan.ToEdges(plan.Buckets);
@@ -168,6 +216,7 @@ public class AnalyticsPeriodPlanTests
 
         var all = plan.AllBucketStarts;
         Assert.Equal(plan.PreviousBuckets!.Count + plan.Buckets.Count, all.Count);
+        Assert.True(plan.PreviousBuckets[^1] < plan.Buckets[0]);
         Assert.All(all.Zip(all.Skip(1)), pair => Assert.True(pair.First < pair.Second));
         Assert.Equal(all.Count, plan.Edges.Length);
     }
