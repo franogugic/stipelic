@@ -1,4 +1,4 @@
-using System.Reflection;
+using CreatorPlatform.Api.Hosting;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
@@ -19,8 +19,6 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        LoadInfrastructureAssemblies();
-
         await _container.StartAsync();
 
         await using var context = CreateDbContext();
@@ -41,18 +39,10 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         var options = new DbContextOptionsBuilder<CreatorPlatformDbContext>()
             .UseNpgsql(_container.GetConnectionString())
+            .UseEntityConfigurationsFrom(ApiEntityConfigurations.Assemblies)
             .Options;
 
         return new CreatorPlatformDbContext(options);
-    }
-
-    // CreatorPlatformDbContext applies entity configurations from the *.Infrastructure assemblies already loaded
-    // into the AppDomain. The Api loads them all through its Add*Infrastructure calls; here nothing references
-    // most of them in code, so load every one copied to the output directory to get the same full model.
-    private static void LoadInfrastructureAssemblies()
-    {
-        foreach (var path in Directory.GetFiles(AppContext.BaseDirectory, "CreatorPlatform.*.Infrastructure.dll"))
-            Assembly.Load(AssemblyName.GetAssemblyName(path));
     }
 }
 

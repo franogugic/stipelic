@@ -23,7 +23,9 @@ public sealed class DatabaseMigrationCommandTests
     private static ServiceProvider ServicesFor(string connectionString)
     {
         var services = new ServiceCollection();
-        services.AddDbContext<CreatorPlatformDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDbContext<CreatorPlatformDbContext>(options => options
+            .UseNpgsql(connectionString)
+            .UseEntityConfigurationsFrom(ApiEntityConfigurations.Assemblies));
         return services.BuildServiceProvider();
     }
 

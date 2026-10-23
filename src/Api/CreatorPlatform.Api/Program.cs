@@ -94,7 +94,7 @@ builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("Database");
 
-    options.UseNpgsql(connectionString);
+    options.UseNpgsql(connectionString).UseEntityConfigurationsFrom(ApiEntityConfigurations.Assemblies);
 });
 
 var app = builder.Build();

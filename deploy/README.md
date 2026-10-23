@@ -100,6 +100,15 @@ console logs. Everything else is in `luma.env` (template: `luma.env.example`, th
 - The Marketing secrets must be the same for the API and the Worker. One `luma.env` for both makes sure of it.
 - Passwords that go into connection strings: hex only. A `;` or `,` would break the connection string.
 
+**Stripe (live mode).** Two webhook endpoints, each with its own signing secret in `luma.env`:
+
+- Platform: `https://<domain>/webhooks/stripe` (`Stripe__WebhookSecret`). Besides the events it already receives, it
+  must subscribe to **`checkout.session.expired`**: an abandoned checkout then turns its Pending order into Failed (PR 2).
+- Connect: `https://<domain>/webhooks/stripe/connect` (`Stripe__ConnectWebhookSecret`).
+- **Refunds made by hand in the Stripe Dashboard** for a Stripe Connect order must tick **"Reverse transfer"** and
+  **"Refund application fee"**. Without them the platform pays the refund while the creator keeps the money, and the
+  platform keeps a fee for a sale that no longer exists.
+
 ## Still open (later chapters)
 
 - CI: build both images on `main`, push to a registry (GHCR), deploy by tag.

@@ -14,30 +14,11 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// CreatorPlatformDbContext.OnModelCreating only applies IEntityTypeConfiguration<T> from
-// *.Infrastructure assemblies that are already loaded into this process's AppDomain (see the comment
-// there) — the API loads every module because it directly registers a concrete service from each of
-// them, which forces the CLR to load the assembly; this worker registers far fewer services (by design,
-// see below), so several entities the Task 14 dispatch pipeline touches only via LINQ (never through a
-// registered service) would otherwise have no mapping at all. A `typeof(...)` reference is NOT enough to
-// force this — the CLR can resolve a type token without loading the assembly's other contents — so each
-// needs an explicit Assembly.Load by name:
-//   - Auth.Infrastructure: User, read by Marketing's ICreatorContextProvider.GetByCreatorIdAsync to
-//     resolve the owner's fallback reply-to email.
-//   - Analytics.Infrastructure: EmailCapture, queried by AudienceService when resolving the real
-//     audience at dispatch time (never referenced by this project otherwise, so also added as a new
-//     ProjectReference in the .csproj).
-//   - LandingPages.Infrastructure: LandingPage, joined by AudienceService for the Product-audience case
-//     (already project-referenced for other reasons, but never touched by any registered service here).
-System.Reflection.Assembly.Load("CreatorPlatform.Auth.Infrastructure");
-System.Reflection.Assembly.Load("CreatorPlatform.Analytics.Infrastructure");
-System.Reflection.Assembly.Load("CreatorPlatform.LandingPages.Infrastructure");
-
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("Database");
 
-    options.UseNpgsql(connectionString);
+    options.UseNpgsql(connectionString).UseEntityConfigurationsFrom(WorkerEntityConfigurations.Assemblies);
 });
 
 builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environment);

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using CreatorPlatform.Api.Health;
+using CreatorPlatform.Api.Hosting;
 using CreatorPlatform.Integration.Tests.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using CreatorPlatform.Shared.Infrastructure.Redis;
@@ -39,7 +40,9 @@ public sealed class HealthEndpointTests
             ["Redis:ConnectionString"] = redis.ConnectionString,
             ["Redis:KeyPrefix"] = redis.KeyPrefix
         });
-        builder.Services.AddDbContext<CreatorPlatformDbContext>(options => options.UseNpgsql(databaseConnectionString));
+        builder.Services.AddDbContext<CreatorPlatformDbContext>(options => options
+            .UseNpgsql(databaseConnectionString)
+            .UseEntityConfigurationsFrom(ApiEntityConfigurations.Assemblies));
         builder.Services.AddRedis(builder.Configuration, builder.Environment);
         builder.Services.AddPlatformHealthChecks();
 
