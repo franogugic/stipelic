@@ -1825,6 +1825,35 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CreatorPlatform.Payments.Domain.ProcessedWebhookEvent", b =>
+                {
+                    b.Property<string>("EventId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTimeOffset>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("ProcessedAt");
+
+                    b.ToTable("processed_webhook_events", "payments");
+                });
+
             modelBuilder.Entity("CreatorPlatform.Payments.Domain.WebhookFailure", b =>
                 {
                     b.Property<int>("Id")

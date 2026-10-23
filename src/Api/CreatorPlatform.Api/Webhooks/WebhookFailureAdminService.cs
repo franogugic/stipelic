@@ -65,8 +65,15 @@ public sealed class WebhookFailureAdminService
 
         var webhookEvent = _stripeWebhookService.Parse(failure.Payload);
         var outcome = await _processor.ProcessAsync(webhookEvent, failure.Payload, ct);
-        if (outcome != StripeWebhookOutcome.Processed)
-            throw new ConflictException($"The replay failed again ({outcome}). See the failure's latest error.");
+        switch (outcome)
+        {
+            case StripeWebhookOutcome.InProgress:
+                throw new ConflictException("A delivery of this event is being processed right now; try again in a few minutes.");
+            case StripeWebhookOutcome.TransientFailure or StripeWebhookOutcome.PermanentFailure:
+                throw new ConflictException($"The replay failed again ({outcome}). See the failure's latest error.");
+        }
+
+        // Processed now, or a later delivery already did (Duplicate): either way the event is handled.
 
         failure.MarkResolved(DateTimeOffset.UtcNow);
         await _failures.SaveChangesAsync(ct);

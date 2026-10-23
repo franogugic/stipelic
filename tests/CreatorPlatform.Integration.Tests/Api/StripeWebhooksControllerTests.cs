@@ -31,6 +31,8 @@ namespace CreatorPlatform.Integration.Tests.Api;
 /// Stripe retries, and its retries count on one failure row that the first success resolves; a permanent failure answers
 /// 200, is recorded and logged for alerting; recording never saves what the failed handler left in the request's
 /// DbContext; an admin lists, replays and resolves failures. Also the routing of Connect and expired-session events.
+/// B5: an event id is claimed once — a redelivery or a concurrent delivery never runs the handler twice, a failure gives
+/// the claim back, a stale claim is taken over.
 /// </summary>
 [Collection(PostgresCollection.Name)]
 public sealed class StripeWebhooksControllerTests : IAsyncDisposable
@@ -54,6 +56,7 @@ public sealed class StripeWebhooksControllerTests : IAsyncDisposable
         _services = new ServiceCollection()
             .AddDbContext<CreatorPlatformDbContext>(options => options.UseNpgsql(fixture.ConnectionString))
             .AddScoped<IWebhookFailureRepository, WebhookFailureRepository>()
+            .AddScoped<IProcessedWebhookEventStore, ProcessedWebhookEventStore>()
             .BuildServiceProvider();
         _requestScope = _services.CreateAsyncScope();
     }
@@ -305,6 +308,113 @@ public sealed class StripeWebhooksControllerTests : IAsyncDisposable
         await transaction.RollbackAsync();
     }
 
+    // ---- B5: one run per event id ----------------------------------------------------------------------------------
+
+    private async Task<DateTimeOffset?> ProcessedAtAsync(string eventId)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return (await db.Set<ProcessedWebhookEvent>().AsNoTracking().Where(e => e.EventId == eventId)
+            .Select(e => new { e.ProcessedAt }).ToListAsync()).Single().ProcessedAt;
+    }
+
+    private async Task<int> ClaimRowsAsync(string eventId)
+    {
+        await using var db = _fixture.CreateDbContext();
+        return await db.Set<ProcessedWebhookEvent>().CountAsync(e => e.EventId == eventId);
+    }
+
+    [Fact]
+    public async Task TheSameEventDeliveredTwice_RunsTheHandlerOnce()
+    {
+        var eventId = NewEventId();
+
+        Assert.Equal(200, await PostAsync(Refund(eventId)));
+        Assert.Equal(200, await PostAsync(Refund(eventId)));
+
+        Assert.Equal(1, _orders.RefundCount);
+        Assert.NotNull(await ProcessedAtAsync(eventId));
+    }
+
+    [Fact]
+    public async Task AConcurrentDelivery_Answers409WhileTheFirstRuns_AndNeverRunsTheHandler()
+    {
+        var eventId = NewEventId();
+        _orders.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = PostAsync(Refund(eventId));
+        await _orders.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        int second;
+        try
+        {
+            // Bounded: a second run of the handler would wait on the same gate.
+            second = await PostAsync(Refund(eventId)).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            _orders.Gate.SetResult();
+        }
+
+        Assert.Equal(409, second);
+        Assert.Equal(200, await first);
+        Assert.Equal(200, await PostAsync(Refund(eventId)));
+        Assert.Equal(1, _orders.RefundCount);
+    }
+
+    [Fact]
+    public async Task AFailedHandler_GivesTheClaimBack_SoTheRetryRuns()
+    {
+        var eventId = NewEventId();
+        _orders.Failure = Deadlock();
+
+        Assert.Equal(500, await PostAsync(Refund(eventId)));
+        Assert.Equal(0, await ClaimRowsAsync(eventId));
+
+        _orders.Failure = null;
+        Assert.Equal(200, await PostAsync(Refund(eventId)));
+        Assert.Equal(1, _orders.RefundCount);
+    }
+
+    [Fact]
+    public async Task AStaleClaim_FromADeliveryThatDied_IsTakenOver()
+    {
+        var eventId = NewEventId();
+        await using (var db = _fixture.CreateDbContext())
+        {
+            var claimedAt = DateTimeOffset.UtcNow - StripeWebhookProcessor.ClaimStaleAfter - TimeSpan.FromMinutes(1);
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO payments.processed_webhook_events ("EventId", "Provider", "EventType", "ClaimedAt")
+                VALUES ({eventId}, 'stripe', 'charge.refunded', {claimedAt})
+                """);
+        }
+
+        Assert.Equal(200, await PostAsync(Refund(eventId)));
+
+        Assert.Equal(1, _orders.RefundCount);
+        Assert.NotNull(await ProcessedAtAsync(eventId));
+    }
+
+    [Fact]
+    public async Task ReplayingAnEventALaterDeliveryAlreadyHandled_ResolvesIt_WithoutRunningTheHandler()
+    {
+        var eventId = NewEventId();
+        _orders.Failure = new InvalidOperationException("fixed since");
+        await PostAsync(Refund(eventId));
+        var failure = Assert.Single(await FailuresAsync(eventId));
+        await using (var db = _fixture.CreateDbContext())
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO payments.processed_webhook_events ("EventId", "Provider", "EventType", "ClaimedAt", "ProcessedAt")
+                VALUES ({eventId}, 'stripe', 'charge.refunded', now(), now())
+                """);
+        _orders.Failure = null;
+
+        await using var scope = _services.CreateAsyncScope();
+        var replayed = await new WebhookFailureAdminService(
+            scope.ServiceProvider.GetRequiredService<IWebhookFailureRepository>(), _stripe, Processor()).ReplayAsync(failure.Id, default);
+
+        Assert.True(replayed.IsResolved);
+        Assert.Equal(0, _orders.RefundCount);
+    }
+
     private sealed class ScriptedOrderWebhooks : IOrderWebhookService
     {
         public Exception? Failure { get; set; }
@@ -313,10 +423,20 @@ public sealed class StripeWebhooksControllerTests : IAsyncDisposable
         public OrderCheckoutExpiredDto? LastExpired { get; private set; }
         public int RefundCount { get; private set; }
 
-        private Task RunAsync()
+        /// <summary>When set, a handler call signals <see cref="Entered"/> and waits for it.</summary>
+        public TaskCompletionSource? Gate { get; set; }
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private async Task RunAsync()
         {
+            if (Gate is not null)
+            {
+                Entered.TrySetResult();
+                await Gate.Task;
+            }
+
             if (Failure is null)
-                return Task.CompletedTask;
+                return;
             BeforeFailing?.Invoke();
             throw Failure;
         }

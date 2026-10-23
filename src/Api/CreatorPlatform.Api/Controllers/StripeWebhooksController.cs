@@ -9,8 +9,8 @@ namespace CreatorPlatform.Api.Controllers;
 
 /// <summary>
 /// Stripe's two webhook endpoints. Both verify the signature, then hand the event to <see cref="StripeWebhookProcessor"/>:
-/// 200 when it was handled or failed permanently (recorded for an admin's replay), 500 when it failed on an outage, so
-/// Stripe retries it.
+/// 200 when it was handled (now or by an earlier delivery) or failed permanently (recorded for an admin's replay); 500
+/// when it failed on an outage and 409 while another delivery handles it, so Stripe retries.
 /// </summary>
 [ApiController]
 [Route("webhooks/stripe")]
@@ -70,9 +70,13 @@ public sealed class StripeWebhooksController : ControllerBase
 
         var outcome = await _processor.ProcessAsync(webhookEvent, payload, ct);
 
-        // Only an outage is worth Stripe's retries; a permanent failure is recorded and waits for a fix and a replay.
-        return outcome == StripeWebhookOutcome.TransientFailure
-            ? StatusCode(StatusCodes.Status500InternalServerError)
-            : Ok();
+        // Only an outage (or a delivery still running elsewhere) is worth Stripe's retries; a permanent failure is
+        // recorded and waits for a fix and a replay; a duplicate was already handled.
+        return outcome switch
+        {
+            StripeWebhookOutcome.TransientFailure => StatusCode(StatusCodes.Status500InternalServerError),
+            StripeWebhookOutcome.InProgress => Conflict(),
+            _ => Ok()
+        };
     }
 }

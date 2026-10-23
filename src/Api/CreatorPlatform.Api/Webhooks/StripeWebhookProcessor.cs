@@ -10,6 +10,12 @@ public enum StripeWebhookOutcome
 {
     Processed,
 
+    /// <summary>Already handled by an earlier delivery: nothing ran.</summary>
+    Duplicate,
+
+    /// <summary>Another delivery is handling the event right now: nothing ran; answered 409 so Stripe tries again later.</summary>
+    InProgress,
+
     /// <summary>Failed the same way every time: recorded, answered 200 — fixed and replayed by an admin.</summary>
     PermanentFailure,
 
@@ -18,9 +24,10 @@ public enum StripeWebhookOutcome
 }
 
 /// <summary>
-/// Runs one verified Stripe event through its handler — for both webhook endpoints and for an admin's replay. A failure
-/// is recorded (one row per event, its attempts counted) and logged as <see cref="FailedLogEvent"/> for alerting; a
-/// success resolves the event's earlier failure rows.
+/// Runs one verified Stripe event through its handler — for both webhook endpoints and for an admin's replay. The event id
+/// is claimed first (<c>processed_webhook_events</c>), so a redelivered or concurrently delivered event runs once. A
+/// failure gives the claim back, is recorded (one row per event, its attempts counted) and logged as
+/// <see cref="FailedLogEvent"/> for alerting; a success resolves the event's earlier failure rows.
 /// </summary>
 public sealed class StripeWebhookProcessor
 {
@@ -28,6 +35,9 @@ public sealed class StripeWebhookProcessor
 
     /// <summary>The log event alerting watches: every failed webhook handler, with its Kind (Transient / Permanent).</summary>
     public static readonly EventId FailedLogEvent = new(9100, "StripeWebhookFailed");
+
+    /// <summary>A claim not marked processed after this long belongs to a delivery that died; the next one takes over.</summary>
+    public static readonly TimeSpan ClaimStaleAfter = TimeSpan.FromMinutes(5);
 
     private readonly ICreatorWebhookService _creatorWebhookService;
     private readonly IOrderWebhookService _orderWebhookService;
@@ -48,6 +58,42 @@ public sealed class StripeWebhookProcessor
 
     public async Task<StripeWebhookOutcome> ProcessAsync(StripeWebhookEventDto webhookEvent, string payload, CancellationToken ct)
     {
+        WebhookEventClaim claim;
+        try
+        {
+            claim = await UseStoreAsync(store => store.TryClaimAsync(
+                Provider, webhookEvent.EventId, webhookEvent.EventType, DateTimeOffset.UtcNow, ClaimStaleAfter, CancellationToken.None));
+        }
+        catch (Exception exception)
+        {
+            // Without the claim nothing can run safely — and the database is most likely down: let Stripe retry.
+            _logger.LogError(
+                FailedLogEvent,
+                exception,
+                "Stripe webhook could not be claimed. Kind: {FailureKind}, EventId: {EventId}, EventType: {EventType}",
+                "Transient",
+                webhookEvent.EventId,
+                webhookEvent.EventType);
+            return StripeWebhookOutcome.TransientFailure;
+        }
+
+        if (claim == WebhookEventClaim.AlreadyProcessed)
+        {
+            _logger.LogInformation(
+                "Stripe webhook already processed, skipping (idempotent). EventId: {EventId}, EventType: {EventType}",
+                webhookEvent.EventId, webhookEvent.EventType);
+            await ResolveEarlierFailuresAsync(webhookEvent);
+            return StripeWebhookOutcome.Duplicate;
+        }
+
+        if (claim == WebhookEventClaim.InProgress)
+        {
+            _logger.LogInformation(
+                "Stripe webhook is being processed by another delivery. EventId: {EventId}, EventType: {EventType}",
+                webhookEvent.EventId, webhookEvent.EventType);
+            return StripeWebhookOutcome.InProgress;
+        }
+
         try
         {
             if (webhookEvent.ConnectedAccountId is null)
@@ -58,6 +104,7 @@ public sealed class StripeWebhookProcessor
         catch (Exception exception)
         {
             var transient = WebhookFailureClassifier.IsTransient(exception);
+            await ReleaseClaimAsync(webhookEvent);
             var attempts = await RecordFailureAsync(webhookEvent, payload, exception);
 
             _logger.LogError(
@@ -72,8 +119,49 @@ public sealed class StripeWebhookProcessor
             return transient ? StripeWebhookOutcome.TransientFailure : StripeWebhookOutcome.PermanentFailure;
         }
 
+        await MarkProcessedAsync(webhookEvent);
         await ResolveEarlierFailuresAsync(webhookEvent);
         return StripeWebhookOutcome.Processed;
+    }
+
+    private async Task<T> UseStoreAsync<T>(Func<IProcessedWebhookEventStore, Task<T>> action)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        return await action(scope.ServiceProvider.GetRequiredService<IProcessedWebhookEventStore>());
+    }
+
+    private async Task MarkProcessedAsync(StripeWebhookEventDto webhookEvent)
+    {
+        try
+        {
+            await UseStoreAsync(async store =>
+            {
+                await store.MarkProcessedAsync(webhookEvent.EventId, DateTimeOffset.UtcNow, CancellationToken.None);
+                return true;
+            });
+        }
+        catch (Exception exception)
+        {
+            // Handled, but not stamped: the claim goes stale, and a redelivery re-runs the (idempotent) handler.
+            _logger.LogWarning(exception, "Could not mark the Stripe webhook processed. EventId: {EventId}", webhookEvent.EventId);
+        }
+    }
+
+    private async Task ReleaseClaimAsync(StripeWebhookEventDto webhookEvent)
+    {
+        try
+        {
+            await UseStoreAsync(async store =>
+            {
+                await store.ReleaseAsync(webhookEvent.EventId, CancellationToken.None);
+                return true;
+            });
+        }
+        catch (Exception exception)
+        {
+            // The claim goes stale after ClaimStaleAfter; until then retries answer 409 and Stripe tries again later.
+            _logger.LogWarning(exception, "Could not release the Stripe webhook claim. EventId: {EventId}", webhookEvent.EventId);
+        }
     }
 
     // Connect events (connected-account lifecycle) come from their own endpoint and carry the account id.
