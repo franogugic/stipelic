@@ -26,7 +26,7 @@ public sealed class LandingPageProductDetailsTests
         new LandingPageRepository(db),
         new LandingPageSectionRepository(db),
         new CreatorContextProvider(db),
-        new LandingPagesUnitOfWork(db));
+        new LandingPagesUnitOfWork(db), new AnyImageAccepted());
 
     private sealed record SeededProduct(int Id, Guid PublicId, string Name, string? ThumbnailUrl);
 

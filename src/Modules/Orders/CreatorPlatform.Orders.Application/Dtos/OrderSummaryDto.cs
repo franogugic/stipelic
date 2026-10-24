@@ -2,15 +2,15 @@ namespace CreatorPlatform.Orders.Application.Dtos;
 
 /// <summary>All-time, unfiltered order totals.</summary>
 /// <param name="PaidOrderCount">Orders currently Paid (refunded ones are excluded).</param>
-/// <param name="TotalPaidAmountCents">Gross revenue: sum of AmountCents over Paid orders.</param>
+/// <param name="TotalPaidAmountCents">Gross revenue: what Paid orders keep (AmountCents minus partial refunds).</param>
 /// <param name="Currency">The creator's currency; null when there are no orders at all.</param>
-/// <param name="TotalPlatformFeeCents">Sum of PlatformFeeCents over Paid orders.</param>
+/// <param name="TotalPlatformFeeCents">The platform fees Paid orders keep (less a partial refund's share).</param>
 /// <param name="NetAmountCents">TotalPaidAmountCents − TotalPlatformFeeCents.</param>
-/// <param name="RefundedOrderCount">Orders with status Refunded.</param>
+/// <param name="RefundedOrderCount">Orders with a refund, full or partial.</param>
 /// <param name="TotalOrderCount">Every order, any status — the "Y" of "Showing X of Y".</param>
 /// <param name="PendingOrderCount">Orders still waiting for payment (Pending).</param>
 /// <param name="FailedOrderCount">Orders whose payment failed.</param>
-/// <param name="RefundedAmountCents">Sum of AmountCents over Refunded orders — money returned to buyers.</param>
+/// <param name="RefundedAmountCents">Sum of RefundedCents — money returned to buyers, full and partial refunds.</param>
 /// <param name="MonthlyTrend">The last 12 calendar months in the creator's timezone, oldest first, the current month
 /// last; every month is present (0 when empty). Empty on the per-landing-page summary.</param>
 public sealed record OrderSummaryDto(
@@ -30,7 +30,7 @@ public sealed record OrderSummaryDto(
 /// <param name="GrossCents">Paid orders paid in the month (PaidAt, else CreatedAt).</param>
 /// <param name="FeeCents">Their platform fees.</param>
 /// <param name="NetCents">GrossCents − FeeCents.</param>
-/// <param name="RefundedCount">Orders refunded in the month (the refund's time, the order's UpdatedAt).</param>
+/// <param name="RefundedCount">Orders with a refund, full or partial, at a latest refund time (UpdatedAt) in the month.</param>
 public sealed record OrderMonthDto(string Month, long GrossCents, long FeeCents, long NetCents, int RefundedCount);
 
 /// <summary>The order totals of one period, with the period's chart buckets — the answer of
@@ -42,11 +42,12 @@ public sealed record OrderMonthDto(string Month, long GrossCents, long FeeCents,
 /// <param name="Timezone">The IANA zone the buckets are in.</param>
 /// <param name="Range">The period: the day and long periods end now; "all" starts when the workspace was created.</param>
 /// <param name="PaidOrderCount">Orders paid in the period and still Paid.</param>
-/// <param name="TotalPaidAmountCents">Gross revenue: their AmountCents.</param>
-/// <param name="TotalPlatformFeeCents">Their platform fees.</param>
+/// <param name="TotalPaidAmountCents">Gross revenue: what they keep (AmountCents minus partial refunds).</param>
+/// <param name="TotalPlatformFeeCents">The platform fees they keep.</param>
 /// <param name="NetAmountCents">TotalPaidAmountCents − TotalPlatformFeeCents.</param>
-/// <param name="RefundedOrderCount">Orders refunded in the period.</param>
-/// <param name="RefundedAmountCents">Their AmountCents — money returned to buyers.</param>
+/// <param name="RefundedOrderCount">Orders with a refund (full or partial) at a latest refund time in the period. An order
+/// refunded in two parts in different periods counts both in the later one.</param>
+/// <param name="RefundedAmountCents">Their RefundedCents — money returned to buyers.</param>
 /// <param name="PendingOrderCount">Orders created in the period that are still waiting for payment.</param>
 /// <param name="FailedOrderCount">Orders created in the period whose payment failed.</param>
 /// <param name="TotalOrderCount">Paid + refunded + pending + failed above.</param>
@@ -91,7 +92,7 @@ public sealed record OrderPeriodRangeDto(DateTimeOffset From, DateTimeOffset To)
 /// <param name="Start">The bucket's local start, "yyyy-MM-ddTHH:mm" in the summary's timezone.</param>
 /// <param name="GrossCents">Paid orders paid in the bucket.</param>
 /// <param name="NetCents">GrossCents minus their platform fees.</param>
-/// <param name="RefundedCount">Orders refunded in the bucket.</param>
+/// <param name="RefundedCount">Orders with a refund (full or partial) at a latest refund time in the bucket.</param>
 /// <param name="PaidCount">Paid orders counted in the bucket (R6.5).</param>
-/// <param name="RefundedCents">The AmountCents of the orders refunded in the bucket (R6.5).</param>
+/// <param name="RefundedCents">Their RefundedCents (R6.5).</param>
 public sealed record OrderBucketDto(string Start, long GrossCents, long NetCents, int RefundedCount, int PaidCount = 0, long RefundedCents = 0);

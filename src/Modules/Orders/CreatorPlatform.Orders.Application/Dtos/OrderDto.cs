@@ -19,5 +19,8 @@ public sealed record OrderDto(
     // R6.5: the date the period rule counts the order on — PaidAt (else CreatedAt) when Paid, the refund time when
     // Refunded, CreatedAt when Pending or Failed.
     DateTimeOffset CountedAt = default,
-    // R6.5: the refund time of a Refunded order (its UpdatedAt), else null.
-    DateTimeOffset? RefundedAt = null);
+    // R6.5: the latest refund time of an order with a refund, full or partial (its UpdatedAt), else null.
+    DateTimeOffset? RefundedAt = null,
+    // B3: how much was refunded (order currency). The whole amount when Refunded; above 0 on a Paid order means
+    // "partly refunded" — the buyer keeps access.
+    int RefundedCents = 0);

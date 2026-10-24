@@ -89,10 +89,10 @@ public sealed class DownloadEventsTests
             var orderId = (await db.Database.SqlQuery<int>($"""
                 INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "LandingPageId", "Email", "AmountCents", "Currency", "Status",
                                            "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
-                                           "CreatedAt", "PaidAt", "UpdatedAt")
+                                           "CreatedAt", "PaidAt", "UpdatedAt", "RefundedCents")
                 VALUES ({Guid.NewGuid()}, {creator.CreatorId}, {productId}, {landingPageId}, {TestData.UniqueEmail("buyer")}, 2900, 'Eur',
                         {(refunded ? "Refunded" : "Paid")}, 0, 0, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"},
-                        now() - interval '30 days', now() - interval '30 days', now())
+                        now() - interval '30 days', now() - interval '30 days', now(), {(refunded ? 2900 : 0)})
                 RETURNING "Id" AS "Value"
                 """).ToListAsync()).Single();
             var token = CreatorPlatform.Products.Domain.Access.AccessGrant.NewToken();

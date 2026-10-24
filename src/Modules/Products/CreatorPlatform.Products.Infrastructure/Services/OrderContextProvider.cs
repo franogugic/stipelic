@@ -23,7 +23,7 @@ public sealed class OrderContextProvider : IOrderContextProvider
             .GroupBy(o => o.ProductId)
             .Select(g => new ProductRevenueDto(
                 g.Key,
-                g.Sum(o => o.Status == OrderStatus.Paid ? o.AmountCents : 0),
+                g.Sum(o => o.Status == OrderStatus.Paid ? o.KeptAmountCents : 0),
                 g.Count(o => o.Status == OrderStatus.Paid),
                 g.Count()))
             .ToListAsync(ct);

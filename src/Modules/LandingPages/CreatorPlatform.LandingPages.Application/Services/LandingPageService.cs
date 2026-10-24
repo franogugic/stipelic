@@ -1,3 +1,4 @@
+using CreatorPlatform.Shared.Application.Media;
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
@@ -34,16 +35,20 @@ public sealed partial class LandingPageService : ILandingPageService
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly ILandingPagesUnitOfWork _unitOfWork;
 
+    private readonly IOwnedImageCheck _ownedImages;
+
     public LandingPageService(
         ILandingPageRepository landingPageRepository,
         ILandingPageSectionRepository sectionRepository,
         ICreatorContextProvider creatorContextProvider,
-        ILandingPagesUnitOfWork unitOfWork)
+        ILandingPagesUnitOfWork unitOfWork,
+        IOwnedImageCheck ownedImages)
     {
         _landingPageRepository = landingPageRepository;
         _sectionRepository = sectionRepository;
         _creatorContextProvider = creatorContextProvider;
         _unitOfWork = unitOfWork;
+        _ownedImages = ownedImages;
     }
 
     public async Task<LandingPageResponseDto> CreateAsync(
@@ -332,6 +337,10 @@ public sealed partial class LandingPageService : ILandingPageService
         foreach (var existing in existingSections.Where(s => !requestedPublicIds.Contains(s.PublicId)))
             _sectionRepository.Remove(existing);
 
+        // Every image in the sections that lives in our container must be one of the creator's finished uploads.
+        var contents = request.Sections.Select(s => NormalizeContentJson(s.ContentJson)).ToList();
+        await _ownedImages.EnsureOwnedAsync(landingPage.CreatorId, contents.SelectMany(JsonStrings.All), ct);
+
         // Upsert sections
         var resultSections = new List<LandingPageSection>();
 
@@ -340,7 +349,7 @@ public sealed partial class LandingPageService : ILandingPageService
             var dto = request.Sections[i];
             var sectionType = requestedTypes[i];
             var backgroundColor = NormalizeColor(dto.BackgroundColor);
-            var contentJson = NormalizeContentJson(dto.ContentJson);
+            var contentJson = contents[i];
 
             if (dto.PublicId.HasValue && existingById.TryGetValue(dto.PublicId.Value, out var existing))
             {

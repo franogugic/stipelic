@@ -36,7 +36,6 @@ public static class EmailLayout
               <meta name="color-scheme" content="light dark">
               <meta name="supported-color-schemes" content="light dark">
               <title>{{E(title)}}</title>
-              <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet">
               <style>
             {{style}}  </style>
             </head>

@@ -1,3 +1,4 @@
+using CreatorPlatform.Shared.Application.Media;
 using System.Text.RegularExpressions;
 using System.Net.Mail;
 using CreatorPlatform.Creators.Application.Dtos;
@@ -41,6 +42,7 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ICreatorOpenBalanceCheck _creatorOpenBalanceCheck;
     private readonly IBillingCustomerService _billingCustomerService;
     private readonly ICreatorCacheInvalidator _cacheInvalidator;
+    private readonly IOwnedImageCheck _ownedImages;
     private readonly ILogger<CreatorService> _logger;
 
     public CreatorService(
@@ -57,7 +59,8 @@ public sealed partial class CreatorService : ICreatorService
         ICreatorOpenBalanceCheck creatorOpenBalanceCheck,
         IBillingCustomerService billingCustomerService,
         ICreatorCacheInvalidator cacheInvalidator,
-        ILogger<CreatorService> logger)
+        ILogger<CreatorService> logger,
+        IOwnedImageCheck ownedImages)
     {
         _creatorRepository = creatorRepository;
         _creatorMemberRepository = creatorMemberRepository;
@@ -73,6 +76,7 @@ public sealed partial class CreatorService : ICreatorService
         _billingCustomerService = billingCustomerService;
         _cacheInvalidator = cacheInvalidator;
         _logger = logger;
+        _ownedImages = ownedImages;
     }
 
     public async Task<CreateCreatorResponseDto> CreateAsync(
@@ -88,6 +92,8 @@ public sealed partial class CreatorService : ICreatorService
         var supportEmail = NormalizeOptionalEmail(request.SupportEmail);
         var brandName = NormalizeOptionalText(request.BrandName, BrandNameMaxLength) ?? name;
         var logoUrl = NormalizeOptionalUrl(request.LogoUrl);
+        // No workspace yet, so none of our uploads can be its own: only an external logo is accepted here.
+        await _ownedImages.EnsureOwnedAsync(null, [logoUrl], ct);
         var primaryColor = NormalizePrimaryColor(request.PrimaryColor);
         var timezone = NormalizeTimezone(request.Timezone);
         var language = NormalizeLanguage(request.Language);
@@ -204,6 +210,7 @@ public sealed partial class CreatorService : ICreatorService
             throw new NotFoundException("Creator settings do not exist.");
 
         var update = CreatorSettingsUpdateValidator.Validate(request, settings.Creator.Name);
+        await _ownedImages.EnsureOwnedAsync(settings.CreatorId, [update.LogoUrl], ct);
         var updatedAt = DateTimeOffset.UtcNow;
         var timezoneChanged = !string.Equals(settings.Timezone, update.Timezone, StringComparison.Ordinal);
 

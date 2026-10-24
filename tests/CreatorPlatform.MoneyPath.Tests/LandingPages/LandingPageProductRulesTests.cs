@@ -29,7 +29,7 @@ public class LandingPageProductRulesTests
 
     public LandingPageProductRulesTests()
     {
-        _service = new LandingPageService(_pages, new FakeLandingPageSectionRepository(), _creators, new FakeLandingPagesUnitOfWork());
+        _service = new LandingPageService(_pages, new FakeLandingPageSectionRepository(), _creators, new FakeLandingPagesUnitOfWork(), new FakeOwnedImageCheck());
     }
 
     private Task<LandingPageResponseDto> CreateAsync(string type, ProductInfo? product)

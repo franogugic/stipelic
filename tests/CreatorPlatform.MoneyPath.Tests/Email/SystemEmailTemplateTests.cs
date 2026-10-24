@@ -77,6 +77,21 @@ public class SystemEmailTemplateTests
     }
 
     [Fact]
+    public void NoEmail_LoadsAStylesheetOrFontFromAnotherHost()
+    {
+        // S15/QA-14: a Google Fonts link costs a third-party request per open, leaks the open, and is blocked by many
+        // clients. The font stacks fall back to system fonts.
+        foreach (var (name, email) in All("Jane Doe", "https://app.test/x"))
+        {
+            Assert.DoesNotContain("<link", email.Html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("fonts.googleapis.com", email.Html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("fonts.gstatic.com", email.Html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("@import", email.Html, StringComparison.OrdinalIgnoreCase);
+            Assert.True(email.Html.Contains("Helvetica, Arial, sans-serif", StringComparison.Ordinal), name);
+        }
+    }
+
+    [Fact]
     public void UrlsEndUpEncodedInsideTheHref()
     {
         var email = EmailVerificationTemplate.Render(Branding, "Jane", "jane@example.test", HostileUrl);

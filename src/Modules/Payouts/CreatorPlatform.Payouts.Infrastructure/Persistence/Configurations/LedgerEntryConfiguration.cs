@@ -48,10 +48,14 @@ public sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<LedgerEn
 
         builder.HasIndex(e => new { e.CreatorId, e.CreatedAt });
 
-        // Idempotency guard: a given order can have at most one entry of a given type — protects against
-        // double-booking the same webhook event on retry.
-        builder.HasIndex(e => new { e.OrderId, e.Type })
+        builder.Property(e => e.RefundedToCents);
+
+        // Idempotency guard: a given order has at most one sale credit and one fee debit, and at most one refund
+        // entry of each type per cumulative refunded amount (a partial refund, then the rest) — protects against
+        // double-booking the same webhook event on retry. NULLS NOT DISTINCT keeps the null-keyed sale entries unique.
+        builder.HasIndex(e => new { e.OrderId, e.Type, e.RefundedToCents })
             .IsUnique()
+            .AreNullsDistinct(false)
             .HasFilter("\"OrderId\" IS NOT NULL");
 
         // Idempotency guard: a given payout can have at most one entry of a given type (PayoutDebit on
@@ -61,6 +65,9 @@ public sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<LedgerEn
             .HasFilter("\"PayoutId\" IS NOT NULL");
 
         builder.ToTable(t => t.HasCheckConstraint("CK_ledger_entries_AmountCents_NotZero", "\"AmountCents\" <> 0"));
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_ledger_entries_RefundedToCents_OnRefundsOnly",
+            "(\"Type\" IN ('RefundDebit', 'FeeRefundCredit')) = (\"RefundedToCents\" IS NOT NULL)"));
 
         builder.HasOne<Creator>()
             .WithMany()

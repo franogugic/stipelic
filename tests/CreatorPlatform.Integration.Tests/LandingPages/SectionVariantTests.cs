@@ -30,7 +30,7 @@ public sealed class SectionVariantTests
         new LandingPageRepository(db),
         new LandingPageSectionRepository(db),
         new CreatorContextProvider(db),
-        new LandingPagesUnitOfWork(db));
+        new LandingPagesUnitOfWork(db), new AnyImageAccepted());
 
     private async Task<T> WithServiceAsync<T>(Func<LandingPageService, Task<T>> act)
     {

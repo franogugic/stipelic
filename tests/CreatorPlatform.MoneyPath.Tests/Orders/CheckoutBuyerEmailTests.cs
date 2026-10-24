@@ -54,7 +54,7 @@ public class CheckoutBuyerEmailTests
             NullLogger<OrderWebhookService>.Instance);
 
         return service.HandleCheckoutSessionCompletedAsync(
-            new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId, "pi_1", stripeEmail, stripeName), CancellationToken.None);
+            new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1", stripeEmail, stripeName), CancellationToken.None);
     }
 
     [Theory]

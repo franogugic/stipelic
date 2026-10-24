@@ -172,4 +172,40 @@ public class MediaUploadServiceTests
         await Assert.ThrowsAsync<NotFoundException>(
             () => h.Service.ConfirmUploadAsync(CreatorId, uploadResult.BlobUrl, CancellationToken.None));
     }
+
+    // ---- S3: the daily upload budget ------------------------------------------------------------------------------
+
+    private static BlobReference Issued(int creatorId, DateTimeOffset at) => BlobReference.CreatePending(
+        creatorId, MediaUploadPurpose.ProductThumbnail, $"https://x.blob.core.windows.net/m/{Guid.NewGuid()}.png", "p", "image/png", at);
+
+    [Fact]
+    public async Task RequestUploadUrlAsync_OverTheDailyBudget_Is409WithTheNumbers_AndIssuesNothing()
+    {
+        var h = BuildHarness();
+        for (var i = 0; i < h.Options.DailyUploadLimit; i++)
+            h.Repository.References.Add(Issued(CreatorId, DateTimeOffset.UtcNow.AddHours(-23)));
+
+        var exception = await Assert.ThrowsAsync<ConflictException>(
+            () => h.Service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductThumbnail, "image/png", CancellationToken.None));
+
+        Assert.Equal(MediaUploadService.UploadLimitReachedCode, exception.Code);
+        Assert.Equivalent(new { used = 200, limit = 200 }, exception.Details);
+        Assert.Equal(200, h.Repository.References.Count);
+        Assert.Empty(h.BlobStorageClient.GenerateSasCalls);
+    }
+
+    [Fact]
+    public async Task RequestUploadUrlAsync_TheBudget_IsPerCreator_AndCountsOnlyTheLast24Hours()
+    {
+        var h = BuildHarness();
+        for (var i = 0; i < h.Options.DailyUploadLimit; i++)
+        {
+            h.Repository.References.Add(Issued(CreatorId, DateTimeOffset.UtcNow.AddHours(-25)));
+            h.Repository.References.Add(Issued(OtherCreatorId, DateTimeOffset.UtcNow.AddHours(-1)));
+        }
+
+        await h.Service.RequestUploadUrlAsync(CreatorId, MediaUploadPurpose.ProductThumbnail, "image/png", CancellationToken.None);
+
+        Assert.Single(h.BlobStorageClient.GenerateSasCalls);
+    }
 }

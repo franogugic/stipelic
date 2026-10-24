@@ -51,7 +51,7 @@ public sealed class DeleteWorkspaceTests
             new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             new RecordingCreatorCacheInvalidator(),
-            NullLogger<CreatorService>.Instance);
+            NullLogger<CreatorService>.Instance, new AnyImageAccepted());
 
         return await service.DeleteCurrentAsync(creator.OwnerUserId, CancellationToken.None);
     }
