@@ -87,6 +87,9 @@ services:
     environment:
       <<: *database-connection
       ASPNETCORE_ENVIRONMENT: Production
+      # The API's start guard (PR 1) requires real host names outside Development, also for --migrate, which builds
+      # the API's registrations. The migration needs no other setting and gets no secret.
+      AllowedHosts: ${LUMA_DOMAIN:?set LUMA_DOMAIN in .env}
       Logging__Console__FormatterName: json
     depends_on:
       postgres:
