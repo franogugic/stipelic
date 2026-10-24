@@ -3,6 +3,7 @@ using CreatorPlatform.Api.Middlewares;
 using CreatorPlatform.Api.Networking;
 using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
+using CreatorPlatform.Api.Security;
 using CreatorPlatform.Auth.Application.Options;
 using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Creators.Infrastructure;
@@ -31,21 +32,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Frontend", policy =>
-    {
-        policy
-            .WithOrigins(
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:3001")
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
+builder.Services.AddFrontendCors(builder.Configuration);
+builder.Services.AddPlatformSecurity(builder.Configuration, builder.Environment);
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
@@ -73,6 +61,8 @@ builder.Services.AddProductsInfrastructure();
 builder.Services.AddLandingPagesInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddPaymentsInfrastructure();
+builder.Services.AddScoped<CreatorPlatform.Api.Webhooks.StripeWebhookProcessor>();
+builder.Services.AddScoped<CreatorPlatform.Api.Webhooks.WebhookFailureAdminService>();
 builder.Services.AddPayoutsInfrastructure();
 builder.Services.AddMarketingInfrastructure();
 builder.Services.AddMediaInfrastructure();
@@ -97,6 +87,7 @@ var app = builder.Build();
 
 // First: everything below (HTTPS redirection, rate limits, the login limiter) sees the client's address and scheme.
 app.UseTrustedForwardedHeaders();
+app.UsePlatformSecurityHeaders(app.Environment);
 
 if (app.Configuration.GetValue<bool>("Database:AutoMigrate"))
 {
@@ -112,7 +103,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseCors("Frontend");
+app.UseCors(FrontendCorsOptions.PolicyName);
+// After CORS (a refused request still carries the CORS headers the SPA needs to read it), before anything acts.
+app.UseMiddleware<AntiForgeryHeaderMiddleware>();
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseMiddleware<SessionAuthenticationMiddleware>();
 app.UseRateLimiter();

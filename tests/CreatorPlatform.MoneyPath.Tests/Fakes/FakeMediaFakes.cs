@@ -41,6 +41,9 @@ public sealed class FakeBlobReferenceRepository : IBlobReferenceRepository
         return Task.CompletedTask;
     }
 
+    public Task<int> CountIssuedSinceAsync(int creatorId, DateTimeOffset since, CancellationToken ct)
+        => Task.FromResult(References.Count(r => r.CreatorId == creatorId && r.CreatedAt >= since));
+
     public Task<BlobReference?> GetPendingByCreatorAndUrlAsync(int creatorId, string blobUrl, CancellationToken ct)
         => Task.FromResult(References.FirstOrDefault(
             r => r.CreatorId == creatorId && r.BlobUrl == blobUrl && r.Status == BlobReferenceStatus.Pending));

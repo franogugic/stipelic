@@ -21,6 +21,7 @@ public static class PaymentsInfrastructureServiceCollectionExtensions
         services.AddScoped<IBillingPortalService, StripeBillingPortalService>();
         services.AddScoped<IStripeWebhookService, StripeWebhookService>();
         services.AddScoped<IWebhookFailureRepository, WebhookFailureRepository>();
+        services.AddScoped<IProcessedWebhookEventStore, ProcessedWebhookEventStore>();
 
         // Single shared StripeClient for the newer, client-based Connect services (StripeConnectAccountService) —
         // existing per-call services (SessionService, etc.) are untouched and keep using their own RequestOptions.ApiKey.

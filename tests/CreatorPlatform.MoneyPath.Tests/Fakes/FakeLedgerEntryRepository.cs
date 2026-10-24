@@ -22,6 +22,9 @@ public sealed class FakeLedgerEntryRepository : ILedgerEntryRepository
     public Task<bool> ExistsForOrderAsync(int orderId, LedgerEntryType type, CancellationToken ct)
         => Task.FromResult(Entries.Any(e => e.OrderId == orderId && e.Type == type));
 
+    public Task<int> SumForOrderAsync(int orderId, LedgerEntryType type, CancellationToken ct)
+        => Task.FromResult(Entries.Where(e => e.OrderId == orderId && e.Type == type).Sum(e => e.AmountCents));
+
     public Task<List<CreatorBalanceDto>> GetBalanceByCreatorIdAsync(int creatorId, CancellationToken ct)
         => Task.FromResult(Entries
             .Where(e => e.CreatorId == creatorId)

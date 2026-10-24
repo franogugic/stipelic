@@ -19,6 +19,13 @@ public sealed class BlobReferenceRepository : IBlobReferenceRepository
         await _context.Set<BlobReference>().AddAsync(reference, ct);
     }
 
+    public async Task<int> CountIssuedSinceAsync(int creatorId, DateTimeOffset since, CancellationToken ct)
+    {
+        return await _context.Set<BlobReference>()
+            .AsNoTracking()
+            .CountAsync(b => b.CreatorId == creatorId && b.CreatedAt >= since, ct);
+    }
+
     public async Task<BlobReference?> GetPendingByCreatorAndUrlAsync(int creatorId, string blobUrl, CancellationToken ct)
     {
         return await _context.Set<BlobReference>()

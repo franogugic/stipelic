@@ -33,7 +33,8 @@ public sealed class AzureProductFileStorage : IProductFileStorage
             Resource = "b",
             ExpiresOn = DateTimeOffset.UtcNow.Add(expiry)
         };
-        sas.SetPermissions(BlobSasPermissions.Write | BlobSasPermissions.Create);
+        // Create only: a confirmed product file can never be overwritten through its upload link (see AzureBlobStorageClient).
+        sas.SetPermissions(BlobSasPermissions.Create);
 
         return _containerClient.GetBlobClient(blobPath).GenerateSasUri(sas);
     }

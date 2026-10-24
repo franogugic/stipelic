@@ -25,7 +25,7 @@ public class ProductServiceTests
         var unitOfWork = new FakeProductsUnitOfWork();
         var orderRepository = new FakeOrderContextProvider();
 
-        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository, new FakeLandingPageContextProvider(), new FakeProductFiles());
+        var service = new ProductService(productRepository, contextProvider, unitOfWork, orderRepository, new FakeLandingPageContextProvider(), new FakeProductFiles(), new FakeOwnedImageCheck());
 
         return (service, productRepository, orderRepository);
     }

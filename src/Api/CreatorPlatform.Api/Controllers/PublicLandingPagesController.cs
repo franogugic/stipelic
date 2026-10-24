@@ -1,11 +1,13 @@
 using CreatorPlatform.Analytics.Application.Dtos;
 using CreatorPlatform.Analytics.Application.Interfaces;
+using CreatorPlatform.Api.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using CreatorPlatform.LandingPages.Application.Dtos;
 using CreatorPlatform.LandingPages.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Dtos;
 using CreatorPlatform.Orders.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
@@ -17,29 +19,31 @@ public sealed class PublicLandingPagesController : ControllerBase
     public const string PageNotFoundCode = "PAGE_NOT_FOUND";
 
     private const string VisitorCookieName = "lp_visitor_id";
-    private static readonly CookieOptions VisitorCookieOptions = new()
-    {
-        HttpOnly = false,
-        Secure = false,
-        SameSite = SameSiteMode.Lax,
-        MaxAge = TimeSpan.FromDays(365)
-    };
 
     private readonly IPublicLandingPageService _publicLandingPageService;
     private readonly IPageViewService _pageViewService;
     private readonly IEmailCaptureService _emailCaptureService;
     private readonly IOrderCheckoutService _orderCheckoutService;
+    private readonly CaptureEmailRateLimiter _captureEmailRateLimiter;
+    private readonly IHostEnvironment _environment;
+    private readonly ILogger<PublicLandingPagesController> _logger;
 
     public PublicLandingPagesController(
         IPublicLandingPageService publicLandingPageService,
         IPageViewService pageViewService,
         IEmailCaptureService emailCaptureService,
-        IOrderCheckoutService orderCheckoutService)
+        IOrderCheckoutService orderCheckoutService,
+        CaptureEmailRateLimiter captureEmailRateLimiter,
+        IHostEnvironment environment,
+        ILogger<PublicLandingPagesController> logger)
     {
         _publicLandingPageService = publicLandingPageService;
         _pageViewService = pageViewService;
         _emailCaptureService = emailCaptureService;
         _orderCheckoutService = orderCheckoutService;
+        _captureEmailRateLimiter = captureEmailRateLimiter;
+        _environment = environment;
+        _logger = logger;
     }
 
     [HttpGet("{creatorSlug}/{landingPageSlug}")]
@@ -58,7 +62,7 @@ public sealed class PublicLandingPagesController : ControllerBase
             });
 
         var visitorId = ResolveVisitorId();
-        Response.Cookies.Append(VisitorCookieName, visitorId.ToString(), VisitorCookieOptions);
+        Response.Cookies.Append(VisitorCookieName, visitorId.ToString(), VisitorCookieOptions(_environment));
 
         await _pageViewService.RecordAsync(page.Id, visitorId, ct);
 
@@ -68,13 +72,28 @@ public sealed class PublicLandingPagesController : ControllerBase
             page));
     }
 
+    /// <summary>A lead sign-up: limited per IP (<c>CaptureSignup</c>) and per email address (<c>CaptureSignupPerEmail</c>);
+    /// a filled-in honeypot answers 200 and does nothing.</summary>
     [HttpPost("{creatorSlug}/{landingPageSlug}/captures")]
+    [EnableRateLimiting(RateLimitPolicies.CaptureSignup)]
     public async Task<ActionResult<ApiResponse<object>>> Capture(
         string creatorSlug,
         string landingPageSlug,
         [FromBody] EmailCaptureRequestDto request,
         CancellationToken ct)
     {
+        if (!string.IsNullOrEmpty(request.Website))
+        {
+            _logger.LogInformation(
+                "Lead sign-up with the honeypot filled in, ignored. Creator: {CreatorSlug}, Page: {LandingPageSlug}",
+                creatorSlug, landingPageSlug);
+            return Ok(ApiResponse<object>.Success(StatusCodes.Status200OK, "Email captured.", null));
+        }
+
+        using var lease = await _captureEmailRateLimiter.AcquireAsync(request.Email, ct);
+        if (!lease.IsAcquired)
+            return StatusCode(StatusCodes.Status429TooManyRequests, RateLimitRejection.Body(Response, lease));
+
         var page = await _publicLandingPageService.GetPublishedAsync(creatorSlug, landingPageSlug, ct);
         if (page is null)
             return NotFound(new ApiErrorResponse
@@ -90,6 +109,7 @@ public sealed class PublicLandingPagesController : ControllerBase
     }
 
     [HttpPost("{creatorSlug}/{landingPageSlug}/checkout")]
+    [EnableRateLimiting(RateLimitPolicies.StartCheckout)]
     public async Task<ActionResult<ApiResponse<CreateCheckoutResultDto>>> Checkout(
         string creatorSlug,
         string landingPageSlug,
@@ -103,6 +123,16 @@ public sealed class PublicLandingPagesController : ControllerBase
             "Checkout session created.",
             result));
     }
+
+    /// <summary>The anonymous page-view visitor id: readable by the page script, a year long, and sent only over HTTPS
+    /// outside Development (the dev server is plain http).</summary>
+    public static CookieOptions VisitorCookieOptions(IHostEnvironment environment) => new()
+    {
+        HttpOnly = false,
+        Secure = !environment.IsDevelopment(),
+        SameSite = SameSiteMode.Lax,
+        MaxAge = TimeSpan.FromDays(365)
+    };
 
     private Guid ResolveVisitorId()
     {

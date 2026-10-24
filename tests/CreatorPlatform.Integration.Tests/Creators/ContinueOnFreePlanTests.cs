@@ -43,7 +43,7 @@ public sealed class ContinueOnFreePlanTests
         new CreatorOpenBalanceCheck(db),
         new UnexpectedBillingCustomerService(),
         new RecordingCreatorCacheInvalidator(),
-        logger);
+        logger, new AnyImageAccepted());
 
     /// <summary>The production service over the real repositories, on its own context (a request scope).</summary>
     private async Task<CreatorPlatform.Creators.Application.Dtos.CreatorResponseDto> ContinueOnFreeAsync(

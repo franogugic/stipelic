@@ -47,7 +47,7 @@ public class LedgerEntryTests
     [Fact]
     public void CreateRefundDebit_NegativeAmount_Succeeds()
     {
-        var entry = LedgerEntry.CreateRefundDebit(1, orderId: 10, amountCents: -500, Currency.Eur, Now);
+        var entry = LedgerEntry.CreateRefundDebit(1, orderId: 10, amountCents: -500, refundedToCents: 500, Currency.Eur, Now);
 
         Assert.Equal(LedgerEntryType.RefundDebit, entry.Type);
         Assert.Equal(10, entry.OrderId);
@@ -56,22 +56,31 @@ public class LedgerEntryTests
     [Fact]
     public void CreateRefundDebit_PositiveAmount_Throws()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => LedgerEntry.CreateRefundDebit(1, 10, 500, Currency.Eur, Now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => LedgerEntry.CreateRefundDebit(1, 10, 500, 500, Currency.Eur, Now));
     }
 
     [Fact]
     public void CreateFeeRefundCredit_PositiveAmount_Succeeds()
     {
-        var entry = LedgerEntry.CreateFeeRefundCredit(1, orderId: 10, amountCents: 50, Currency.Eur, Now);
+        var entry = LedgerEntry.CreateFeeRefundCredit(1, orderId: 10, amountCents: 50, refundedToCents: 500, Currency.Eur, Now);
 
         Assert.Equal(LedgerEntryType.FeeRefundCredit, entry.Type);
         Assert.Equal(10, entry.OrderId);
     }
 
     [Fact]
+    public void RefundEntries_CarryTheCumulativeRefundedAmount_AndRequireOne()
+    {
+        Assert.Equal(300, LedgerEntry.CreateRefundDebit(1, 10, -300, 300, Currency.Eur, Now).RefundedToCents);
+        Assert.Null(LedgerEntry.CreateSaleCredit(1, 10, 1000, Currency.Eur, Now).RefundedToCents);
+        Assert.Throws<ArgumentOutOfRangeException>(() => LedgerEntry.CreateRefundDebit(1, 10, -300, 0, Currency.Eur, Now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => LedgerEntry.CreateFeeRefundCredit(1, 10, 15, 0, Currency.Eur, Now));
+    }
+
+    [Fact]
     public void CreateFeeRefundCredit_NegativeAmount_Throws()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => LedgerEntry.CreateFeeRefundCredit(1, 10, -50, Currency.Eur, Now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => LedgerEntry.CreateFeeRefundCredit(1, 10, -50, 500, Currency.Eur, Now));
     }
 
     [Fact]

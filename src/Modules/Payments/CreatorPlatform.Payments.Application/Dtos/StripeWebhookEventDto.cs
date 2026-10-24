@@ -1,10 +1,15 @@
 namespace CreatorPlatform.Payments.Application.Dtos;
 
-public sealed class StripeWebhookEventDto
+public sealed record StripeWebhookEventDto
 {
     public required string EventId { get; init; }
     public required string EventType { get; init; }
+
+    /// <summary>The event's <c>account</c>: the connected account it came from, null for the platform's own events.</summary>
+    public string? ConnectedAccountId { get; init; }
+
     public CheckoutSessionCompletedData? CheckoutSessionCompleted { get; init; }
+    public CheckoutSessionExpiredData? CheckoutSessionExpired { get; init; }
     public SubscriptionChangedData? SubscriptionChanged { get; init; }
     public InvoicePaymentFailedData? InvoicePaymentFailed { get; init; }
     public ChargeRefundedData? ChargeRefunded { get; init; }
@@ -35,6 +40,13 @@ public sealed class CheckoutSessionCompletedData
     public string? CustomerEmail { get; init; }
     /// <summary><c>customer_details.name</c>.</summary>
     public string? CustomerName { get; init; }
+    public required IReadOnlyDictionary<string, string> Metadata { get; init; }
+}
+
+/// <summary>A Checkout session that can no longer be paid (Stripe expires an unpaid session after at most 24 hours).</summary>
+public sealed class CheckoutSessionExpiredData
+{
+    public required string SessionId { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
 }
 
@@ -70,11 +82,23 @@ public sealed class ChargeRefundedData
 {
     public required string PaymentIntentId { get; init; }
     public required string ChargeId { get; init; }
+
+    /// <summary><c>charge.amount</c>, in the charge's own (presentment) currency — with Adaptive Pricing that is the
+    /// buyer's currency, not the order's.</summary>
+    public long AmountCents { get; init; }
+
+    /// <summary><c>charge.amount_refunded</c>: cumulative over every refund of the charge, same currency as
+    /// <see cref="AmountCents"/>.</summary>
+    public long AmountRefundedCents { get; init; }
+
+    /// <summary><c>charge.refunded</c>: true once the charge is fully refunded.</summary>
+    public bool FullyRefunded { get; init; }
 }
 
 public static class StripeEventTypes
 {
     public const string CheckoutSessionCompleted = "checkout.session.completed";
+    public const string CheckoutSessionExpired = "checkout.session.expired";
     public const string CustomerSubscriptionCreated = "customer.subscription.created";
     public const string CustomerSubscriptionUpdated = "customer.subscription.updated";
     public const string CustomerSubscriptionDeleted = "customer.subscription.deleted";

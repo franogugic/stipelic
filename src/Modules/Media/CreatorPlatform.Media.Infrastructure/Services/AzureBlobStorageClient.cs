@@ -34,7 +34,10 @@ public sealed class AzureBlobStorageClient : IBlobStorageClient
             Resource = "b",
             ExpiresOn = DateTimeOffset.UtcNow.Add(expiry),
         };
-        sasBuilder.SetPermissions(BlobSasPermissions.Write | BlobSasPermissions.Create);
+        // Create only, no Write: the link can make this one new blob but never overwrite it — so an image cannot be
+        // swapped for other bytes after confirm checked it. (A SAS cannot pin the type or size of an upload: confirm
+        // checks them, and unconfirmed blobs are deleted by the maintenance job.)
+        sasBuilder.SetPermissions(BlobSasPermissions.Create);
 
         return blobClient.GenerateSasUri(sasBuilder);
     }

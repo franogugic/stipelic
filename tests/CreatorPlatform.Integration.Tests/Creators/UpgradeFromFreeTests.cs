@@ -272,7 +272,7 @@ public sealed class UpgradeFromFreeTests
             new CreatorOpenBalanceCheck(db),
             customers ?? _customers,
             new RecordingCreatorCacheInvalidator(),
-            NullLogger<CreatorService>.Instance));
+            NullLogger<CreatorService>.Instance, new AnyImageAccepted()));
     }
 
     private async Task CompleteAsync(FakeCheckoutSessionService.CreateCall session, string stripeSubscriptionId, string customerId)

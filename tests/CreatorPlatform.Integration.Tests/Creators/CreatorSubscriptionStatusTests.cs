@@ -40,7 +40,7 @@ public sealed class CreatorSubscriptionStatusTests
             new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             new RecordingCreatorCacheInvalidator(),
-            NullLogger<CreatorService>.Instance);
+            NullLogger<CreatorService>.Instance, new AnyImageAccepted());
         return await service.GetCurrentForOwnerAsync(ownerUserId, CancellationToken.None);
     }
 

@@ -40,7 +40,15 @@ public interface IOrderRepository
 
     Task<Order?> GetByStripeCheckoutSessionIdForUpdateAsync(string stripeCheckoutSessionId, CancellationToken ct);
 
+    /// <summary>The order by its PublicId with the row locked (<c>FOR UPDATE</c>) — the webhook's fallback when the
+    /// session id was never stored on it (the session's metadata carries the PublicId).</summary>
+    Task<Order?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct);
+
     Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct);
+
+    /// <summary>Same, with the row locked (<c>FOR UPDATE</c>) for the caller's transaction — serializes concurrent
+    /// refund events for one order.</summary>
+    Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct);
 
     Task<List<OrderDto>> GetByCreatorSlugAsync(
         string creatorSlug,

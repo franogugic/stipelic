@@ -11,6 +11,10 @@ public interface ILedgerEntryRepository
     /// Used to skip re-booking on webhook retries (the unique index on (OrderId, Type) is the last line of defense).</summary>
     Task<bool> ExistsForOrderAsync(int orderId, LedgerEntryType type, CancellationToken ct);
 
+    /// <summary>The signed sum of an order's entries of one type (0 when none) — e.g. how much of a sale is already
+    /// reversed by refund debits.</summary>
+    Task<int> SumForOrderAsync(int orderId, LedgerEntryType type, CancellationToken ct);
+
     /// <summary>Current balance per currency for a creator — one grouped SQL SUM, never summed in application code.</summary>
     Task<List<CreatorBalanceDto>> GetBalanceByCreatorIdAsync(int creatorId, CancellationToken ct);
 
