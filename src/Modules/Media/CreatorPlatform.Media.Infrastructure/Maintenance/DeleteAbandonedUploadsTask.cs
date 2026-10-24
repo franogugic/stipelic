@@ -1,5 +1,6 @@
 using CreatorPlatform.Media.Application.Interfaces;
 using CreatorPlatform.Media.Application.Options;
+using CreatorPlatform.Media.Application.Services;
 using CreatorPlatform.Media.Domain.Media;
 using CreatorPlatform.Shared.Infrastructure.Maintenance;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
@@ -11,14 +12,18 @@ using Microsoft.Extensions.Options;
 namespace CreatorPlatform.Media.Infrastructure.Maintenance;
 
 /// <summary>
-/// Deletes uploads that were never confirmed: a <see cref="BlobReferenceStatus.Pending"/> reference older than
-/// <see cref="MaintenanceOptions.AbandonedUploadMinutes"/>, together with whatever the client stored under it (images in
-/// the public container, product documents in the private one). The SPA only uses an upload after confirming it, and a
-/// product only takes a confirmed document, so nothing points at these blobs.
-///
-/// Per reference, the row is deleted (only while still Pending) and the blob deleted inside one transaction: a blob that
-/// cannot be deleted rolls the row back, so it is retried on the next run instead of being forgotten in storage, and a
-/// reference confirmed in the meantime is never touched.
+/// Cleans up uploads that were never confirmed, in two steps:
+/// <list type="number">
+/// <item>A <see cref="BlobReferenceStatus.Pending"/> reference older than
+/// <see cref="MaintenanceOptions.AbandonedUploadMinutes"/> loses its blob (images in the public container, product
+/// documents in the private one) and becomes <see cref="BlobReferenceStatus.Abandoned"/>. Nothing points at these blobs:
+/// pages, products and logos only take Confirmed uploads (PR 1). The status change (only while still Pending) and the
+/// blob delete share one transaction: a blob that cannot be deleted rolls the row back, so it is retried on the next run
+/// instead of being forgotten in storage, and a reference confirmed in the meantime is never touched.</item>
+/// <item>An Abandoned row is deleted once it is older than the daily upload budget's window
+/// (<see cref="MediaUploadService.UploadBudgetWindow"/>) plus an hour. Until then it still counts against that budget, so
+/// abandoning uploads cannot be used to issue more than the daily limit.</item>
+/// </list>
 /// </summary>
 public sealed class DeleteAbandonedUploadsTask(
     CreatorPlatformDbContext db,
@@ -29,6 +34,9 @@ public sealed class DeleteAbandonedUploadsTask(
 {
     /// <summary>Blob deletes are network calls: a smaller batch than the row-only tasks.</summary>
     public const int MaxBatchSize = 100;
+
+    /// <summary>How long an Abandoned row is kept: past the upload budget's window, with an hour of margin.</summary>
+    public static readonly TimeSpan AbandonedRowRetention = MediaUploadService.UploadBudgetWindow + TimeSpan.FromHours(1);
 
     private static int _notConfiguredLogged;
 
@@ -50,7 +58,7 @@ public sealed class DeleteAbandonedUploadsTask(
         var issuedBefore = now.AddMinutes(-maintenanceOptions.Value.AbandonedUploadMinutes);
         var batchSize = Math.Min(maintenanceOptions.Value.BatchSize, MaxBatchSize);
         var failed = new HashSet<int>();
-        var deleted = 0;
+        var abandoned = 0;
 
         while (true)
         {
@@ -68,7 +76,7 @@ public sealed class DeleteAbandonedUploadsTask(
             {
                 try
                 {
-                    deleted += await DeleteAsync(upload, images, documents, ct);
+                    abandoned += await AbandonAsync(upload, images, documents, ct);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
@@ -85,23 +93,45 @@ public sealed class DeleteAbandonedUploadsTask(
                 break;
         }
 
+        var removed = await DeleteExpiredAbandonedRowsAsync(now, ct);
+
         if (failed.Count > 0)
             throw new InvalidOperationException(
-                $"{failed.Count} abandoned upload(s) could not be deleted and stay for the next run; {deleted} were deleted.");
+                $"{failed.Count} abandoned upload(s) could not be deleted and stay for the next run; {abandoned} were deleted.");
 
-        return deleted;
+        return abandoned + removed;
     }
 
-    private async Task<int> DeleteAsync(
+    private async Task<int> DeleteExpiredAbandonedRowsAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var issuedBefore = now - AbandonedRowRetention;
+        var batchSize = maintenanceOptions.Value.BatchSize;
+        var total = 0;
+
+        while (true)
+        {
+            var deleted = await db.Set<BlobReference>()
+                .Where(reference => reference.Status == BlobReferenceStatus.Abandoned && reference.CreatedAt < issuedBefore)
+                .OrderBy(reference => reference.Id)
+                .Take(batchSize)
+                .ExecuteDeleteAsync(ct);
+
+            total += deleted;
+            if (deleted < batchSize)
+                return total;
+        }
+    }
+
+    private async Task<int> AbandonAsync(
         AbandonedUpload upload, IBlobStorageClient images, IProductFileStorage documents, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        var removed = await db.Set<BlobReference>()
+        var marked = await db.Set<BlobReference>()
             .Where(reference => reference.Id == upload.Id && reference.Status == BlobReferenceStatus.Pending)
-            .ExecuteDeleteAsync(ct);
-        if (removed == 0)
-            return 0;   // confirmed (or deleted) since it was listed: leave the blob alone
+            .ExecuteUpdateAsync(setters => setters.SetProperty(reference => reference.Status, BlobReferenceStatus.Abandoned), ct);
+        if (marked == 0)
+            return 0;   // confirmed (or cleaned up) since it was listed: leave the blob alone
 
         if (upload.Purpose == MediaUploadPurpose.ProductFile)
             await documents.DeleteIfExistsAsync(
@@ -110,7 +140,7 @@ public sealed class DeleteAbandonedUploadsTask(
             await images.DeleteIfExistsAsync(upload.BlobUrl, ct);
 
         await transaction.CommitAsync(ct);
-        return removed;
+        return marked;
     }
 
     private sealed record AbandonedUpload(int Id, MediaUploadPurpose Purpose, string BlobUrl, string? BlobPath);
