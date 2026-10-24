@@ -123,6 +123,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
                 StripePaymentIntentId = session.PaymentIntentId,
                 CustomerEmail = session.CustomerDetails?.Email,
                 CustomerName = session.CustomerDetails?.Name,
+                CustomerCountry = session.CustomerDetails?.Address?.Country,
                 Metadata = session.Metadata ?? new Dictionary<string, string>()
             }
         };

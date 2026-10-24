@@ -73,7 +73,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
                     $"checkout.session.completed for order {order.PublicId} carries no customer email.");
             }
 
-            order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt, data.CustomerEmail, data.CustomerName);
+            order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt, data.CustomerEmail, data.CustomerName, data.CustomerCountry);
             var buyerEmail = order.Email!;
 
             // The buyer's personal link, created with the payment: no paid order without one.

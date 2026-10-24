@@ -167,6 +167,25 @@ public sealed class CheckoutOrderFirstTests
     }
 
     [Fact]
+    public async Task APaidOrder_StoresTheBuyersCountry()
+    {
+        var seeded = await SeedAsync();
+        var sessions = new RecordingSessions();
+        await using (var db = _fixture.CreateDbContext())
+            await Checkout(db, seeded, sessions).CreateCheckoutAsync("acme", "sale", "buyer@example.test", None);
+
+        await using (var db = _fixture.CreateDbContext())
+            await Webhooks(db).HandleCheckoutSessionCompletedAsync(
+                new OrderCheckoutCompletedDto(sessions.SessionId, "pi_country", Metadata: sessions.Metadata, CustomerCountry: "hr"), None);
+
+        await using var read = _fixture.CreateDbContext();
+        var country = (await read.Database.SqlQuery<string?>($"""
+            SELECT "BuyerCountryCode" AS "Value" FROM orders.orders WHERE "CreatorId" = {seeded.CreatorId}
+            """).ToListAsync()).Single();
+        Assert.Equal("HR", country);
+    }
+
+    [Fact]
     public async Task AnExpiredSession_FailsItsOrder()
     {
         var seeded = await SeedAsync();

@@ -1714,6 +1714,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int>("AmountCents")
                         .HasColumnType("integer");
 
+                    b.Property<string>("BuyerCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
