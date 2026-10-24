@@ -21,8 +21,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <!-- Every module's Infrastructure assembly: CreatorPlatformDbContext builds its model from whichever of them are
-       loaded, and migrating needs the full model (the same set the Api loads). PostgresFixture loads them all. -->
+  <!-- Every module's Infrastructure assembly: the tests build CreatorPlatformDbContext with the API's configuration list
+       (ApiEntityConfigurations), and the services under test live in these assemblies. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\Shared\CreatorPlatform.Shared.Infrastructure\CreatorPlatform.Shared.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Access\CreatorPlatform.Access.Infrastructure\CreatorPlatform.Access.Infrastructure.csproj" />
@@ -38,6 +38,13 @@
     <ProjectReference Include="..\..\src\Modules\Payments\CreatorPlatform.Payments.Infrastructure\CreatorPlatform.Payments.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Payouts\CreatorPlatform.Payouts.Infrastructure\CreatorPlatform.Payouts.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Products\CreatorPlatform.Products.Infrastructure\CreatorPlatform.Products.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- The Worker's configuration list, compiled in here so the model tests check it against the migrations. Not a project
+       reference: the Worker is an executable with its own appsettings.json, which would overwrite the Api's in the test
+       output. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Workers\CreatorPlatform.Worker\WorkerEntityConfigurations.cs" Link="Linked\WorkerEntityConfigurations.cs" />
   </ItemGroup>
 
   <!-- The Api itself, for the few tests that call a controller directly (behaviour that lives only there, e.g. a

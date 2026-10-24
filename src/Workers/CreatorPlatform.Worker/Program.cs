@@ -9,38 +9,30 @@ using CreatorPlatform.Marketing.Application.Services;
 using CreatorPlatform.Marketing.Infrastructure.Persistence;
 using CreatorPlatform.Marketing.Infrastructure.Repositories;
 using CreatorPlatform.Marketing.Infrastructure.Services;
+using CreatorPlatform.Auth.Infrastructure.Maintenance;
+using CreatorPlatform.Email.Infrastructure.Maintenance;
+using CreatorPlatform.Email.Infrastructure.Outbox;
+using CreatorPlatform.Media.Infrastructure.Maintenance;
+using CreatorPlatform.Orders.Infrastructure.Maintenance;
+using CreatorPlatform.Shared.Infrastructure.Maintenance;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// CreatorPlatformDbContext.OnModelCreating only applies IEntityTypeConfiguration<T> from
-// *.Infrastructure assemblies that are already loaded into this process's AppDomain (see the comment
-// there) — the API loads every module because it directly registers a concrete service from each of
-// them, which forces the CLR to load the assembly; this worker registers far fewer services (by design,
-// see below), so several entities the Task 14 dispatch pipeline touches only via LINQ (never through a
-// registered service) would otherwise have no mapping at all. A `typeof(...)` reference is NOT enough to
-// force this — the CLR can resolve a type token without loading the assembly's other contents — so each
-// needs an explicit Assembly.Load by name:
-//   - Auth.Infrastructure: User, read by Marketing's ICreatorContextProvider.GetByCreatorIdAsync to
-//     resolve the owner's fallback reply-to email.
-//   - Analytics.Infrastructure: EmailCapture, queried by AudienceService when resolving the real
-//     audience at dispatch time (never referenced by this project otherwise, so also added as a new
-//     ProjectReference in the .csproj).
-//   - LandingPages.Infrastructure: LandingPage, joined by AudienceService for the Product-audience case
-//     (already project-referenced for other reasons, but never touched by any registered service here).
-System.Reflection.Assembly.Load("CreatorPlatform.Auth.Infrastructure");
-System.Reflection.Assembly.Load("CreatorPlatform.Analytics.Infrastructure");
-System.Reflection.Assembly.Load("CreatorPlatform.LandingPages.Infrastructure");
-
 builder.Services.AddDbContext<CreatorPlatformDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("Database");
 
-    options.UseNpgsql(connectionString);
+    options.UseNpgsql(connectionString).UseEntityConfigurationsFrom(WorkerEntityConfigurations.Assemblies);
 });
 
 builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environment);
+builder.Services.AddEmailOutboxProcessing(builder.Configuration);
+
+// A stop lets the outbox finish the batch it claimed (each send is bounded by Email:Outbox:SendTimeoutSeconds);
+// docker-compose.prod.yml gives the container 45 s.
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(40));
 
 builder.Services.Configure<MarketingOptions>(builder.Configuration.GetSection(MarketingOptions.SectionName));
 // The unsubscribe page lives in the same web app the other emails link to.
@@ -74,8 +66,15 @@ builder.Services.AddSingleton<IClickTrackingTokenService, ClickTrackingTokenServ
 builder.Services.AddScoped<ICampaignLinkRepository, CampaignLinkRepository>();
 builder.Services.AddScoped<ICampaignSendService, CampaignSendService>();
 
-builder.Services.AddHostedService<EmailOutboxWorker>();
+// Cleanup (retention): each module registers the tasks for its own tables.
+builder.Services.AddMaintenance(builder.Configuration);
+builder.Services.AddEmailMaintenanceTasks();
+builder.Services.AddAuthMaintenanceTasks();
+builder.Services.AddMediaMaintenanceTasks(builder.Configuration);
+builder.Services.AddOrdersMaintenanceTasks();
+
 builder.Services.AddHostedService<ScheduledCampaignDispatchWorker>();
+builder.Services.AddHostedService<MaintenanceWorker>();
 
 var host = builder.Build();
 host.Run();

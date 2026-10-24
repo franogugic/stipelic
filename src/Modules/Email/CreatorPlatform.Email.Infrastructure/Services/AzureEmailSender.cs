@@ -47,6 +47,9 @@ public sealed class AzureEmailSender : IEmailSender
             emailMessage.Headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
         }
 
-        await _emailClient.SendAsync(WaitUntil.Completed, emailMessage, ct);
+        // Started: returns once ACS has accepted the message (202), without polling for its delivery status, so the
+        // outbox can keep several sends in flight. A refusal (bad address, 401, 429) still throws here. Delivery
+        // failures after acceptance (bounces) are not seen here; ACS reports them through its delivery events.
+        await _emailClient.SendAsync(WaitUntil.Started, emailMessage, ct);
     }
 }

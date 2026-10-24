@@ -15,6 +15,9 @@ public interface IProductFileStorage
     /// <summary>Best effort: logs a failure, never throws.</summary>
     Task DeleteAsync(string blobPath, CancellationToken ct);
 
+    /// <summary>Deletes the blob if it exists (a missing one is success) and THROWS when the delete fails.</summary>
+    Task DeleteIfExistsAsync(string blobPath, CancellationToken ct);
+
     /// <summary>A read-only URL for one blob, valid for <paramref name="expiry"/>, that makes the browser download it as
     /// <paramref name="downloadFileName"/> (<c>Content-Disposition: attachment</c>).</summary>
     Uri GenerateDownloadSasUri(string blobPath, string downloadFileName, string contentType, TimeSpan expiry);

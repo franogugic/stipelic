@@ -9,6 +9,10 @@ namespace CreatorPlatform.Media.Application.Services;
 
 public sealed class MediaUploadService : IMediaUploadService
 {
+    /// <summary>The window of the daily upload budget (<c>Media:DailyUploadLimit</c>): every upload URL issued in it counts,
+    /// whatever became of the upload. The abandoned-uploads cleanup keeps its rows at least this long.</summary>
+    public static readonly TimeSpan UploadBudgetWindow = TimeSpan.FromDays(1);
+
     public const string FileRejectedCode = "FILE_REJECTED";
     public const string FileNameRequiredCode = "FILE_NAME_REQUIRED";
     public const string UploadLimitReachedCode = "UPLOAD_LIMIT_REACHED";
@@ -53,7 +57,7 @@ public sealed class MediaUploadService : IMediaUploadService
 
         // The daily budget: every link can put a blob in storage. A soft limit — two requests racing at the edge may
         // both pass; the per-IP RequestMediaUpload rate limit bounds that.
-        var issued = await _repository.CountIssuedSinceAsync(creatorId, now.AddDays(-1), ct);
+        var issued = await _repository.CountIssuedSinceAsync(creatorId, now - UploadBudgetWindow, ct);
         if (issued >= _options.DailyUploadLimit)
         {
             throw new ConflictException(

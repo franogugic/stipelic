@@ -1,0 +1,25 @@
+# Only what the image build needs: the sources under src/, the solution-wide build props and global.json.
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/*.user
+**/.DS_Store
+.git/
+.gitignore
+.claude/
+.gstack/
+
+tests/
+deploy/
+docker-compose*.yml
+Dockerfile
+.dockerignore
+*.md
+
+# Never in an image: local secrets and per-developer settings.
+**/appsettings.Development.json
+**/appsettings.*.local.json
+**/secrets.json
+**/.env
+**/*.env

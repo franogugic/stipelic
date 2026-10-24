@@ -1,0 +1,190 @@
+# Production stack for one Hetzner VPS (draft). See deploy/README.md for the first deploy, updates and what is still open.
+#
+#   cd deploy && docker compose -f docker-compose.prod.yml --env-file .env up -d
+#
+# Start order: postgres (healthy) -> migrate (runs the pending migrations and exits 0) -> api + worker -> proxy.
+# A failed migration (exit 1) keeps the API and the Worker from starting on an unknown schema.
+#
+# Files next to this one, never in git:
+#   .env       compose variables: image tags, domain, the Postgres and Redis passwords (see .env.example)
+#   luma.env   the application settings and secrets shared by the API and the Worker (see luma.env.example)
+# Both chmod 600, owned by the deploy user.
+
+name: luma
+
+x-logging: &logging
+  # The json-file driver rotates, so container logs cannot fill the disk. Chapter 10 ships them somewhere searchable.
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-backend: &backend
+  image: ${LUMA_BACKEND_IMAGE:-luma-backend}:${LUMA_TAG:?set LUMA_TAG in .env}
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  # dotnet must not be PID 1: as PID 1 a crash on start (e.g. an invalid setting) never ends the process (abort's
+  # signal is ignored), so the container hangs instead of exiting, and neither the restart policy nor depends_on reacts.
+  init: true
+  logging: *logging
+
+x-database: &database-connection
+  ConnectionStrings__Database: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-luma};Username=${POSTGRES_USER:-luma};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env};SSL Mode=Disable"
+
+services:
+  postgres:
+    # Same major version and image family (Debian, glibc collations) as development and the tests.
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-luma}
+      POSTGRES_USER: ${POSTGRES_USER:-luma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    shm_size: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks: [data]
+    logging: *logging
+
+  # Cache and rate-limit counters only (REDIS.md): nothing survives a restart, so no volume and no persistence.
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [data]
+    logging: *logging
+
+  # One-shot: applies the pending EF Core migrations, then exits. Database:AutoMigrate stays false everywhere.
+  migrate:
+    <<: *backend
+    command: ["--migrate"]
+    restart: "no"
+    environment:
+      <<: *database-connection
+      ASPNETCORE_ENVIRONMENT: Production
+      # The API's start guard (PR 1) requires real host names outside Development, also for --migrate, which builds
+      # the API's registrations. The migration needs no other setting and gets no secret.
+      AllowedHosts: ${LUMA_DOMAIN:?set LUMA_DOMAIN in .env}
+      Logging__Console__FormatterName: json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [data]
+
+  api:
+    <<: *backend
+    restart: unless-stopped
+    env_file: [luma.env]
+    environment:
+      <<: *database-connection
+      ASPNETCORE_ENVIRONMENT: Production
+      Database__AutoMigrate: "false"
+      Redis__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
+      Redis__KeyPrefix: "luma:prod:"
+      # Only the edge proxy may say who the client is; it appends exactly one X-Forwarded-For entry.
+      ForwardedHeaders__KnownProxies__0: ${PROXY_IP:-172.31.250.10}
+      ForwardedHeaders__ForwardLimit: "1"
+      Logging__Console__FormatterName: json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      # Redis may be down: the API degrades (REDIS.md), so it only waits for the container to exist.
+      redis:
+        condition: service_started
+    # The proxy probes /health (Caddy active health checks); the chiseled image has no shell for a Docker healthcheck.
+    stop_grace_period: 30s
+    networks: [edge, data]
+
+  worker:
+    <<: *backend
+    working_dir: /app/worker
+    entrypoint: ["dotnet", "CreatorPlatform.Worker.dll"]
+    restart: unless-stopped
+    env_file: [luma.env]
+    environment:
+      <<: *database-connection
+      DOTNET_ENVIRONMENT: Production
+      Logging__Console__FormatterName: json
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    # Lets an in-flight outbox batch finish on a deploy or restart (the host's own shutdown timeout is 30 s).
+    stop_grace_period: 45s
+    # data: Postgres. outbound: the email provider (the data network has no internet access).
+    networks: [data, outbound]
+
+  # Built from the frontend checkout with deploy/frontend/Dockerfile (README: "Build the images"); compose does not
+  # build it, because its build context is another repository.
+  web:
+    image: ${LUMA_WEB_IMAGE:-luma-web}:${LUMA_TAG:?set LUMA_TAG in .env}
+    restart: unless-stopped
+    networks: [edge]
+    logging: *logging
+
+  # Edge proxy (placeholder config, see Caddyfile): TLS via Let's Encrypt, HTTP -> HTTPS, /api + /webhooks + /health
+  # to the API, everything else to the web app.
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      LUMA_DOMAIN: ${LUMA_DOMAIN:?set LUMA_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, web]
+    networks:
+      edge:
+        ipv4_address: ${PROXY_IP:-172.31.250.10}
+    logging: *logging
+
+networks:
+  # Proxy, web app and API. A fixed subnet so the proxy has a fixed address the API can trust.
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.31.250.0/24}
+  # Postgres and Redis: reachable only from the backend containers, no internet access, no published ports.
+  data:
+    internal: true
+  # The Worker's way out (email provider). The API reaches Stripe, ACS and Blob storage through the edge network.
+  outbound: {}
+
+volumes:
+  postgres_data:
+  caddy_data:     # certificates and ACME account: keep it, or Let's Encrypt rate limits bite on the next start
+  caddy_config:

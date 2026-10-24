@@ -77,6 +77,17 @@ public class EmailOutboxMessageTests
     }
 
     [Fact]
+    public void MarkAsFailed_CutsALongError_ToTheColumnLength()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var message = BuildProcessingMessage(now);
+
+        message.MarkAsFailed(new string('x', 5000), now.AddMinutes(1), maxRetryCount: 3);
+
+        Assert.Equal(EmailOutboxMessage.LastErrorMaxLength, message.LastError!.Length);
+    }
+
+    [Fact]
     public void Requeue_FromFailed_ResetsToRetryablePending()
     {
         var now = DateTimeOffset.UtcNow;

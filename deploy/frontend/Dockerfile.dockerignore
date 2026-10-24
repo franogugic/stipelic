@@ -1,0 +1,14 @@
+# Applies to the frontend checkout used as the build context (BuildKit reads <Dockerfile>.dockerignore first).
+**/node_modules/
+dist/
+dist-ssr/
+.git/
+.claude/
+.vscode/
+.idea/
+**/.DS_Store
+*.log
+# Local env files hold developer logins; the build gets its public values through --build-arg only.
+.env
+.env.*
+!.env.example

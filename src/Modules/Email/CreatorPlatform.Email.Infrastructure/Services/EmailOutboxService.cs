@@ -13,6 +13,10 @@ public sealed class EmailOutboxService : IEmailOutboxService
     private readonly CreatorPlatformDbContext _context;
     private readonly EmailOptions _options;
 
+    // The next campaign queue position per creator within this scope (one request or one scheduled dispatch): looked up
+    // once per creator, then counted on, because the rows queued so far are not flushed yet.
+    private readonly Dictionary<int, long> _nextQueuePosition = [];
+
     public EmailOutboxService(CreatorPlatformDbContext context, IOptions<EmailOptions> options)
     {
         _context = context;
@@ -87,6 +91,7 @@ public sealed class EmailOutboxService : IEmailOutboxService
     }
 
     public async Task QueueCampaignAsync(
+        int creatorId,
         string toEmail,
         string subject,
         string htmlBody,
@@ -96,6 +101,10 @@ public sealed class EmailOutboxService : IEmailOutboxService
         string correlationKey,
         CancellationToken ct)
     {
+        if (!_nextQueuePosition.TryGetValue(creatorId, out var position))
+            position = await GetCampaignQueueStartAsync(creatorId, ct);
+        _nextQueuePosition[creatorId] = position + 1;
+
         var message = EmailOutboxMessage.Create(
             EmailOutboxMessagePurpose.CampaignBroadcast,
             correlationKey,
@@ -105,10 +114,28 @@ public sealed class EmailOutboxService : IEmailOutboxService
             plainTextBody,
             DateTimeOffset.UtcNow,
             replyTo,
-            listUnsubscribeUrl);
+            listUnsubscribeUrl,
+            creatorId,
+            position);
 
         await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
     }
+
+    /// <summary>
+    /// Start-time fair queuing: a creator's new campaign mail starts at the head of the campaign queue (the lowest position
+    /// still waiting), so it is sent alternately with everyone else's from now on; or right after the creator's own mail
+    /// still waiting, if that ends later, so one creator never holds more than one share. Both lookups use the partial
+    /// indexes IX_email_outbox_messages_CampaignQueue and _CreatorCampaignQueue (same filter).
+    /// </summary>
+    private async Task<long> GetCampaignQueueStartAsync(int creatorId, CancellationToken ct) =>
+        await _context.Database.SqlQuery<long>($"""
+            SELECT GREATEST(
+                COALESCE((SELECT MIN("QueuePosition") FROM email.email_outbox_messages
+                          WHERE "Purpose" = 'CampaignBroadcast' AND "Status" IN ('Pending', 'Processing')), 0),
+                COALESCE((SELECT MAX("QueuePosition") + 1 FROM email.email_outbox_messages
+                          WHERE "Purpose" = 'CampaignBroadcast' AND "Status" IN ('Pending', 'Processing')
+                            AND "CreatorId" = {creatorId}), 0)) AS "Value"
+            """).SingleAsync(ct);
 
     private EmailBranding Branding => new(_options.LogoUrl, _options.HelpUrl, _options.PrivacyUrl, _options.SupportEmail);
 
