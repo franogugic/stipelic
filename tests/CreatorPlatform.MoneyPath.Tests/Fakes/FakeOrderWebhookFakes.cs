@@ -138,6 +138,7 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
     }
 
     public Task QueueCampaignAsync(
+        int creatorId,
         string toEmail,
         string subject,
         string htmlBody,

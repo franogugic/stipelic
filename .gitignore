@@ -483,3 +483,7 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 appsettings.Development.json
+
+# Production deploy: real settings and secrets, next to deploy/docker-compose.prod.yml (templates: *.example)
+/deploy/.env
+/deploy/luma.env

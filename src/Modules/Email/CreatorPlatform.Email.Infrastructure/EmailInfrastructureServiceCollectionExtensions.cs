@@ -42,8 +42,11 @@ public static class EmailInfrastructureServiceCollectionExtensions
         }
         else
         {
-            services.AddSingleton(serviceProvider =>
-                new EmailClient(serviceProvider.GetRequiredService<IOptions<EmailOptions>>().Value.ConnectionString));
+            // Few SDK retries: the outbox has its own retries and pauses all sending on a 429, and each send has a
+            // timeout (Email:Outbox:SendTimeoutSeconds) that long SDK retry waits would only run into.
+            services.AddSingleton(serviceProvider => new EmailClient(
+                serviceProvider.GetRequiredService<IOptions<EmailOptions>>().Value.ConnectionString,
+                new EmailClientOptions { Retry = { MaxRetries = 2, NetworkTimeout = TimeSpan.FromSeconds(20) } }));
             services.AddScoped<IEmailSender, AzureEmailSender>();
         }
 

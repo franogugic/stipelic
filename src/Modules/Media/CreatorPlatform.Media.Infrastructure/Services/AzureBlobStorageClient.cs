@@ -70,6 +70,9 @@ public sealed class AzureBlobStorageClient : IBlobStorageClient
         }
     }
 
+    public async Task DeleteIfExistsAsync(string blobUrl, CancellationToken ct) =>
+        await GetBlobClientFromUrl(blobUrl).DeleteIfExistsAsync(DeleteSnapshotsOption.IncludeSnapshots, cancellationToken: ct);
+
     private BlobClient GetBlobClientFromUrl(string blobUrl)
     {
         var uri = new Uri(blobUrl);

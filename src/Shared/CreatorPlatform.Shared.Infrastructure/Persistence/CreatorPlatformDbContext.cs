@@ -1,42 +1,33 @@
 using Microsoft.EntityFrameworkCore;
-using System.Reflection;
 
 namespace CreatorPlatform.Shared.Infrastructure.Persistence;
 
 public sealed class CreatorPlatformDbContext : DbContext
 {
+    private readonly DbContextOptions<CreatorPlatformDbContext> _options;
+
     public CreatorPlatformDbContext(DbContextOptions<CreatorPlatformDbContext> options)
         : base(options)
     {
+        _options = options;
     }
 
+    /// <summary>
+    /// The model is built from the configuration assemblies the host registered with
+    /// <see cref="EntityConfigurationAssemblies.UseEntityConfigurationsFrom"/> (each module keeps its own configurations).
+    /// Without them the context refuses to build a model: a host with no or partial mappings would otherwise run against
+    /// tables it maps wrongly or not at all.
+    /// </summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        
-        // za sat ne triba jer u ovom proejktu nema konfig nikakve
-        //modelBuilder.ApplyConfigurationsFromAssembly(typeof(CreatorPlatformDbContext).Assembly);
 
-        foreach (var assembly in GetLoadedInfrastructureAssemblies())
-        {
+        var configurations = _options.FindExtension<EntityConfigurationAssembliesExtension>()
+            ?? throw new InvalidOperationException(
+                $"{nameof(CreatorPlatformDbContext)} has no entity configuration assemblies. Register them with " +
+                $"options.{nameof(EntityConfigurationAssemblies.UseEntityConfigurationsFrom)}(...) where the context is added.");
+
+        foreach (var assembly in configurations.Assemblies)
             modelBuilder.ApplyConfigurationsFromAssembly(assembly);
-        }
-    }
-
-    // pokupi sve assyempye koji pocinju s creatorplatofr i zavrsavaju s .inf
-    // da skupimo sve konfiguracije jer su raspojedljenje po modulesima
-    private static IEnumerable<Assembly> GetLoadedInfrastructureAssemblies()
-    {
-        return AppDomain.CurrentDomain
-            .GetAssemblies()
-            .Where(assembly =>
-            {
-                var assemblyName = assembly.GetName().Name;
-
-                return assemblyName is not null
-                    && assemblyName.StartsWith("CreatorPlatform.", StringComparison.Ordinal)
-                    && assemblyName.EndsWith(".Infrastructure", StringComparison.Ordinal)
-                    && assembly != typeof(CreatorPlatformDbContext).Assembly;
-            });
     }
 }

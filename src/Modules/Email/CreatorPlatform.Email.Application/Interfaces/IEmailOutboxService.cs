@@ -31,8 +31,13 @@ public interface IEmailOutboxService
     /// plainText are expected to already have <c>{{UNSUBSCRIBE_URL}}</c> substituted with
     /// <paramref name="listUnsubscribeUrl"/> for this exact recipient — the caller renders the branded
     /// template once per campaign, not once per call to this method. Add-only, like every other Queue*
-    /// method here — the caller's unit of work flushes it (send pipeline, Marketing module).</summary>
+    /// method here — the caller's unit of work flushes it (send pipeline, Marketing module).
+    ///
+    /// <paramref name="creatorId"/> is the unit of sending fairness: each message gets the next position in that creator's
+    /// share of the campaign queue. Call it inside the creator's campaign lock, so two campaigns of one creator are
+    /// numbered one after the other.</summary>
     Task QueueCampaignAsync(
+        int creatorId,
         string toEmail,
         string subject,
         string htmlBody,

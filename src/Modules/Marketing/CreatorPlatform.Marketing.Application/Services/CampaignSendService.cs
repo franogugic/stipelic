@@ -431,6 +431,7 @@ public sealed class CampaignSendService : ICampaignSendService
             }
 
             await _emailOutboxService.QueueCampaignAsync(
+                context.CreatorId,
                 recipient.Email,
                 rendered.Subject,
                 htmlBody,

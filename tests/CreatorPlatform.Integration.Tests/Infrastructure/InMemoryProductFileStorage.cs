@@ -21,6 +21,19 @@ public sealed class InMemoryProductFileStorage : IProductFileStorage
     public Task<byte[]> ReadHeadAsync(string blobPath, int byteCount, CancellationToken ct) =>
         Task.FromResult(Blobs.TryGetValue(blobPath, out var blob) ? blob.Bytes.Take(byteCount).ToArray() : []);
 
+    /// <summary>Makes <see cref="DeleteIfExistsAsync"/> fail, as an unreachable storage account would.</summary>
+    public bool FailStrictDeletes { get; set; }
+
+    public Task DeleteIfExistsAsync(string blobPath, CancellationToken ct)
+    {
+        if (FailStrictDeletes)
+            throw new IOException("Storage is unavailable.");
+
+        DeleteCalls.Add(blobPath);
+        Blobs.Remove(blobPath);
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAsync(string blobPath, CancellationToken ct)
     {
         DeleteCalls.Add(blobPath);

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using CreatorPlatform.Api.Controllers;
+using CreatorPlatform.Api.Hosting;
 using CreatorPlatform.Api.Webhooks;
 using CreatorPlatform.Creators.Application.Interfaces;
 using CreatorPlatform.Integration.Tests.Infrastructure;
@@ -54,7 +55,9 @@ public sealed class StripeWebhooksControllerTests : IAsyncDisposable
     {
         _fixture = fixture;
         _services = new ServiceCollection()
-            .AddDbContext<CreatorPlatformDbContext>(options => options.UseNpgsql(fixture.ConnectionString))
+            .AddDbContext<CreatorPlatformDbContext>(options => options
+                .UseNpgsql(fixture.ConnectionString)
+                .UseEntityConfigurationsFrom(ApiEntityConfigurations.Assemblies))
             .AddScoped<IWebhookFailureRepository, WebhookFailureRepository>()
             .AddScoped<IProcessedWebhookEventStore, ProcessedWebhookEventStore>()
             .BuildServiceProvider();

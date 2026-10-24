@@ -138,7 +138,7 @@ public sealed class ClickTrackingTests
 
         return messages.ToDictionary(
             m => m.ToEmail,
-            m => TrackedUrl.Matches(m.HtmlBody)
+            m => TrackedUrl.Matches(m.HtmlBody!)
                 .Select(match => match.Groups["token"].Value)
                 .Distinct()
                 .ToDictionary(token => links.Single(l => l.Id == tokens.TryParse(token)!.LinkId).Url));
