@@ -184,7 +184,8 @@ public sealed class EmailOutboxMessage
 
     public DateTimeOffset CreatedAt { get; private set; }
 
-    /// <summary>The creator a campaign message is sent for (null for transactional mail): the unit of fairness.</summary>
+    /// <summary>The creator the message is sent for: a campaign's (the unit of fairness), and a buyer's or lead's email
+    /// too, so deleting the workspace deletes its mail. Null for account mail (verification, password reset, …).</summary>
     public int? CreatorId { get; private set; }
 
     /// <summary>

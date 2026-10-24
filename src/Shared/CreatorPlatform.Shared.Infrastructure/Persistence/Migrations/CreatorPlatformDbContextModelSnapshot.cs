@@ -1075,6 +1075,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatorId");
+
                     b.HasIndex("SentAt")
                         .HasDatabaseName("IX_email_outbox_messages_SentAt_WithBodies")
                         .HasFilter("\"Status\" = 'Sent' AND \"HtmlBody\" IS NOT NULL");

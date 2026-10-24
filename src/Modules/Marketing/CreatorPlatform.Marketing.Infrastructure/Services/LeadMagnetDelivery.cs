@@ -98,6 +98,7 @@ public sealed class LeadMagnetDelivery : ILeadMagnetDelivery
 
         var brandName = string.IsNullOrWhiteSpace(delivery.BrandName) ? delivery.CreatorName : delivery.BrandName;
         await _emailOutboxService.QueueLeadMagnetAsync(
+            creatorId,
             normalizedEmail,
             $"lead:{delivery.EmailCaptureId}:{delivery.ProductId}",
             new LeadMagnetEmail(

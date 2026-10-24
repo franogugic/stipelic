@@ -141,13 +141,13 @@ public sealed class ProductAccessTests
             """).ToListAsync();
     }
 
-    private sealed record OutboxRow(string Subject, string HtmlBody, string PlainTextBody);
+    private sealed record OutboxRow(string Subject, string HtmlBody, string PlainTextBody, int? CreatorId);
 
     private async Task<List<OutboxRow>> OutboxAsync(string toEmail, string purpose)
     {
         await using var db = _fixture.CreateDbContext();
         return await db.Database.SqlQuery<OutboxRow>($"""
-            SELECT "Subject", "HtmlBody", "PlainTextBody" FROM email.email_outbox_messages
+            SELECT "Subject", "HtmlBody", "PlainTextBody", "CreatorId" FROM email.email_outbox_messages
             WHERE "ToEmail" = {toEmail} AND "Purpose" = {purpose}
             ORDER BY "CreatedAt"
             """).ToListAsync();
@@ -173,6 +173,7 @@ public sealed class ProductAccessTests
 
         var email = Assert.Single(await OutboxAsync(buyer, "OrderAccess"));
         Assert.Equal("Your Adriatic Presets", email.Subject);
+        Assert.Equal(creator.CreatorId, email.CreatorId);
         Assert.Contains($"https://app.luma.test/d/{grant.Token}", email.HtmlBody);
         Assert.Contains($"https://app.luma.test/d/{grant.Token}", email.PlainTextBody);
 
@@ -324,6 +325,7 @@ public sealed class ProductAccessTests
         var grant = Assert.Single(await CaptureGrantsAsync(page, email));
         var sent = Assert.Single(await OutboxAsync(email, LeadMagnetPurpose));
         Assert.Equal("Your free download: Adriatic Presets", sent.Subject);
+        Assert.Equal(creator.CreatorId, sent.CreatorId);
         Assert.Contains($"https://app.luma.test/d/{grant.Token}", sent.HtmlBody);
         Assert.Contains("/unsubscribe/", sent.HtmlBody);
 

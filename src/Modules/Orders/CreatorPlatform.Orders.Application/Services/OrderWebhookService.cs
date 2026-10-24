@@ -82,6 +82,7 @@ public sealed class OrderWebhookService : IOrderWebhookService
             var emailContext = await _creatorContextProvider.GetOrderEmailContextAsync(order.ProductId, ct);
 
             await _emailOutboxService.QueueOrderAccessAsync(
+                order.CreatorId,
                 buyerEmail,
                 order.PublicId.ToString(),
                 new OrderAccessEmail(

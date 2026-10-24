@@ -149,6 +149,7 @@ public class OrderWebhookServiceTests
         Assert.Equal("buyer@example.com", grant.Email);
         Assert.Null(grant.RevokedAt);
         Assert.Equal(1, outbox.OrderAccessQueuedCount);
+        Assert.Equal(order.CreatorId, outbox.LastOrderAccessCreatorId);
         Assert.Equal($"https://app.example.com/d/{grant.Token}", outbox.LastOrderAccess!.DownloadUrl);
         Assert.Equal("ZIP · 17.5 MB", outbox.LastOrderAccess.FileLabel);
     }
