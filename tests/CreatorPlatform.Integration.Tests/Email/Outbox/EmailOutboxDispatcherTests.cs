@@ -4,6 +4,8 @@ using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Email.Domain.Outbox;
 using CreatorPlatform.Email.Infrastructure.Outbox;
 using CreatorPlatform.Integration.Tests.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -250,6 +252,30 @@ public sealed class EmailOutboxDispatcherTests : IAsyncLifetime
         await outbox.DrainAsync();
 
         Assert.Equal([recipients[1]], outbox.Sender.Sent);
+    }
+
+    [Fact]
+    public async Task AMessageDeletedWhileBeingSent_IsSkipped_NotLoggedAsAFailure()
+    {
+        // Deleting the workspace deletes its mail, also a message the dispatcher has already claimed.
+        var to = await OutboxQueue.TransactionalAsync(_database, "deleted-workspace");
+        var sender = new RecordingEmailSender
+        {
+            FailWith = recipient =>
+            {
+                using var db = _database.CreateDbContext();
+                db.Database.ExecuteSql($"DELETE FROM email.email_outbox_messages WHERE \"ToEmail\" = {recipient}");
+                return null;
+            }
+        };
+        var logger = new ListLogger<EmailOutboxDispatcher>();
+        await using var outbox = new OutboxHarness(_database, OutboxHarness.Options(), OutboxClock.Now(), sender, logger);
+
+        await outbox.DrainAsync();
+
+        Assert.Equal([to], sender.Sent);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level >= LogLevel.Warning);
+        Assert.Equal(0, (await outbox.Dispatcher.DispatchOnceAsync(CancellationToken.None)).Claimed);
     }
 }
 

@@ -16,6 +16,9 @@ public sealed class FakeCheckoutSessionService : ISubscriptionCheckoutSessionSer
 
     public List<string> ExpireCalls { get; } = [];
 
+    /// <summary>Runs inside ExpireAsync, before it answers: models something happening while Stripe is called.</summary>
+    public Func<string, Task>? OnExpire { get; set; }
+
     public sealed record CreateCall(
         string StripePriceId, string? CustomerId, IReadOnlyDictionary<string, string> Metadata, string SessionId);
 
@@ -41,7 +44,16 @@ public sealed class FakeCheckoutSessionService : ISubscriptionCheckoutSessionSer
         if (ExpireFailure is not null)
             throw ExpireFailure;
 
+        if (OnExpire is not null)
+            return RunHookAsync();
+
         return Task.FromResult(ExpireOutcome);
+
+        async Task<CheckoutSessionExpireOutcome> RunHookAsync()
+        {
+            await OnExpire(checkoutSessionId);
+            return ExpireOutcome;
+        }
     }
 }
 

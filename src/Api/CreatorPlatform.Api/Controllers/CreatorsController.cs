@@ -120,11 +120,31 @@ public sealed class CreatorsController : ControllerBase
 
     [HttpDelete("current")]
     [EnableRateLimiting(RateLimitPolicies.DeleteWorkspace)]
-    public async Task<ActionResult<ApiResponse<object>>> DeleteCurrent(CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<object>>> DeleteCurrent(
+        [FromServices] IWorkspaceErasure erasure,
+        [FromServices] ILogger<CreatorsController> logger,
+        CancellationToken ct)
     {
         var currentUser = GetVerifiedUser();
 
+        // Billing stopped and the workspace disabled: from here on it is gone for its owner and everyone else.
         var creatorId = await _creatorService.DeleteCurrentAsync(currentUser.Id, ct);
+
+        // Then its data and files are erased. Whatever is left (Stripe unreachable, a sale completing right now, storage
+        // failing) the maintenance worker finishes, so the deletion itself has succeeded either way.
+        try
+        {
+            var outcome = await erasure.FinishAsync(creatorId, DateTimeOffset.UtcNow, CancellationToken.None);
+            if (outcome != WorkspaceErasureOutcome.Done)
+                logger.LogInformation(
+                    "Deleted workspace {CreatorId} is not fully erased yet ({Outcome}); the maintenance worker finishes it.",
+                    creatorId, outcome);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception,
+                "Erasing deleted workspace {CreatorId} failed; the maintenance worker finishes it.", creatorId);
+        }
 
         // A disabled workspace already fails every ownership check, so nothing can read these entries any more;
         // drop the longer-lived ones anyway rather than leave the data cached for minutes.
@@ -133,7 +153,7 @@ public sealed class CreatorsController : ControllerBase
 
         return Ok(ApiResponse<object>.Success(
             StatusCodes.Status200OK,
-            "Creator disabled.",
+            "Workspace deleted.",
             null));
     }
 

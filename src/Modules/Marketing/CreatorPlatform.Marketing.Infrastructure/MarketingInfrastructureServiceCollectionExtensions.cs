@@ -4,6 +4,8 @@ using CreatorPlatform.Marketing.Application.Services;
 using CreatorPlatform.Marketing.Infrastructure.Persistence;
 using CreatorPlatform.Marketing.Infrastructure.Repositories;
 using CreatorPlatform.Marketing.Infrastructure.Services;
+using CreatorPlatform.Marketing.Infrastructure.Workspaces;
+using CreatorPlatform.Shared.Application.Workspaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CreatorPlatform.Marketing.Infrastructure;
@@ -39,6 +41,8 @@ public static class MarketingInfrastructureServiceCollectionExtensions
         services.AddScoped<IContactImportRepository, ContactImportRepository>();
         services.AddScoped<IContactImportService, ContactImportService>();
         services.AddScoped<CreatorPlatform.Analytics.Application.Interfaces.ILeadMagnetDelivery, LeadMagnetDelivery>();
+
+        services.AddScoped<IWorkspaceDataPurger, MarketingWorkspaceDataPurger>();
 
         return services;
     }

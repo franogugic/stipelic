@@ -1,5 +1,7 @@
 using CreatorPlatform.LandingPages.Application.Interfaces;
 using CreatorPlatform.LandingPages.Application.Services;
+using CreatorPlatform.LandingPages.Infrastructure.Workspaces;
+using CreatorPlatform.Shared.Application.Workspaces;
 
 using CreatorPlatform.LandingPages.Infrastructure.Persistence;
 using CreatorPlatform.LandingPages.Infrastructure.Repositories;
@@ -18,6 +20,8 @@ public static class LandingPagesInfrastructureServiceCollectionExtensions
         services.AddScoped<ILandingPageSectionRepository, LandingPageSectionRepository>();
         services.AddScoped<ICreatorContextProvider, CreatorContextProvider>();
         services.AddScoped<ILandingPagesUnitOfWork, LandingPagesUnitOfWork>();
+
+        services.AddScoped<IWorkspaceDataPurger, LandingPagesWorkspaceDataPurger>();
 
         return services;
     }

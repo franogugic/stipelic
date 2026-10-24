@@ -68,6 +68,30 @@ public sealed class Creator
         UpdatedAt = updatedAt;
     }
 
+    public const string DeletedName = "Deleted workspace";
+
+    /// <summary>
+    /// The erasure's last step: the row stays only as the tombstone the kept orders and subscriptions point at. It no
+    /// longer belongs to anyone (the owner can start a new workspace and later delete their account), its name and slug
+    /// say nothing (the slug is free again), and the Connect status is gone. It keeps its public id, country, currency,
+    /// creation date and Stripe ids: the customer carries the platform's invoices to the creator, the connected account
+    /// takes refunds and disputes of kept sales until it is deleted itself (maintenance, 180 days later).
+    /// </summary>
+    public void MarkDeleted(DateTimeOffset deletedAt)
+    {
+        Status = CreatorStatus.Disabled;
+        OwnerUserId = null;
+        Name = DeletedName;
+        Slug = $"deleted-{PublicId:N}";
+        StripeConnectDetailsSubmitted = false;
+        StripeConnectChargesEnabled = false;
+        StripeConnectPayoutsEnabled = false;
+        StripeConnectDetailsSubmittedAt = null;
+        StripeConnectPayoutsEnabledAt = null;
+        DeletedAt ??= deletedAt;
+        UpdatedAt = deletedAt;
+    }
+
     public void Activate(DateTimeOffset updatedAt)
     {
         Status = CreatorStatus.Active;
@@ -119,7 +143,8 @@ public sealed class Creator
 
     public Guid PublicId { get; private set; }
 
-    public int OwnerUserId { get; private set; }
+    /// <summary>Null only on a deleted workspace's tombstone.</summary>
+    public int? OwnerUserId { get; private set; }
 
     public string Name { get; private set; } = string.Empty;
 
@@ -152,4 +177,11 @@ public sealed class Creator
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    /// <summary>When the workspace's data was erased (<see cref="MarkDeleted"/>); null while it exists, and for a workspace
+    /// only disabled so far.</summary>
+    public DateTimeOffset? DeletedAt { get; private set; }
+
+    /// <summary>When the deleted workspace's files were gone from storage; null until then (the maintenance worker retries).</summary>
+    public DateTimeOffset? FilesDeletedAt { get; private set; }
 }

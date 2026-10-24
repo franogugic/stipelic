@@ -3,6 +3,8 @@ using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Orders.Infrastructure.Persistence;
 using CreatorPlatform.Orders.Infrastructure.Repositories;
 using CreatorPlatform.Orders.Infrastructure.Services;
+using CreatorPlatform.Orders.Infrastructure.Workspaces;
+using CreatorPlatform.Shared.Application.Workspaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CreatorPlatform.Orders.Infrastructure;
@@ -22,6 +24,8 @@ public static class OrdersInfrastructureServiceCollectionExtensions
         services.AddScoped<IOrderWebhookService, OrderWebhookService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IOrderReceiptService, OrderReceiptService>();
+
+        services.AddScoped<IWorkspaceDataPurger, OrdersWorkspaceDataPurger>();
 
         return services;
     }
