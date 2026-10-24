@@ -21,7 +21,7 @@ public sealed class Order
         int platformFeeBasisPoints,
         int platformFeeCents,
         string payoutMode,
-        string stripeCheckoutSessionId,
+        string? stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
         PublicId = publicId;
@@ -52,7 +52,7 @@ public sealed class Order
         int platformFeeBasisPoints,
         int platformFeeCents,
         string payoutMode,
-        string stripeCheckoutSessionId,
+        string? stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
         return new Order(
@@ -70,6 +70,24 @@ public sealed class Order
             payoutMode,
             stripeCheckoutSessionId,
             createdAt);
+    }
+
+    /// <summary>Links the Stripe Checkout session created for this (already saved) Pending order. Repeating it with the
+    /// same session is a no-op; a second, different session for one order is a bug and throws.</summary>
+    public void AttachCheckoutSession(string stripeCheckoutSessionId, DateTimeOffset attachedAt)
+    {
+        if (string.IsNullOrWhiteSpace(stripeCheckoutSessionId))
+            throw new ArgumentException("A Checkout session id is required.", nameof(stripeCheckoutSessionId));
+
+        if (StripeCheckoutSessionId == stripeCheckoutSessionId)
+            return;
+
+        if (StripeCheckoutSessionId is not null)
+            throw new InvalidOperationException(
+                $"Order {PublicId} already has Checkout session {StripeCheckoutSessionId}; refusing {stripeCheckoutSessionId}.");
+
+        StripeCheckoutSessionId = stripeCheckoutSessionId;
+        UpdatedAt = attachedAt;
     }
 
     /// <summary>Stripe Checkout collects the buyer's email when the page didn't ask for it, so it arrives here.
@@ -93,16 +111,37 @@ public sealed class Order
         UpdatedAt = paidAt;
     }
 
+    /// <summary>A Pending order that can no longer be paid: its session expired, or creating the session failed.</summary>
     public void MarkFailed(DateTimeOffset updatedAt)
     {
+        if (Status != OrderStatus.Pending)
+            throw new InvalidOperationException($"Order {PublicId} is {Status}; only a Pending order can fail.");
+
         Status = OrderStatus.Failed;
         UpdatedAt = updatedAt;
     }
 
-    public void MarkRefunded(DateTimeOffset updatedAt)
+    /// <summary>Applies Stripe's cumulative refunded amount, converted to the order's currency. Below
+    /// <see cref="AmountCents"/> the order stays Paid ("partly refunded") and the buyer keeps access; at the full amount
+    /// it becomes Refunded. Returns false, changing nothing, when the amount is not above what is already applied
+    /// (a replayed or out-of-order event) or the order is not Paid.</summary>
+    public bool ApplyRefund(int refundedToCents, DateTimeOffset refundedAt)
     {
-        Status = OrderStatus.Refunded;
-        UpdatedAt = updatedAt;
+        if (Status != OrderStatus.Paid || refundedToCents <= RefundedCents)
+            return false;
+
+        if (refundedToCents >= AmountCents)
+        {
+            RefundedCents = AmountCents;
+            Status = OrderStatus.Refunded;
+        }
+        else
+        {
+            RefundedCents = refundedToCents;
+        }
+
+        UpdatedAt = refundedAt;
+        return true;
     }
 
     public int Id { get; private set; }
@@ -137,9 +176,25 @@ public sealed class Order
     /// <summary>Snapshot of the creator's payout mode at purchase time ("StripeConnect" / "BankTransfer").</summary>
     public string PayoutMode { get; private set; } = string.Empty;
 
-    public string StripeCheckoutSessionId { get; private set; } = string.Empty;
+    /// <summary>Null only between saving the Pending order and creating its Checkout session — and for good when
+    /// creating the session failed (the order is then Failed).</summary>
+    public string? StripeCheckoutSessionId { get; private set; }
 
     public string? StripePaymentIntentId { get; private set; }
+
+    /// <summary>How much of <see cref="AmountCents"/> has been refunded, in the order's currency. Equal to it once
+    /// Refunded; between 0 and it on a Paid order that was partly refunded.</summary>
+    public int RefundedCents { get; private set; }
+
+    public bool IsPartlyRefunded => Status == OrderStatus.Paid && RefundedCents > 0;
+
+    /// <summary>What the sale still keeps: <see cref="AmountCents"/> minus <see cref="RefundedCents"/>. A stored column
+    /// computed by the database — the figure every revenue total sums; stale in memory until the order is saved.</summary>
+    public int KeptAmountCents { get; private set; }
+
+    /// <summary>The platform fee the sale still keeps: the fee minus its share of the refunded part, rounded as the
+    /// ledger's fee refund is. Computed by the database, like <see cref="KeptAmountCents"/>.</summary>
+    public int KeptPlatformFeeCents { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
 

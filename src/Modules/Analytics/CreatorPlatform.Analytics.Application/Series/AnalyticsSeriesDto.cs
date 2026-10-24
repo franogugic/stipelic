@@ -42,7 +42,7 @@ public sealed record AnalyticsRangeDto(DateTimeOffset From, DateTimeOffset To);
 /// <param name="Emails">Distinct emails collected (across the product's pages for a product). For the workspace: new
 /// contacts, counted in the bucket their first capture falls in.</param>
 /// <param name="Sales">Paid orders, by PaidAt (else CreatedAt).</param>
-/// <param name="RevenueCents">Their AmountCents.</param>
+/// <param name="RevenueCents">What they keep: AmountCents minus partial refunds.</param>
 /// <param name="Downloads">Download requests through personal links, on the day they happen (repeats included; none before
 /// the R6.2 release): the product's links for a product, the links that came from the page for a page, every link for
 /// the workspace.</param>
@@ -61,14 +61,14 @@ public sealed record AnalyticsBestMonthDto(
 /// <param name="Month">"yyyy-MM" (local).</param>
 public sealed record AnalyticsMonthValueDto(string Month, long Value);
 
-/// <param name="RefundCount">The product's orders refunded in the period (by refund time).</param>
-/// <param name="RefundedCents">Their AmountCents.</param>
+/// <param name="RefundCount">The product's orders with a refund, full or partial, in the period (by the latest refund time).</param>
+/// <param name="RefundedCents">Their RefundedCents.</param>
 /// <param name="CreatorRevenueCents">All the creator's paid revenue in the same period — for "share of your revenue".</param>
 public sealed record AnalyticsProductExtrasDto(int RefundCount, long RefundedCents, long CreatorRevenueCents);
 
 /// <summary>The period's refunds, customers and sign-ups — of the workspace, or of one product (R6.3). No fee.</summary>
-/// <param name="RefundCount">Orders refunded in the period (by refund time).</param>
-/// <param name="RefundedCents">Their AmountCents.</param>
+/// <param name="RefundCount">Orders with a refund, full or partial, in the period (by the latest refund time).</param>
+/// <param name="RefundedCents">Their RefundedCents.</param>
 /// <param name="Customers">Distinct buyers (lower-cased email) with a Paid order counted in the period (PaidAt, else CreatedAt).</param>
 /// <param name="PreviousCustomers">The same for the previous window; null for "all".</param>
 /// <param name="ReturningCustomers">Of <paramref name="Customers"/>, those with a Paid order counted before the period start

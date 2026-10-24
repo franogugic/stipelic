@@ -76,47 +76,9 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
         var successUrl = $"{_options.FrontendBaseUrl}/p/{creatorSlug}/{landingPageSlug}/success?session_id={{CHECKOUT_SESSION_ID}}";
         var cancelUrl = $"{_options.FrontendBaseUrl}/p/{creatorSlug}/{landingPageSlug}";
 
-        var metadata = new Dictionary<string, string>
-        {
-            ["creatorId"] = productInfo.CreatorId.ToString(),
-            ["productId"] = productInfo.ProductId.ToString(),
-            ["landingPageId"] = productInfo.LandingPageId.ToString(),
-            ["payoutMode"] = productInfo.PayoutMode.ToString(),
-            ["platformFeeCents"] = platformFeeCents.ToString(),
-        };
-
-        PaymentCheckoutSessionDto session;
-        if (productInfo.PayoutMode == PayoutMode.StripeConnect)
-        {
-            session = await _checkoutSessionService.CreateAsync(
-                productInfo.ProductName,
-                productInfo.PriceCents,
-                productInfo.Currency.ToString().ToLowerInvariant(),
-                email,
-                successUrl,
-                cancelUrl,
-                Guid.NewGuid().ToString(),
-                metadata,
-                ct,
-                applicationFeeAmountCents: platformFeeCents,
-                destinationAccountId: productInfo.StripeConnectAccountId,
-                thumbnailUrl: productInfo.ThumbnailUrl);
-        }
-        else
-        {
-            session = await _checkoutSessionService.CreateAsync(
-                productInfo.ProductName,
-                productInfo.PriceCents,
-                productInfo.Currency.ToString().ToLowerInvariant(),
-                email,
-                successUrl,
-                cancelUrl,
-                Guid.NewGuid().ToString(),
-                metadata,
-                ct,
-                thumbnailUrl: productInfo.ThumbnailUrl);
-        }
-
+        // The Pending order is committed first: whatever happens after the Stripe call, a payable session always has
+        // its order (B2). The session carries the order's PublicId, and that PublicId is the Stripe idempotency key,
+        // so a retried create returns the same session instead of a second payable one.
         var order = Order.Create(
             productInfo.CreatorId,
             productInfo.ProductId,
@@ -128,12 +90,85 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
             platformFeeBasisPoints,
             platformFeeCents,
             payoutMode: productInfo.PayoutMode.ToString(),
-            session.SessionId,
+            stripeCheckoutSessionId: null,
             DateTimeOffset.UtcNow);
 
         await _orderRepository.AddAsync(order, ct);
         await _unitOfWork.SaveChangesAsync(ct);
 
+        var metadata = new Dictionary<string, string>
+        {
+            [CheckoutSessionMetadata.OrderId] = order.PublicId.ToString(),
+            ["creatorId"] = productInfo.CreatorId.ToString(),
+            [CheckoutSessionMetadata.ProductId] = productInfo.ProductId.ToString(),
+            ["landingPageId"] = productInfo.LandingPageId.ToString(),
+            ["payoutMode"] = productInfo.PayoutMode.ToString(),
+            ["platformFeeCents"] = platformFeeCents.ToString(),
+        };
+
+        var isConnect = productInfo.PayoutMode == PayoutMode.StripeConnect;
+        PaymentCheckoutSessionDto session;
+        try
+        {
+            session = await _checkoutSessionService.CreateAsync(
+                productInfo.ProductName,
+                productInfo.PriceCents,
+                productInfo.Currency.ToString().ToLowerInvariant(),
+                email,
+                successUrl,
+                cancelUrl,
+                idempotencyKey: order.PublicId.ToString(),
+                metadata,
+                ct,
+                applicationFeeAmountCents: isConnect ? platformFeeCents : null,
+                destinationAccountId: isConnect ? productInfo.StripeConnectAccountId : null,
+                thumbnailUrl: productInfo.ThumbnailUrl);
+        }
+        catch (Exception exception)
+        {
+            await MarkFailedAsync(order, exception);
+            throw;
+        }
+
+        try
+        {
+            order.AttachCheckoutSession(session.SessionId, DateTimeOffset.UtcNow);
+            await _unitOfWork.SaveChangesAsync(ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The buyer can still pay: checkout.session.completed finds the order through the session's metadata and
+            // stores the session id then. Failing here would only strand a payable session.
+            _logger.LogWarning(
+                exception,
+                "Could not store the Checkout session on its order; the webhook will link it from the metadata. OrderId: {OrderId}, SessionId: {SessionId}",
+                order.PublicId,
+                session.SessionId);
+        }
+
         return new CreateCheckoutResultDto(session.CheckoutUrl);
+    }
+
+    /// <summary>The Stripe call failed: no session can be paid for this order, so it is Failed rather than Pending
+    /// forever. Best effort — if this save fails too, the maintenance job fails it once it is old.</summary>
+    private async Task MarkFailedAsync(Order order, Exception cause)
+    {
+        _logger.LogWarning(
+            cause,
+            "Creating the Checkout session failed; marking the order Failed. OrderId: {OrderId}",
+            order.PublicId);
+
+        try
+        {
+            order.MarkFailed(DateTimeOffset.UtcNow);
+            await _unitOfWork.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Could not mark the order Failed after the Checkout session failed; it stays Pending. OrderId: {OrderId}",
+                order.PublicId);
+        }
     }
 }

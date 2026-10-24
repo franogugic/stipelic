@@ -73,6 +73,8 @@ builder.Services.AddProductsInfrastructure();
 builder.Services.AddLandingPagesInfrastructure();
 builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddPaymentsInfrastructure();
+builder.Services.AddScoped<CreatorPlatform.Api.Webhooks.StripeWebhookProcessor>();
+builder.Services.AddScoped<CreatorPlatform.Api.Webhooks.WebhookFailureAdminService>();
 builder.Services.AddPayoutsInfrastructure();
 builder.Services.AddMarketingInfrastructure();
 builder.Services.AddMediaInfrastructure();

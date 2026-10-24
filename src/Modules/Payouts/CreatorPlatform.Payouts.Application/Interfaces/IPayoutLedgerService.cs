@@ -25,15 +25,18 @@ public interface IPayoutLedgerService
         CancellationToken ct);
 
     /// <summary>
-    /// Books a <c>RefundDebit</c> reversing the gross amount and a <c>FeeRefundCredit</c> reversing the
-    /// platform fee (skipped when <paramref name="platformFeeCents"/> is 0). Idempotent: no-ops if a
-    /// RefundDebit already exists for this order (webhook retry safe).
+    /// Brings the order's refund entries up to <paramref name="refundedToCents"/>, the cumulative refunded amount in
+    /// the order's currency: a <c>RefundDebit</c> for what is not yet reversed and a <c>FeeRefundCredit</c> for the
+    /// matching share of <paramref name="platformFeeCents"/> (rounded on the cumulative amount, so a full refund gives
+    /// back exactly the whole fee). Idempotent: no-ops when the refunded amount is already booked (a replayed or
+    /// out-of-order event).
     /// </summary>
     Task AppendRefundAsync(
         int creatorId,
         int orderId,
         int amountCents,
         int platformFeeCents,
+        int refundedToCents,
         Currency currency,
         DateTimeOffset occurredAt,
         CancellationToken ct);
