@@ -20,7 +20,8 @@ public sealed class LedgerEntry
         LedgerEntryType type,
         int amountCents,
         Currency currency,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        int? refundedToCents = null)
     {
         PublicId = publicId;
         CreatorId = creatorId;
@@ -30,6 +31,7 @@ public sealed class LedgerEntry
         AmountCents = amountCents;
         Currency = currency;
         CreatedAt = createdAt;
+        RefundedToCents = refundedToCents;
     }
 
     /// <summary>Order paid — credits the creator the full gross sale amount. Requires <paramref name="amountCents"/> &gt; 0.</summary>
@@ -46,18 +48,27 @@ public sealed class LedgerEntry
         return new LedgerEntry(Guid.NewGuid(), creatorId, orderId, null, LedgerEntryType.FeeDebit, amountCents, currency, createdAt);
     }
 
-    /// <summary>Order refunded — reverses the sale credit. Requires <paramref name="amountCents"/> &lt; 0.</summary>
-    public static LedgerEntry CreateRefundDebit(int creatorId, int orderId, int amountCents, Currency currency, DateTimeOffset createdAt)
+    /// <summary>Order (partly) refunded — reverses this refund's share of the sale credit. Requires
+    /// <paramref name="amountCents"/> &lt; 0. <paramref name="refundedToCents"/> is the order's cumulative refunded
+    /// amount this entry brings it to — one entry per step, so a replayed refund can't be booked twice.</summary>
+    public static LedgerEntry CreateRefundDebit(
+        int creatorId, int orderId, int amountCents, int refundedToCents, Currency currency, DateTimeOffset createdAt)
     {
         RequireNegative(amountCents, nameof(amountCents));
-        return new LedgerEntry(Guid.NewGuid(), creatorId, orderId, null, LedgerEntryType.RefundDebit, amountCents, currency, createdAt);
+        RequirePositive(refundedToCents, nameof(refundedToCents));
+        return new LedgerEntry(Guid.NewGuid(), creatorId, orderId, null, LedgerEntryType.RefundDebit, amountCents, currency, createdAt,
+            refundedToCents);
     }
 
-    /// <summary>Order refunded — reverses the platform fee debit back to the creator. Requires <paramref name="amountCents"/> &gt; 0.</summary>
-    public static LedgerEntry CreateFeeRefundCredit(int creatorId, int orderId, int amountCents, Currency currency, DateTimeOffset createdAt)
+    /// <summary>Order (partly) refunded — gives back the matching share of the platform fee. Requires
+    /// <paramref name="amountCents"/> &gt; 0; <paramref name="refundedToCents"/> as on the refund debit it goes with.</summary>
+    public static LedgerEntry CreateFeeRefundCredit(
+        int creatorId, int orderId, int amountCents, int refundedToCents, Currency currency, DateTimeOffset createdAt)
     {
         RequirePositive(amountCents, nameof(amountCents));
-        return new LedgerEntry(Guid.NewGuid(), creatorId, orderId, null, LedgerEntryType.FeeRefundCredit, amountCents, currency, createdAt);
+        RequirePositive(refundedToCents, nameof(refundedToCents));
+        return new LedgerEntry(Guid.NewGuid(), creatorId, orderId, null, LedgerEntryType.FeeRefundCredit, amountCents, currency, createdAt,
+            refundedToCents);
     }
 
     /// <summary>Money sent out to the creator's bank account. Requires <paramref name="amountCents"/> &lt; 0.</summary>
@@ -107,4 +118,8 @@ public sealed class LedgerEntry
     public Currency Currency { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    /// <summary>Refund entries only: the order's cumulative refunded amount after this entry (order currency).
+    /// Part of the (OrderId, Type, RefundedToCents) idempotency key; null on every other type.</summary>
+    public int? RefundedToCents { get; private set; }
 }

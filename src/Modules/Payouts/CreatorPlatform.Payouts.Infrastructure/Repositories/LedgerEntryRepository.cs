@@ -28,6 +28,14 @@ public sealed class LedgerEntryRepository : ILedgerEntryRepository
             .AnyAsync(e => e.OrderId == orderId && e.Type == type, ct);
     }
 
+    public async Task<int> SumForOrderAsync(int orderId, LedgerEntryType type, CancellationToken ct)
+    {
+        return await _context.Set<LedgerEntry>()
+            .AsNoTracking()
+            .Where(e => e.OrderId == orderId && e.Type == type)
+            .SumAsync(e => e.AmountCents, ct);
+    }
+
     public async Task<List<CreatorBalanceDto>> GetBalanceByCreatorIdAsync(int creatorId, CancellationToken ct)
     {
         return await _context.Set<LedgerEntry>()

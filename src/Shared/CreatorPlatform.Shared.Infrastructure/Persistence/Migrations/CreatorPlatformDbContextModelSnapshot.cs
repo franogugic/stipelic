@@ -1745,6 +1745,16 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)");
 
+                    b.Property<int>("KeptAmountCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("integer")
+                        .HasComputedColumnSql("\"AmountCents\" - \"RefundedCents\"", true);
+
+                    b.Property<int>("KeptPlatformFeeCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("integer")
+                        .HasComputedColumnSql("\"PlatformFeeCents\" - CASE WHEN \"AmountCents\" > 0 THEN round(\"PlatformFeeCents\"::numeric * \"RefundedCents\" / \"AmountCents\")::integer ELSE 0 END", true);
+
                     b.Property<int?>("LandingPageId")
                         .HasColumnType("integer");
 
@@ -1772,13 +1782,15 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("RefundedCents")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.Property<string>("StripeCheckoutSessionId")
-                        .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
@@ -1816,7 +1828,42 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_orders_AmountCents_NonNegative", "\"AmountCents\" >= 0");
 
                             t.HasCheckConstraint("CK_orders_PlatformFeeCents_NonNegative", "\"PlatformFeeCents\" >= 0");
+
+                            t.HasCheckConstraint("CK_orders_RefundedCents_MatchStatus", "(\"Status\" <> 'Refunded' OR \"RefundedCents\" = \"AmountCents\") AND (\"RefundedCents\" = 0 OR \"Status\" IN ('Paid', 'Refunded'))");
+
+                            t.HasCheckConstraint("CK_orders_RefundedCents_WithinAmount", "\"RefundedCents\" >= 0 AND \"RefundedCents\" <= \"AmountCents\"");
+
+                            t.HasCheckConstraint("CK_orders_Session_Unless_PendingOrFailed", "\"StripeCheckoutSessionId\" IS NOT NULL OR \"Status\" IN ('Pending', 'Failed')");
                         });
+                });
+
+            modelBuilder.Entity("CreatorPlatform.Payments.Domain.ProcessedWebhookEvent", b =>
+                {
+                    b.Property<string>("EventId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTimeOffset>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("ProcessedAt");
+
+                    b.ToTable("processed_webhook_events", "payments");
                 });
 
             modelBuilder.Entity("CreatorPlatform.Payments.Domain.WebhookFailure", b =>
@@ -1826,6 +1873,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
 
                     b.Property<string>("ErrorMessage")
                         .IsRequired()
@@ -1843,6 +1893,14 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsResolved")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("LastFailedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone");
@@ -1863,9 +1921,12 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EventId");
 
-                    b.HasIndex("IsResolved", "OccurredAt");
+                    b.HasIndex("IsResolved", "LastFailedAt");
 
-                    b.ToTable("webhook_failures", "payments");
+                    b.ToTable("webhook_failures", "payments", t =>
+                        {
+                            t.HasCheckConstraint("CK_webhook_failures_Attempts_Positive", "\"Attempts\" >= 1");
+                        });
                 });
 
             modelBuilder.Entity("CreatorPlatform.Payouts.Domain.Payouts.LedgerEntry", b =>
@@ -1899,6 +1960,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("RefundedToCents")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -1911,17 +1975,21 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatorId", "CreatedAt");
 
-                    b.HasIndex("OrderId", "Type")
-                        .IsUnique()
-                        .HasFilter("\"OrderId\" IS NOT NULL");
-
                     b.HasIndex("PayoutId", "Type")
                         .IsUnique()
                         .HasFilter("\"PayoutId\" IS NOT NULL");
 
+                    b.HasIndex("OrderId", "Type", "RefundedToCents")
+                        .IsUnique()
+                        .HasFilter("\"OrderId\" IS NOT NULL");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("OrderId", "Type", "RefundedToCents"), false);
+
                     b.ToTable("ledger_entries", "payouts", t =>
                         {
                             t.HasCheckConstraint("CK_ledger_entries_AmountCents_NotZero", "\"AmountCents\" <> 0");
+
+                            t.HasCheckConstraint("CK_ledger_entries_RefundedToCents_OnRefundsOnly", "(\"Type\" IN ('RefundDebit', 'FeeRefundCredit')) = (\"RefundedToCents\" IS NOT NULL)");
                         });
                 });
 

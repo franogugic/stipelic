@@ -1,91 +1,48 @@
-using CreatorPlatform.Creators.Application.Interfaces;
-using CreatorPlatform.Orders.Application.Interfaces;
+using CreatorPlatform.Api.Webhooks;
 using CreatorPlatform.Payments.Application.Dtos;
 using CreatorPlatform.Payments.Application.Interfaces;
-using CreatorPlatform.Payments.Domain;
 using CreatorPlatform.Shared.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 
 namespace CreatorPlatform.Api.Controllers;
 
+/// <summary>
+/// Stripe's two webhook endpoints. Both verify the signature, then hand the event to <see cref="StripeWebhookProcessor"/>:
+/// 200 when it was handled (now or by an earlier delivery) or failed permanently (recorded for an admin's replay); 500
+/// when it failed on an outage and 409 while another delivery handles it, so Stripe retries.
+/// </summary>
 [ApiController]
 [Route("webhooks/stripe")]
 [DisableRateLimiting]
 public sealed class StripeWebhooksController : ControllerBase
 {
     private readonly IStripeWebhookService _stripeWebhookService;
-    private readonly ICreatorWebhookService _creatorWebhookService;
-    private readonly IOrderWebhookService _orderWebhookService;
-    private readonly IWebhookFailureRepository _webhookFailureRepository;
+    private readonly StripeWebhookProcessor _processor;
     private readonly ILogger<StripeWebhooksController> _logger;
 
     public StripeWebhooksController(
         IStripeWebhookService stripeWebhookService,
-        ICreatorWebhookService creatorWebhookService,
-        IOrderWebhookService orderWebhookService,
-        IWebhookFailureRepository webhookFailureRepository,
+        StripeWebhookProcessor processor,
         ILogger<StripeWebhooksController> logger)
     {
         _stripeWebhookService = stripeWebhookService;
-        _creatorWebhookService = creatorWebhookService;
-        _orderWebhookService = orderWebhookService;
-        _webhookFailureRepository = webhookFailureRepository;
+        _processor = processor;
         _logger = logger;
     }
 
     [HttpPost]
-    public async Task<IActionResult> Handle(CancellationToken ct)
-    {
-        string payload;
-        using (var reader = new StreamReader(HttpContext.Request.Body))
-        {
-            payload = await reader.ReadToEndAsync(ct);
-        }
-
-        var stripeSignature = Request.Headers["Stripe-Signature"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(stripeSignature))
-        {
-            _logger.LogWarning("Stripe webhook received without Stripe-Signature header.");
-            return BadRequest("Missing Stripe-Signature header.");
-        }
-
-        StripeWebhookEventDto webhookEvent;
-        try
-        {
-            webhookEvent = _stripeWebhookService.ParseAndVerify(payload, stripeSignature);
-        }
-        catch (BadRequestException ex)
-        {
-            _logger.LogWarning(ex, "Stripe webhook verification failed.");
-            return BadRequest(ex.Message);
-        }
-
-        try
-        {
-            await DispatchAsync(webhookEvent, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Stripe webhook handler failed. EventId: {EventId}, EventType: {EventType}",
-                webhookEvent.EventId,
-                webhookEvent.EventType);
-
-            await PersistFailureAsync(webhookEvent, payload, ex, ct);
-
-            // Vraćamo 200 da Stripe ne retryja — event je zapisan u bazu za ručni reprocessing
-            return Ok();
-        }
-
-        return Ok();
-    }
+    public Task<IActionResult> Handle(CancellationToken ct)
+        => HandleAsync(_stripeWebhookService.ParseAndVerify, "Stripe", ct);
 
     // Connect events (connected-account lifecycle, e.g. account.updated) are registered as a separate
     // webhook endpoint in Stripe with their own signing secret — hence a dedicated route + verify call.
     [HttpPost("connect")]
-    public async Task<IActionResult> HandleConnect(CancellationToken ct)
+    public Task<IActionResult> HandleConnect(CancellationToken ct)
+        => HandleAsync(_stripeWebhookService.ParseAndVerifyConnect, "Stripe Connect", ct);
+
+    private async Task<IActionResult> HandleAsync(
+        Func<string, string, StripeWebhookEventDto> parseAndVerify, string endpoint, CancellationToken ct)
     {
         string payload;
         using (var reader = new StreamReader(HttpContext.Request.Body))
@@ -96,147 +53,30 @@ public sealed class StripeWebhooksController : ControllerBase
         var stripeSignature = Request.Headers["Stripe-Signature"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(stripeSignature))
         {
-            _logger.LogWarning("Stripe Connect webhook received without Stripe-Signature header.");
+            _logger.LogWarning("{Endpoint} webhook received without Stripe-Signature header.", endpoint);
             return BadRequest("Missing Stripe-Signature header.");
         }
 
         StripeWebhookEventDto webhookEvent;
         try
         {
-            webhookEvent = _stripeWebhookService.ParseAndVerifyConnect(payload, stripeSignature);
+            webhookEvent = parseAndVerify(payload, stripeSignature);
         }
         catch (BadRequestException ex)
         {
-            _logger.LogWarning(ex, "Stripe Connect webhook verification failed.");
+            _logger.LogWarning(ex, "{Endpoint} webhook verification failed.", endpoint);
             return BadRequest(ex.Message);
         }
 
-        try
+        var outcome = await _processor.ProcessAsync(webhookEvent, payload, ct);
+
+        // Only an outage (or a delivery still running elsewhere) is worth Stripe's retries; a permanent failure is
+        // recorded and waits for a fix and a replay; a duplicate was already handled.
+        return outcome switch
         {
-            await DispatchConnectAsync(webhookEvent, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Stripe Connect webhook handler failed. EventId: {EventId}, EventType: {EventType}",
-                webhookEvent.EventId,
-                webhookEvent.EventType);
-
-            await PersistFailureAsync(webhookEvent, payload, ex, ct);
-
-            // Vraćamo 200 da Stripe ne retryja — event je zapisan u bazu za ručni reprocessing
-            return Ok();
-        }
-
-        return Ok();
-    }
-
-    private async Task DispatchConnectAsync(StripeWebhookEventDto webhookEvent, CancellationToken ct)
-    {
-        switch (webhookEvent.EventType)
-        {
-            case StripeEventTypes.AccountUpdated when webhookEvent.AccountUpdated is not null:
-                await _creatorWebhookService.HandleAccountUpdatedAsync(webhookEvent.AccountUpdated, ct);
-                break;
-
-            default:
-                _logger.LogInformation(
-                    "Unhandled Stripe Connect event type received, ignoring. EventId: {EventId}, EventType: {EventType}",
-                    webhookEvent.EventId,
-                    webhookEvent.EventType);
-                break;
-        }
-    }
-
-    private async Task DispatchAsync(StripeWebhookEventDto webhookEvent, CancellationToken ct)
-    {
-        switch (webhookEvent.EventType)
-        {
-            case StripeEventTypes.CheckoutSessionCompleted
-                when webhookEvent.CheckoutSessionCompleted is not null:
-                await _creatorWebhookService
-                    .HandleCheckoutSessionCompletedAsync(webhookEvent.CheckoutSessionCompleted, ct);
-                await _orderWebhookService
-                    .HandleCheckoutSessionCompletedAsync(
-                        new OrderCheckoutCompletedDto(
-                            webhookEvent.CheckoutSessionCompleted.SessionId,
-                            webhookEvent.CheckoutSessionCompleted.StripePaymentIntentId,
-                            webhookEvent.CheckoutSessionCompleted.CustomerEmail,
-                            webhookEvent.CheckoutSessionCompleted.CustomerName),
-                        ct);
-                break;
-
-            case StripeEventTypes.CustomerSubscriptionCreated
-                when webhookEvent.SubscriptionChanged is not null:
-                await _creatorWebhookService
-                    .HandleSubscriptionCreatedAsync(webhookEvent.SubscriptionChanged, ct);
-                break;
-
-            case StripeEventTypes.CustomerSubscriptionUpdated
-                when webhookEvent.SubscriptionChanged is not null:
-                await _creatorWebhookService
-                    .HandleSubscriptionUpdatedAsync(webhookEvent.SubscriptionChanged, ct);
-                break;
-
-            case StripeEventTypes.CustomerSubscriptionDeleted
-                when webhookEvent.SubscriptionChanged is not null:
-                await _creatorWebhookService
-                    .HandleSubscriptionDeletedAsync(webhookEvent.SubscriptionChanged, ct);
-                break;
-
-            case StripeEventTypes.InvoicePaymentFailed
-                when webhookEvent.InvoicePaymentFailed is not null:
-                await _creatorWebhookService
-                    .HandleInvoicePaymentFailedAsync(webhookEvent.InvoicePaymentFailed, ct);
-                break;
-
-            case StripeEventTypes.ChargeRefunded
-                when webhookEvent.ChargeRefunded is not null:
-                await _orderWebhookService
-                    .HandleChargeRefundedAsync(
-                        new OrderChargeRefundedDto(
-                            webhookEvent.ChargeRefunded.PaymentIntentId,
-                            webhookEvent.ChargeRefunded.ChargeId),
-                        ct);
-                break;
-
-            default:
-                _logger.LogInformation(
-                    "Unhandled Stripe event type received, ignoring. EventId: {EventId}, EventType: {EventType}",
-                    webhookEvent.EventId,
-                    webhookEvent.EventType);
-                break;
-        }
-    }
-
-    private async Task PersistFailureAsync(
-        StripeWebhookEventDto webhookEvent,
-        string payload,
-        Exception ex,
-        CancellationToken ct)
-    {
-        try
-        {
-            var failure = WebhookFailure.Create(
-                provider: "stripe",
-                eventId: webhookEvent.EventId,
-                eventType: webhookEvent.EventType,
-                payload: payload,
-                errorMessage: ex.ToString(),
-                occurredAt: DateTimeOffset.UtcNow);
-
-            await _webhookFailureRepository.AddAsync(failure, ct);
-            await _webhookFailureRepository.SaveChangesAsync(ct);
-        }
-        catch (Exception persistEx)
-        {
-            // Ako i ovo failna, barem logiramo — ne smijemo bacat exception iz error handlera
-            _logger.LogCritical(
-                persistEx,
-                "Failed to persist webhook failure record. EventId: {EventId}, EventType: {EventType}",
-                webhookEvent.EventId,
-                webhookEvent.EventType);
-        }
+            StripeWebhookOutcome.TransientFailure => StatusCode(StatusCodes.Status500InternalServerError),
+            StripeWebhookOutcome.InProgress => Conflict(),
+            _ => Ok()
+        };
     }
 }

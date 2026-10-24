@@ -133,7 +133,8 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                     errorMessage: "Checkout was paid after the pending subscription was cancelled (the workspace " +
                         "switched to the Free plan). The paid plan was not activated — refund the charge and cancel " +
                         "the Stripe subscription.",
-                    occurredAt: now);
+                    occurredAt: now,
+                    kind: WebhookFailureKind.NeedsAttention);
 
                 await _webhookFailureRepository.AddAsync(failure, ct);
                 await _unitOfWork.SaveChangesAsync(ct);
@@ -358,7 +359,8 @@ public sealed class CreatorWebhookService : ICreatorWebhookService
                                     $"CurrentPlanCode={subscription.Plan.Code}",
                                 errorMessage: $"No creator plan found for StripePriceId '{data.StripePriceId}'. " +
                                     "Subscription plan was left unchanged.",
-                                occurredAt: now);
+                                occurredAt: now,
+                                kind: WebhookFailureKind.NeedsAttention);
 
                             await _webhookFailureRepository.AddAsync(failure, ct);
                         }
