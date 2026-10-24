@@ -264,12 +264,10 @@ public sealed class UpgradeFromFreeTests
             new CreatorPlanRepository(db),
             new CreatorSettingsRepository(db),
             new CreatorSubscriptionRepository(db),
-            new CreatorPayoutProfileRepository(db),
             new CreatorsUnitOfWork(db),
             _checkout,
             new UnexpectedSubscriptionCancellationService(),
             new UnexpectedBillingPortalService(),
-            new CreatorOpenBalanceCheck(db),
             customers ?? _customers,
             new RecordingCreatorCacheInvalidator(),
             NullLogger<CreatorService>.Instance, new AnyImageAccepted()));

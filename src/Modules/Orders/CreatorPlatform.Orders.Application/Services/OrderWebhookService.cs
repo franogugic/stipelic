@@ -5,7 +5,6 @@ using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Options;
 using CreatorPlatform.Orders.Application.Receipts;
 using CreatorPlatform.Orders.Domain.Orders;
-using CreatorPlatform.Payouts.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -18,7 +17,6 @@ public sealed class OrderWebhookService : IOrderWebhookService
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IEmailOutboxService _emailOutboxService;
     private readonly IHomeSummaryCache _homeSummaryCache;
-    private readonly IPayoutLedgerService _payoutLedgerService;
     private readonly IOrderAccessGrants _accessGrants;
     private readonly OrdersOptions _options;
     private readonly ILogger<OrderWebhookService> _logger;
@@ -29,7 +27,6 @@ public sealed class OrderWebhookService : IOrderWebhookService
         ICreatorContextProvider creatorContextProvider,
         IEmailOutboxService emailOutboxService,
         IHomeSummaryCache homeSummaryCache,
-        IPayoutLedgerService payoutLedgerService,
         IOrderAccessGrants accessGrants,
         IOptions<OrdersOptions> options,
         ILogger<OrderWebhookService> logger)
@@ -39,7 +36,6 @@ public sealed class OrderWebhookService : IOrderWebhookService
         _creatorContextProvider = creatorContextProvider;
         _emailOutboxService = emailOutboxService;
         _homeSummaryCache = homeSummaryCache;
-        _payoutLedgerService = payoutLedgerService;
         _accessGrants = accessGrants;
         _options = options.Value;
         _logger = logger;
@@ -79,14 +75,6 @@ public sealed class OrderWebhookService : IOrderWebhookService
 
             order.MarkPaid(data.PaymentIntentId ?? string.Empty, paidAt, data.CustomerEmail, data.CustomerName);
             var buyerEmail = order.Email!;
-
-            // Connect orders never touch the ledger — the money already left via the destination-charge
-            // split, so there is no platform-held balance to track for them.
-            if (order.PayoutMode == nameof(PayoutMode.BankTransfer))
-            {
-                await _payoutLedgerService.AppendSaleAsync(
-                    order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.Currency, paidAt, ct);
-            }
 
             // The buyer's personal link, created with the payment: no paid order without one.
             var token = _accessGrants.CreateForPaidOrder(order.CreatorId, order.ProductId, order.Id, buyerEmail, paidAt);
@@ -191,13 +179,6 @@ public sealed class OrderWebhookService : IOrderWebhookService
             // Only a full refund takes the buyer's link away; a partly refunded buyer keeps the file.
             if (order.Status == OrderStatus.Refunded)
                 await _accessGrants.RevokeForOrderAsync(order.Id, refundedAt, ct);
-
-            if (order.PayoutMode == nameof(PayoutMode.BankTransfer))
-            {
-                await _payoutLedgerService.AppendRefundAsync(
-                    order.CreatorId, order.Id, order.AmountCents, order.PlatformFeeCents, order.RefundedCents, order.Currency,
-                    refundedAt, ct);
-            }
 
             _logger.LogInformation(
                 "Order refund applied. OrderId: {OrderId}, Status: {Status}, RefundedCents: {RefundedCents} of {AmountCents}",

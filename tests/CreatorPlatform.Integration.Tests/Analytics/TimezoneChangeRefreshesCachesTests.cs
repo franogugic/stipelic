@@ -56,12 +56,10 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
             new CreatorPlanRepository(db),
             new CreatorSettingsRepository(db),
             new CreatorSubscriptionRepository(db),
-            new CreatorPayoutProfileRepository(db),
             new CreatorsUnitOfWork(db),
             new FakeCheckoutSessionService(),
             new UnexpectedSubscriptionCancellationService(),
             new UnexpectedBillingPortalService(),
-            new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             invalidator,
             NullLogger<CreatorService>.Instance, new AnyImageAccepted());
@@ -128,10 +126,10 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
             """).ToListAsync()).Single();
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "AmountCents", "Currency", "Status",
-                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
+                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "StripeCheckoutSessionId",
                                        "CreatedAt", "PaidAt", "UpdatedAt")
             VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {TestData.UniqueEmail("buyer")}, {amountCents}, 'Eur', 'Paid',
-                    1000, 100, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {paidAt}, {paidAt}, {paidAt})
+                    1000, 100, {$"cs_test_{Guid.NewGuid():N}"}, {paidAt}, {paidAt}, {paidAt})
             """);
     }
 }

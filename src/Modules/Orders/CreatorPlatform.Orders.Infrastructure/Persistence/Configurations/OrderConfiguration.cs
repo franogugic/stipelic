@@ -57,10 +57,6 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(o => o.PlatformFeeCents)
             .IsRequired();
 
-        builder.Property(o => o.PayoutMode)
-            .HasMaxLength(30)
-            .IsRequired();
-
         // Nullable: the Pending order is saved before its Checkout session exists (the session's metadata carries
         // the order's PublicId). Unique still holds — PostgreSQL treats NULLs as distinct.
         builder.Property(o => o.StripeCheckoutSessionId)

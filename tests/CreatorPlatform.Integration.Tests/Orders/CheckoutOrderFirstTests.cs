@@ -9,8 +9,6 @@ using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Orders.Infrastructure.Persistence;
 using CreatorPlatform.Orders.Infrastructure.Repositories;
 using CreatorPlatform.Orders.Infrastructure.Services;
-using CreatorPlatform.Payouts.Application.Services;
-using CreatorPlatform.Payouts.Infrastructure.Repositories;
 using CreatorPlatform.Shared.Domain.Enums;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -60,7 +58,7 @@ public sealed class CheckoutOrderFirstTests
         public Task<LandingPageProductInfo?> GetProductInfoByLandingPageSlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct)
             => Task.FromResult<LandingPageProductInfo?>(new LandingPageProductInfo(
                 seeded.CreatorId, seeded.ProductId, seeded.LandingPageId, "Course", null, 5000, Currency.Eur, CreatorStatus.Active,
-                PayoutMode.BankTransfer, null, false, HasPayoutProfile: true, PlatformFeeBasisPoints: 500));
+                "acct_test", true, PlatformFeeBasisPoints: 500));
 
         public Task<OrderEmailContext?> GetOrderEmailContextAsync(int productId, CancellationToken ct)
             => inner.GetOrderEmailContextAsync(productId, ct);
@@ -75,8 +73,8 @@ public sealed class CheckoutOrderFirstTests
         public string SessionId { get; } = $"cs_test_{Guid.NewGuid():N}";
 
         public async Task<PaymentCheckoutSessionDto> CreateAsync(string productName, int priceCents, string currency, string? customerEmail,
-            string successUrl, string cancelUrl, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, CancellationToken ct,
-            int? applicationFeeAmountCents = null, string? destinationAccountId = null, string? thumbnailUrl = null)
+            string successUrl, string cancelUrl, string idempotencyKey, IReadOnlyDictionary<string, string> metadata, int applicationFeeAmountCents, string destinationAccountId,
+            CancellationToken ct, string? thumbnailUrl = null)
         {
             Metadata = metadata;
             if (Probe is not null)
@@ -101,7 +99,6 @@ public sealed class CheckoutOrderFirstTests
         new CreatorContextProvider(db),
         new EmailOutboxService(db, Options.Create(new EmailOptions { FrontendBaseUrl = "https://app.luma.test" })),
         new NoHomeSummaryCache(),
-        new PayoutLedgerService(new LedgerEntryRepository(db), NullLogger<PayoutLedgerService>.Instance),
         new OrderAccessGrants(db),
         Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.luma.test" }),
         NullLogger<OrderWebhookService>.Instance);

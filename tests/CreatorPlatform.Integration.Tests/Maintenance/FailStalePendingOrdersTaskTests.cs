@@ -42,10 +42,10 @@ public sealed class FailStalePendingOrdersTaskTests
         var refundedCents = status == "Refunded" ? 2900 : 0;   // CK_orders_RefundedCents_MatchStatus
         return (await db.Database.SqlQuery<int>($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "AmountCents", "RefundedCents", "Currency",
-                                       "Status", "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode",
+                                       "Status", "PlatformFeeBasisPoints", "PlatformFeeCents",
                                        "StripeCheckoutSessionId", "CreatedAt", "UpdatedAt")
             VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {TestData.UniqueEmail("buyer")}, 2900, {refundedCents}, 'Eur',
-                    {status}, 0, 0, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {createdAt})
+                    {status}, 0, 0, {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {createdAt})
             RETURNING "Id" AS "Value"
             """).ToListAsync()).Single();
     }

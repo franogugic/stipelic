@@ -5,12 +5,10 @@ public sealed record PaymentCheckoutSessionDto(string SessionId, string Checkout
 public interface IPaymentCheckoutSessionService
 {
     /// <summary>
-    /// <paramref name="applicationFeeAmountCents"/> and <paramref name="destinationAccountId"/> are only
-    /// used for StripeConnect creators (destination charge — platform keeps the fee, the rest transfers
-    /// to the connected account automatically). Leave both null for BankTransfer creators, which keeps
-    /// today's plain platform-charge behavior unchanged. <paramref name="thumbnailUrl"/>, when set, shows
-    /// the product's image on the Stripe-hosted checkout page (<c>ProductData.Images</c>) — Stripe
-    /// rejects an empty/null entry inside that list, so it's only added when non-blank.
+    /// A destination charge: the buyer pays on our platform account, Stripe transfers the sale to the creator's connected
+    /// account <paramref name="destinationAccountId"/> and keeps <paramref name="applicationFeeAmountCents"/> for us.
+    /// <paramref name="thumbnailUrl"/>, when set, shows the product's image on the Stripe-hosted checkout page
+    /// (<c>ProductData.Images</c>) — Stripe rejects an empty/null entry inside that list, so it's only added when non-blank.
     /// </summary>
     Task<PaymentCheckoutSessionDto> CreateAsync(
         string productName,
@@ -21,8 +19,8 @@ public interface IPaymentCheckoutSessionService
         string cancelUrl,
         string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
+        int applicationFeeAmountCents,
+        string destinationAccountId,
         CancellationToken ct,
-        int? applicationFeeAmountCents = null,
-        string? destinationAccountId = null,
         string? thumbnailUrl = null);
 }

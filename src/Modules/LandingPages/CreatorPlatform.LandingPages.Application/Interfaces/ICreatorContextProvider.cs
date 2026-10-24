@@ -5,9 +5,7 @@ namespace CreatorPlatform.LandingPages.Application.Interfaces;
 public sealed record CreatorContext(int CreatorId, int MaxLandingPages, int ActiveLandingPageCount)
 {
     public CreatorStatus Status { get; init; }
-    public PayoutMode PayoutMode { get; init; }
     public bool StripeConnectPayoutsEnabled { get; init; }
-    public bool HasPayoutProfile { get; init; }
 }
 
 /// <param name="IsActive">Active (and so has its file): only an Active product can be on a page.</param>

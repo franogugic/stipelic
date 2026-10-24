@@ -25,8 +25,6 @@ public interface IEmailOutboxService
     /// email); replies go to the creator's support address when set.</summary>
     Task QueueLeadMagnetAsync(string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct);
 
-    Task QueuePayoutRequestedAsync(string toEmail, string payoutPublicId, PayoutRequestedEmail payout, CancellationToken ct);
-
     /// <summary>Queues one pre-rendered campaign broadcast message for a single recipient. Subject/html/
     /// plainText are expected to already have <c>{{UNSUBSCRIBE_URL}}</c> substituted with
     /// <paramref name="listUnsubscribeUrl"/> for this exact recipient — the caller renders the branded

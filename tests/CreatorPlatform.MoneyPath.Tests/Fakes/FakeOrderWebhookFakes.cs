@@ -81,7 +81,6 @@ public sealed class FakeWebhookOrderRepository : IOrderRepository
 public sealed class FakeEmailOutboxService : IEmailOutboxService
 {
     public int OrderAccessQueuedCount { get; private set; }
-    public int PayoutRequestedQueuedCount { get; private set; }
     public List<(string ToEmail, string Subject, string CorrelationKey, string? ReplyTo, string ListUnsubscribeUrl, string HtmlBody, string PlainTextBody)> QueuedCampaignMessages { get; } = new();
     public List<(string ToEmail, string UserPublicId, string Token)> QueuedPasswordResetMessages { get; } = new();
 
@@ -116,7 +115,6 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
 
     public OrderAccessEmail? LastOrderAccess { get; private set; }
     public string? LastOrderAccessTo { get; private set; }
-    public PayoutRequestedEmail? LastPayoutRequested { get; private set; }
 
     public Task QueueOrderAccessAsync(string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct)
     {
@@ -131,13 +129,6 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
     public Task QueueLeadMagnetAsync(string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct)
     {
         QueuedLeadMagnets.Add((toEmail, correlationKey, lead));
-        return Task.CompletedTask;
-    }
-
-    public Task QueuePayoutRequestedAsync(string toEmail, string payoutPublicId, PayoutRequestedEmail payout, CancellationToken ct)
-    {
-        PayoutRequestedQueuedCount++;
-        LastPayoutRequested = payout;
         return Task.CompletedTask;
     }
 

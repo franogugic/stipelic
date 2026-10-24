@@ -20,7 +20,6 @@ public sealed class Order
         OrderStatus status,
         int platformFeeBasisPoints,
         int platformFeeCents,
-        string payoutMode,
         string? stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
@@ -35,7 +34,6 @@ public sealed class Order
         Status = status;
         PlatformFeeBasisPoints = platformFeeBasisPoints;
         PlatformFeeCents = platformFeeCents;
-        PayoutMode = payoutMode;
         StripeCheckoutSessionId = stripeCheckoutSessionId;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -51,7 +49,6 @@ public sealed class Order
         Currency currency,
         int platformFeeBasisPoints,
         int platformFeeCents,
-        string payoutMode,
         string? stripeCheckoutSessionId,
         DateTimeOffset createdAt)
     {
@@ -67,7 +64,6 @@ public sealed class Order
             OrderStatus.Pending,
             platformFeeBasisPoints,
             platformFeeCents,
-            payoutMode,
             stripeCheckoutSessionId,
             createdAt);
     }
@@ -173,9 +169,6 @@ public sealed class Order
     /// <summary>Snapshot of <see cref="PlatformFeeBasisPoints"/> applied to <see cref="AmountCents"/> — see PlatformFee.Calculate.</summary>
     public int PlatformFeeCents { get; private set; }
 
-    /// <summary>Snapshot of the creator's payout mode at purchase time ("StripeConnect" / "BankTransfer").</summary>
-    public string PayoutMode { get; private set; } = string.Empty;
-
     /// <summary>Null only between saving the Pending order and creating its Checkout session — and for good when
     /// creating the session failed (the order is then Failed).</summary>
     public string? StripeCheckoutSessionId { get; private set; }
@@ -192,8 +185,8 @@ public sealed class Order
     /// computed by the database — the figure every revenue total sums; stale in memory until the order is saved.</summary>
     public int KeptAmountCents { get; private set; }
 
-    /// <summary>The platform fee the sale still keeps: the fee minus its share of the refunded part, rounded as the
-    /// ledger's fee refund is. Computed by the database, like <see cref="KeptAmountCents"/>.</summary>
+    /// <summary>The platform fee the sale still keeps: the fee minus its share of the refunded part, rounded half away from
+    /// zero. Computed by the database, like <see cref="KeptAmountCents"/>.</summary>
     public int KeptPlatformFeeCents { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }

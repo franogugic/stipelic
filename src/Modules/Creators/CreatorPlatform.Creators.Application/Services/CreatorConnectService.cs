@@ -40,8 +40,10 @@ public sealed class CreatorConnectService : ICreatorConnectService
         if (creator is null)
             throw new NotFoundException("Creator workspace does not exist.");
 
-        if (creator.PayoutMode != PayoutMode.StripeConnect)
-            throw new BadRequestException("Connect onboarding is only available for Stripe-supported countries.");
+        // A workspace created before the country list narrowed (e.g. RS, BA) cannot get a Connect account.
+        if (!PayoutCountries.IsSupported(creator.CountryCode))
+            throw new BadRequestException(
+                "Luma can pay creators only in countries Stripe Connect supports for us.", CreatorErrorCodes.CountryNotSupported);
 
         if (creator.StripeConnectAccountId is null)
         {
@@ -84,8 +86,7 @@ public sealed class CreatorConnectService : ICreatorConnectService
             ?? throw new NotFoundException("Creator workspace does not exist.");
 
         // Stripe only issues login links for an Express account that has completed onboarding.
-        if (creator.PayoutMode != PayoutMode.StripeConnect
-            || creator.StripeConnectAccountId is not { } accountId
+        if (creator.StripeConnectAccountId is not { } accountId
             || !creator.StripeConnectDetailsSubmitted)
         {
             throw new ConflictException(

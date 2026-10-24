@@ -12,6 +12,9 @@ namespace CreatorPlatform.Orders.Application.Services;
 
 public sealed class OrderCheckoutService : IOrderCheckoutService
 {
+    /// <summary>409: the creator's Stripe Connect account cannot be paid out to yet (same code as a refused publish).</summary>
+    public const string PayoutsNotReadyCode = "PAYOUTS_NOT_READY";
+
     private readonly ICreatorContextProvider _creatorContextProvider;
     private readonly IPaymentCheckoutSessionService _checkoutSessionService;
     private readonly IOrderRepository _orderRepository;
@@ -61,12 +64,10 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
         if (productInfo.PriceCents <= 0)
             throw new BadRequestException("Product price must be greater than zero.");
 
-        var payoutReady = productInfo.PayoutMode == PayoutMode.StripeConnect
-            ? productInfo.StripeConnectPayoutsEnabled
-            : productInfo.HasPayoutProfile;
-
-        if (!payoutReady)
-            throw new ConflictException("Creator has not completed payout setup.");
+        // Creators are paid only through their own connected Stripe account (a destination charge with our fee):
+        // without one that can be paid out to, there is nothing to sell into.
+        if (!productInfo.StripeConnectPayoutsEnabled || string.IsNullOrWhiteSpace(productInfo.StripeConnectAccountId))
+            throw new ConflictException("Creator has not completed payout setup.", PayoutsNotReadyCode);
 
         var platformFeeBasisPoints = productInfo.PlatformFeeBasisPoints.Value;
         var platformFeeCents = PlatformFee.Calculate(productInfo.PriceCents, platformFeeBasisPoints);
@@ -89,7 +90,6 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
             productInfo.Currency,
             platformFeeBasisPoints,
             platformFeeCents,
-            payoutMode: productInfo.PayoutMode.ToString(),
             stripeCheckoutSessionId: null,
             DateTimeOffset.UtcNow);
 
@@ -102,11 +102,9 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
             ["creatorId"] = productInfo.CreatorId.ToString(),
             [CheckoutSessionMetadata.ProductId] = productInfo.ProductId.ToString(),
             ["landingPageId"] = productInfo.LandingPageId.ToString(),
-            ["payoutMode"] = productInfo.PayoutMode.ToString(),
             ["platformFeeCents"] = platformFeeCents.ToString(),
         };
 
-        var isConnect = productInfo.PayoutMode == PayoutMode.StripeConnect;
         PaymentCheckoutSessionDto session;
         try
         {
@@ -119,9 +117,9 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
                 cancelUrl,
                 idempotencyKey: order.PublicId.ToString(),
                 metadata,
+                platformFeeCents,
+                productInfo.StripeConnectAccountId,
                 ct,
-                applicationFeeAmountCents: isConnect ? platformFeeCents : null,
-                destinationAccountId: isConnect ? productInfo.StripeConnectAccountId : null,
                 thumbnailUrl: productInfo.ThumbnailUrl);
         }
         catch (Exception exception)

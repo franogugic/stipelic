@@ -146,11 +146,11 @@ public sealed class TestData
 
         var creatorId = await ScalarAsync(db, $"""
             INSERT INTO creators.creators ("PublicId", "OwnerUserId", "Name", "Slug", "Status", "DefaultCurrency",
-                                           "CountryCode", "PayoutMode", "StripeConnectDetailsSubmitted",
+                                           "CountryCode", "StripeConnectDetailsSubmitted",
                                            "StripeConnectChargesEnabled", "StripeConnectPayoutsEnabled",
                                            "CreatedAt", "UpdatedAt")
             VALUES ({Guid.NewGuid()}, {userId}, 'Test Creator', {slug}, 'Active', 'Eur',
-                    'HR', 'StripeConnect', false, false, false, {now}, {now})
+                    'HR', false, false, false, {now}, {now})
             RETURNING "Id" AS "Value"
             """);
 
@@ -181,11 +181,11 @@ public sealed class TestData
 
         var creatorId = await ScalarAsync(db, $"""
             INSERT INTO creators.creators ("PublicId", "OwnerUserId", "Name", "Slug", "Status", "DefaultCurrency",
-                                           "CountryCode", "PayoutMode", "StripeConnectDetailsSubmitted",
+                                           "CountryCode", "StripeConnectDetailsSubmitted",
                                            "StripeConnectChargesEnabled", "StripeConnectPayoutsEnabled",
                                            "CreatedAt", "UpdatedAt")
             VALUES ({Guid.NewGuid()}, {userId}, 'Pending Creator', {slug}, 'PendingPayment', 'Eur',
-                    'HR', 'StripeConnect', false, false, false, {now}, {now})
+                    'HR', false, false, false, {now}, {now})
             RETURNING "Id" AS "Value"
             """);
 

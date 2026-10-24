@@ -46,9 +46,9 @@ public sealed class FakePaymentCheckoutSessionService : IPaymentCheckoutSessionS
         string cancelUrl,
         string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
+        int applicationFeeAmountCents,
+        string destinationAccountId,
         CancellationToken ct,
-        int? applicationFeeAmountCents = null,
-        string? destinationAccountId = null,
         string? thumbnailUrl = null)
     {
         CallCount++;

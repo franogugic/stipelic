@@ -36,9 +36,7 @@ public static class RateLimitPolicies
     public const string DeleteWorkspace = "DeleteWorkspace";
     public const string ConnectOnboarding = "ConnectOnboarding";
     public const string ConnectDashboardLink = "ConnectDashboardLink";
-    public const string AdminPayouts = "AdminPayouts";
     public const string AdminWebhookFailures = "AdminWebhookFailures";
-    public const string RequestPayout = "RequestPayout";
     public const string Unsubscribe = "Unsubscribe";
     public const string OrderReceipt = "OrderReceipt";
     public const string PublicCreatorPages = "PublicCreatorPages";
@@ -85,9 +83,7 @@ public static class RateLimitPolicies
         new(ConnectOnboarding, 10, TenMinutes),
         // Same limits as the onboarding link, in its own bucket.
         new(ConnectDashboardLink, 10, TenMinutes),
-        new(AdminPayouts, 30, TenMinutes),
         new(AdminWebhookFailures, 30, TenMinutes),
-        new(RequestPayout, 5, TenMinutes),
         new(Unsubscribe, 30, TenMinutes),
         // The purchase success page polls a few times while the payment webhook is on its way.
         new(OrderReceipt, 30, TenMinutes),

@@ -4,7 +4,6 @@ using CreatorPlatform.Orders.Application.Interfaces;
 using CreatorPlatform.Orders.Application.Options;
 using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Orders.Domain.Orders;
-using CreatorPlatform.Payouts.Application.Services;
 using CreatorPlatform.Shared.Domain.Enums;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -17,12 +16,11 @@ public class CheckoutBuyerEmailTests
 {
     private static readonly LandingPageProductInfo Product = new(
         CreatorId: 1, ProductId: 2, LandingPageId: 3, ProductName: "Course", ThumbnailUrl: null, PriceCents: 2900,
-        Currency: Currency.Eur, CreatorStatus: CreatorStatus.Active, PayoutMode: PayoutMode.BankTransfer,
-        StripeConnectAccountId: null, StripeConnectPayoutsEnabled: false, HasPayoutProfile: true, PlatformFeeBasisPoints: 500);
+        Currency: Currency.Eur, CreatorStatus: CreatorStatus.Active,
+        StripeConnectAccountId: "acct_1", StripeConnectPayoutsEnabled: true, PlatformFeeBasisPoints: 500);
 
     private readonly FakePaymentCheckoutSessionService _stripe = new();
     private readonly FakeOrderRepository _orders = new();
-    private readonly FakeLedgerEntryRepository _ledger = new();
     private readonly FakeEmailOutboxService _outbox = new();
 
     /// <summary>Checkout through the real service; returns the Pending order it created.</summary>
@@ -48,7 +46,6 @@ public class CheckoutBuyerEmailTests
             new FakeOrdersCreatorContextProvider(),
             _outbox,
             new FakeHomeSummaryCache(),
-            new PayoutLedgerService(_ledger, NullLogger<PayoutLedgerService>.Instance),
             new FakeOrderAccessGrants(),
             Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.example.com" }),
             NullLogger<OrderWebhookService>.Instance);
@@ -75,7 +72,6 @@ public class CheckoutBuyerEmailTests
         Assert.Equal("ana@example.com", _outbox.LastOrderAccessTo);
         Assert.Equal("ana@example.com", _outbox.LastOrderAccess!.BuyerEmail);
         Assert.Equal("Ana Horvat", _outbox.LastOrderAccess.BuyerName);
-        Assert.Equal(2, _ledger.Entries.Count);
     }
 
     [Fact]
@@ -104,7 +100,6 @@ public class CheckoutBuyerEmailTests
 
         Assert.Equal(OrderStatus.Pending, order.Status);
         Assert.Null(order.Email);
-        Assert.Empty(_ledger.Entries);
         Assert.Equal(0, _outbox.OrderAccessQueuedCount);
     }
 

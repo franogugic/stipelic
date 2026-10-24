@@ -177,17 +177,9 @@ public sealed partial class LandingPageService : ILandingPageService
 
         if (landingPage.Type == LandingPageType.Sales)
         {
-            var payoutReady = context.PayoutMode == PayoutMode.StripeConnect
-                ? context.StripeConnectPayoutsEnabled
-                : context.HasPayoutProfile;
-
-            if (!payoutReady)
-            {
-                var missing = context.PayoutMode == PayoutMode.StripeConnect
-                    ? "Stripe Connect onboarding"
-                    : "bank account details";
-                throw new ConflictException($"Complete your payout setup ({missing}) before publishing a Sales page.", PayoutsNotReadyCode);
-            }
+            // Sales are paid out only through the creator's own connected Stripe account.
+            if (!context.StripeConnectPayoutsEnabled)
+                throw new ConflictException("Complete your payout setup (Stripe Connect onboarding) before publishing a Sales page.", PayoutsNotReadyCode);
         }
 
         landingPage.Publish(DateTimeOffset.UtcNow);

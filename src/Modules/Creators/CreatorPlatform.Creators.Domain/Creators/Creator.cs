@@ -16,7 +16,6 @@ public sealed class Creator
         Currency defaultCurrency,
         CreatorStatus status,
         string countryCode,
-        PayoutMode payoutMode,
         DateTimeOffset createdAt)
     {
         PublicId = publicId;
@@ -26,7 +25,6 @@ public sealed class Creator
         DefaultCurrency = defaultCurrency;
         Status = status;
         CountryCode = countryCode;
-        PayoutMode = payoutMode;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
     }
@@ -38,7 +36,6 @@ public sealed class Creator
         Currency defaultCurrency,
         CreatorStatus status,
         string countryCode,
-        PayoutMode payoutMode,
         DateTimeOffset createdAt)
     {
         return new Creator(
@@ -49,7 +46,6 @@ public sealed class Creator
             defaultCurrency,
             status,
             countryCode,
-            payoutMode,
             createdAt);
     }
 
@@ -136,8 +132,6 @@ public sealed class Creator
     public string? StripeCustomerId { get; private set; }
 
     public string CountryCode { get; private set; } = string.Empty;
-
-    public PayoutMode PayoutMode { get; private set; }
 
     public string? StripeConnectAccountId { get; private set; }
 

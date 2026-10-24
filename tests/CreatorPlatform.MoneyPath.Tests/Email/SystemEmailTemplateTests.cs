@@ -45,9 +45,6 @@ public class SystemEmailTemplateTests
         SupportEmail: "help@acme.test",
         UnsubscribeUrl: unsubscribeUrl is null ? null : url);
 
-    private static PayoutRequestedEmail Payout(string text = "Jane Doe") => new(
-        text, text, text, 50000, "Eur", "RS35260005601001611379", "RS", At, 74860);
-
     /// <summary>Every template, rendered with <paramref name="text"/> in every text slot and <paramref name="url"/>
     /// in every URL slot.</summary>
     private static IEnumerable<(string Name, RenderedEmail Email)> All(string text, string url)
@@ -56,7 +53,6 @@ public class SystemEmailTemplateTests
         yield return ("reset", PasswordResetTemplate.Render(Branding, text, text, url));
         yield return ("change-confirm", EmailChangeVerificationTemplate.Render(Branding, text, text, text, url));
         yield return ("change-notice", EmailChangedTemplate.Render(Branding, text, text, text, At, url));
-        yield return ("payout", PayoutRequestedTemplate.Render(Branding, Payout(text), url));
         yield return ("order", OrderAccessTemplate.Render(Order(text, url)));
         yield return ("lead-magnet", LeadMagnetTemplate.Render(Lead(text, url)));
         var campaign = new CampaignEmailRenderer().Render(text, text, text, url, text, null, "#E2553A", text);
@@ -256,19 +252,6 @@ public class SystemEmailTemplateTests
         // Footer links and the support address appear only when configured.
         Assert.Contains("https://app.test/privacy", withMark);
         Assert.DoesNotContain("Privacy</a>", withoutMark);
-    }
-
-    [Fact]
-    public void ThePayoutEmail_ShowsTheBankDetailsForTheAdmin()
-    {
-        var html = PayoutRequestedTemplate.Render(Branding, Payout(), "https://app.test/admin/payouts").Html;
-
-        Assert.Contains("€500.00", html);
-        Assert.Contains("RS35 2600 0560 1001 6113 79", html);
-        Assert.Contains("Serbia", html);
-        Assert.Contains("€748.60", html);
-        Assert.Contains("6 Oct 2026, 09:14 UTC", html);
-        Assert.Contains(">Admin</span>", html);
     }
 
     [Theory]

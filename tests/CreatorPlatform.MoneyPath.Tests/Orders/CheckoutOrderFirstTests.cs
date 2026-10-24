@@ -21,14 +21,14 @@ public class CheckoutOrderFirstTests
         FakeOrderRepository Orders,
         FakeOrdersUnitOfWork UnitOfWork);
 
-    private static Harness Build(PayoutMode payoutMode = PayoutMode.BankTransfer)
+    private static Harness Build()
     {
         var context = new FakeOrdersCreatorContextProvider
         {
             ProductInfo = new LandingPageProductInfo(
                 CreatorId: 1, ProductId: 2, LandingPageId: 3, ProductName: "Course", ThumbnailUrl: null, PriceCents: 5000,
-                Currency: Currency.Eur, CreatorStatus: CreatorStatus.Active, PayoutMode: payoutMode,
-                StripeConnectAccountId: "acct_1", StripeConnectPayoutsEnabled: true, HasPayoutProfile: true,
+                Currency: Currency.Eur, CreatorStatus: CreatorStatus.Active,
+                StripeConnectAccountId: "acct_1", StripeConnectPayoutsEnabled: true,
                 PlatformFeeBasisPoints: 500)
         };
         var sessions = new FakePaymentCheckoutSessionService();
@@ -41,12 +41,10 @@ public class CheckoutOrderFirstTests
         return new Harness(service, sessions, orders, unitOfWork);
     }
 
-    [Theory]
-    [InlineData(PayoutMode.BankTransfer)]
-    [InlineData(PayoutMode.StripeConnect)]
-    public async Task ThePendingOrder_IsSavedBeforeStripeIsCalled_AndTheSessionCarriesItsPublicId(PayoutMode payoutMode)
+    [Fact]
+    public async Task ThePendingOrder_IsSavedBeforeStripeIsCalled_AndTheSessionCarriesItsPublicId()
     {
-        var harness = Build(payoutMode);
+        var harness = Build();
         (int Saves, OrderStatus? Status, string? SessionId)? atStripeCall = null;
         harness.Sessions.OnCreate = () =>
             atStripeCall = (harness.UnitOfWork.SaveCount, harness.Orders.AddedOrder?.Status, harness.Orders.AddedOrder?.StripeCheckoutSessionId);

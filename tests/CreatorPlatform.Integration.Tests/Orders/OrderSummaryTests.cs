@@ -216,10 +216,10 @@ public sealed class OrderSummaryTests
         await using var db = _fixture.CreateDbContext();
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "AmountCents", "Currency", "Status",
-                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
+                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "StripeCheckoutSessionId",
                                        "CreatedAt", "PaidAt", "UpdatedAt", "RefundedCents")
             VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {TestData.UniqueEmail("buyer")}, {amountCents}, 'Eur', {status},
-                    1000, {feeCents}, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {paidAt}, {updatedAt ?? createdAt},
+                    1000, {feeCents}, {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {paidAt}, {updatedAt ?? createdAt},
                     {(status == "Refunded" ? amountCents : 0)})
             """);
     }

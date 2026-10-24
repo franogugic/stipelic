@@ -12,10 +12,8 @@ public sealed record LandingPageProductInfo(
     int PriceCents,
     Currency Currency,
     CreatorStatus CreatorStatus,
-    PayoutMode PayoutMode,
     string? StripeConnectAccountId,
     bool StripeConnectPayoutsEnabled,
-    bool HasPayoutProfile,
     // Null when the creator has no active subscription (checkout is rejected before this matters).
     int? PlatformFeeBasisPoints);
 

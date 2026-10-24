@@ -31,9 +31,7 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             {
                 c.Id,
                 c.Status,
-                c.PayoutMode,
-                c.StripeConnectPayoutsEnabled,
-                HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(pp => pp.CreatorId == c.Id)
+                c.StripeConnectPayoutsEnabled
             })
             .FirstOrDefaultAsync(ct);
 
@@ -58,9 +56,7 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return new CreatorContext(creator.Id, maxLandingPages, activeLandingPageCount)
         {
             Status = creator.Status,
-            PayoutMode = creator.PayoutMode,
-            StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled,
-            HasPayoutProfile = creator.HasPayoutProfile
+            StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled
         };
     }
 

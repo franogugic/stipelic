@@ -188,8 +188,7 @@ public sealed class Campaign
         ClickTracked = true;
     }
 
-    /// <summary>Dispatch of a scheduled send failed (no recipients, limit reached, etc.) — same
-    /// Note-on-failure pattern as <see cref="Payouts.Payout.MarkFailed"/>.</summary>
+    /// <summary>Dispatch of a scheduled send failed (no recipients, limit reached, etc.); the note says why.</summary>
     public void MarkFailed(string? note, DateTimeOffset updatedAt)
     {
         if (Status != CampaignStatus.Scheduled)

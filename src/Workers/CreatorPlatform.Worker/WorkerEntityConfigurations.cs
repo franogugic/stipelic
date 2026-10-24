@@ -8,7 +8,6 @@ using CreatorPlatform.Marketing.Infrastructure;
 using CreatorPlatform.Media.Infrastructure;
 using CreatorPlatform.Orders.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
-using CreatorPlatform.Payouts.Infrastructure;
 using CreatorPlatform.Products.Infrastructure;
 
 namespace CreatorPlatform.Worker;
@@ -32,7 +31,6 @@ public static class WorkerEntityConfigurations
         typeof(MediaInfrastructureServiceCollectionExtensions).Assembly,
         typeof(OrdersInfrastructureServiceCollectionExtensions).Assembly,
         typeof(PaymentsInfrastructureServiceCollectionExtensions).Assembly,
-        typeof(PayoutsInfrastructureServiceCollectionExtensions).Assembly,
         typeof(ProductsInfrastructureServiceCollectionExtensions).Assembly,
     ];
 }

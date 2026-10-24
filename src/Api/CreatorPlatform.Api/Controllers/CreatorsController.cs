@@ -56,13 +56,13 @@ public sealed class CreatorsController : ControllerBase
     }
 
     [HttpGet("payout-countries")]
-    public ActionResult<ApiResponse<List<PayoutCountryDto>>> PayoutCountries()
+    public ActionResult<ApiResponse<List<string>>> PayoutCountries()
     {
         _ = GetAuthenticatedUser();
 
         var countries = _creatorService.GetPayoutCountries();
 
-        return Ok(ApiResponse<List<PayoutCountryDto>>.Success(
+        return Ok(ApiResponse<List<string>>.Success(
             StatusCodes.Status200OK,
             "Payout countries loaded.",
             countries));

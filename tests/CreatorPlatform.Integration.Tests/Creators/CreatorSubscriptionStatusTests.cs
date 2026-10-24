@@ -32,12 +32,10 @@ public sealed class CreatorSubscriptionStatusTests
             new CreatorPlanRepository(db),
             new CreatorSettingsRepository(db),
             new CreatorSubscriptionRepository(db),
-            new CreatorPayoutProfileRepository(db),
             new CreatorsUnitOfWork(db),
             new FakeCheckoutSessionService(),
             new UnexpectedSubscriptionCancellationService(),
             new UnexpectedBillingPortalService(),
-            new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             new RecordingCreatorCacheInvalidator(),
             NullLogger<CreatorService>.Instance, new AnyImageAccepted());
