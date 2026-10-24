@@ -24,6 +24,9 @@ x-backend: &backend
   build:
     context: ..
     dockerfile: Dockerfile
+  # dotnet must not be PID 1: as PID 1 a crash on start (e.g. an invalid setting) never ends the process (abort's
+  # signal is ignored), so the container hangs instead of exiting, and neither the restart policy nor depends_on reacts.
+  init: true
   logging: *logging
 
 x-database: &database-connection

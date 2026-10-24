@@ -24,6 +24,8 @@ cost a few MB.
   "extra" carries ICU and tzdata, which the creator time zones need.
 - `appsettings.Development.json` and every `.env` file are excluded from the build context (`.dockerignore`), so no
   development secret can end up in an image.
+- Compose runs the three under an init process (`init: true`). As PID 1, a `dotnet` process that crashes on start (an
+  invalid setting, for example) never exits; the container would hang instead of failing or restarting.
 
 **Networks.** `edge` (proxy, web, api) has a fixed subnet so the proxy has a fixed address; the API trusts
 `X-Forwarded-For` only from that address (`ForwardedHeaders:KnownProxies`, `ForwardLimit=1`), so rate limits see the
