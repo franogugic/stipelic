@@ -12,7 +12,7 @@ namespace CreatorPlatform.MoneyPath.Tests.Orders;
 
 public class OrderWebhookServiceTests
 {
-    private static Order BuildOrder(PayoutMode payoutMode, int amountCents = 1000, int platformFeeCents = 50, string sessionId = "sess_1")
+    private static Order BuildOrder(int amountCents = 1000, int platformFeeCents = 50, string sessionId = "sess_1")
         => Order.Create(
             creatorId: 1,
             productId: 2,
@@ -23,7 +23,6 @@ public class OrderWebhookServiceTests
             Currency.Eur,
             platformFeeBasisPoints: 500,
             platformFeeCents,
-            payoutMode: payoutMode.ToString(),
             stripeCheckoutSessionId: sessionId,
             DateTimeOffset.UtcNow);
 
@@ -67,7 +66,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task HandleCheckoutSessionCompleted_PaysTheOrder()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         var (service, orderRepository) = BuildService(order);
 
         await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
@@ -78,7 +77,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task HandleCheckoutSessionCompleted_CalledTwice_RemainsIdempotent()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         var (service, _) = BuildService(order);
         var data = new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1");
 
@@ -92,7 +91,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task HandleChargeRefunded_InFull_RefundsTheWholeOrder()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
         var (service, orderRepository) = BuildService(order);
 
@@ -104,7 +103,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task HandleChargeRefunded_CalledTwice_RemainsIdempotent()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
         var (service, _) = BuildService(order);
         var data = FullRefund();
@@ -121,7 +120,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task APaidOrder_GetsExactlyOneGrant_AndItsEmailLinksTheDownloadPage()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         var (service, _, grants, outbox) = BuildServiceWithDelivery(order);
         var completed = new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1");
 
@@ -139,7 +138,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task ARefund_TurnsTheBuyersLinkOff_Once()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         var (service, _, grants, _) = BuildServiceWithDelivery(order);
         await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
 
@@ -156,9 +155,9 @@ public class OrderWebhookServiceTests
     // ---- B3: partial refunds --------------------------------------------------------------------------------------
 
     private static async Task<(OrderWebhookService Service, Order Order, FakeOrderAccessGrants Grants)>
-        PaidAsync(PayoutMode payoutMode, int amountCents = 1000, int platformFeeCents = 50)
+        PaidAsync(int amountCents = 1000, int platformFeeCents = 50)
     {
-        var order = BuildOrder(payoutMode, amountCents, platformFeeCents);
+        var order = BuildOrder(amountCents, platformFeeCents);
         var (service, _, grants, _) = BuildServiceWithDelivery(order);
         await service.HandleCheckoutSessionCompletedAsync(new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1"), CancellationToken.None);
         return (service, order, grants);
@@ -167,7 +166,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task APartialRefund_KeepsTheOrderPaid_AndTheBuyersAccess()
     {
-        var (service, order, grants) = await PaidAsync(PayoutMode.StripeConnect);
+        var (service, order, grants) = await PaidAsync();
 
         await service.HandleChargeRefundedAsync(PartialRefund(300), CancellationToken.None);
 
@@ -181,7 +180,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task APartialRefundThenTheRest_RefundsTheOrder_AndRevokesTheLink()
     {
-        var (service, order, grants) = await PaidAsync(PayoutMode.StripeConnect);
+        var (service, order, grants) = await PaidAsync();
 
         await service.HandleChargeRefundedAsync(PartialRefund(300), CancellationToken.None);
         await service.HandleChargeRefundedAsync(new OrderChargeRefundedDto("pi_1", "ch_1", 1000, 1000, FullyRefunded: true), CancellationToken.None);
@@ -194,7 +193,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task AReplayedOrOutOfOrderPartialRefund_ChangesNothing()
     {
-        var (service, order, _) = await PaidAsync(PayoutMode.StripeConnect);
+        var (service, order, _) = await PaidAsync();
         await service.HandleChargeRefundedAsync(PartialRefund(600), CancellationToken.None);
         var updatedAt = order.UpdatedAt;
 
@@ -209,7 +208,7 @@ public class OrderWebhookServiceTests
     public async Task APartialRefundInTheBuyersCurrency_IsAppliedAsItsShareOfTheOrder()
     {
         // Adaptive Pricing: a 15.00 EUR order charged as 30.51 BAM; a third of the BAM charge is refunded.
-        var (service, order, _) = await PaidAsync(PayoutMode.StripeConnect, amountCents: 1500, platformFeeCents: 75);
+        var (service, order, _) = await PaidAsync(amountCents: 1500, platformFeeCents: 75);
 
         await service.HandleChargeRefundedAsync(PartialRefund(refunded: 1017, chargeAmount: 3051), CancellationToken.None);
 
@@ -220,7 +219,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task APartialRefundRoundingToTheFullAmount_StillKeepsTheOrderPaid()
     {
-        var (service, order, grants) = await PaidAsync(PayoutMode.StripeConnect);
+        var (service, order, grants) = await PaidAsync();
 
         await service.HandleChargeRefundedAsync(PartialRefund(refunded: 99_999, chargeAmount: 100_000), CancellationToken.None);
 
@@ -232,7 +231,7 @@ public class OrderWebhookServiceTests
 
     private static Order PendingOrderWithoutSession() => Order.Create(
         creatorId: 1, productId: 2, landingPageId: 3, email: "buyer@example.com", name: null, amountCents: 1000, Currency.Eur,
-        platformFeeBasisPoints: 500, platformFeeCents: 50, payoutMode: nameof(PayoutMode.StripeConnect),
+        platformFeeBasisPoints: 500, platformFeeCents: 50,
         stripeCheckoutSessionId: null, DateTimeOffset.UtcNow);
 
     private static Dictionary<string, string> SaleMetadata(Guid orderPublicId) => new()
@@ -271,7 +270,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task ACompletedSession_ForAnOrderTiedToAnotherSession_Throws()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect, sessionId: "cs_first");
+        var order = BuildOrder(sessionId: "cs_first");
         var (service, _) = BuildService(order);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.HandleCheckoutSessionCompletedAsync(
@@ -298,7 +297,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task AnExpiredSession_FailsItsPendingOrder_Once()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         var (service, _) = BuildService(order);
         var expired = new OrderCheckoutExpiredDto(order.StripeCheckoutSessionId!, SaleMetadata(order.PublicId));
 
@@ -324,7 +323,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public async Task AnExpiredSession_LeavesAPaidOrderAlone()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
         var (service, _) = BuildService(order);
 
@@ -349,7 +348,7 @@ public class OrderWebhookServiceTests
     public async Task APaidSession_ForAnOrderAlreadyFailed_StillPaysIt()
     {
         // The maintenance job (or a late expiry) failed it, but the buyer did pay: the money wins.
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         order.MarkFailed(DateTimeOffset.UtcNow);
         var (service, _) = BuildService(order);
 
@@ -361,7 +360,7 @@ public class OrderWebhookServiceTests
     [Fact]
     public void OnlyAPendingOrder_CanFail()
     {
-        var order = BuildOrder(PayoutMode.StripeConnect);
+        var order = BuildOrder();
         order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
 
         Assert.Throws<InvalidOperationException>(() => order.MarkFailed(DateTimeOffset.UtcNow));

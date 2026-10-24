@@ -75,9 +75,9 @@ public sealed class ProductAccessTests
         var sessionId = $"cs_test_{Guid.NewGuid():N}";
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "AmountCents", "Currency", "Status",
-                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
+                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "StripeCheckoutSessionId",
                                        "CreatedAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {email}, 2900, 'Eur', 'Pending', 0, 0, 'StripeConnect',
+            VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {email}, 2900, 'Eur', 'Pending', 0, 0,
                     {sessionId}, now(), now())
             """);
         return sessionId;

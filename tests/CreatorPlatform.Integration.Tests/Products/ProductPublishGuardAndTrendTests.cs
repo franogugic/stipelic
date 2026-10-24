@@ -145,10 +145,10 @@ public sealed class ProductPublishGuardAndTrendTests
         await using var db = _fixture.CreateDbContext();
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "AmountCents", "Currency",
-                                       "Status", "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode",
+                                       "Status", "PlatformFeeBasisPoints", "PlatformFeeCents",
                                        "StripeCheckoutSessionId", "CreatedAt", "PaidAt", "UpdatedAt", "RefundedCents")
             VALUES ({Guid.NewGuid()}, {creatorId}, {productId}, {TestData.UniqueEmail("buyer")}, {amountCents},
-                    'Eur', {status}, 0, 0, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {paidAt}, {createdAt},
+                    'Eur', {status}, 0, 0, {$"cs_test_{Guid.NewGuid():N}"}, {createdAt}, {paidAt}, {createdAt},
                     {(status == "Refunded" ? amountCents : 0)})
             """);
     }

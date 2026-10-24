@@ -376,11 +376,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int>("OwnerUserId")
                         .HasColumnType("integer");
 
-                    b.Property<string>("PayoutMode")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uuid");
 
@@ -502,37 +497,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "Status");
 
                     b.ToTable("creator_members", "creators");
-                });
-
-            modelBuilder.Entity("CreatorPlatform.Creators.Domain.Creators.CreatorPayoutProfile", b =>
-                {
-                    b.Property<int>("CreatorId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("AccountHolderName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<string>("BankCountryCode")
-                        .IsRequired()
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Iban")
-                        .IsRequired()
-                        .HasMaxLength(34)
-                        .HasColumnType("character varying(34)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("CreatorId");
-
-                    b.ToTable("creator_payout_profiles", "creators");
                 });
 
             modelBuilder.Entity("CreatorPlatform.Creators.Domain.Creators.CreatorPlan", b =>
@@ -1785,11 +1749,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("PayoutMode")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<int>("PlatformFeeBasisPoints")
                         .HasColumnType("integer");
 
@@ -1946,133 +1905,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.ToTable("webhook_failures", "payments", t =>
                         {
                             t.HasCheckConstraint("CK_webhook_failures_Attempts_Positive", "\"Attempts\" >= 1");
-                        });
-                });
-
-            modelBuilder.Entity("CreatorPlatform.Payouts.Domain.Payouts.LedgerEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AmountCents")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("CreatorId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<int?>("OrderId")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("PayoutId")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("PublicId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("RefundedToCents")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PublicId")
-                        .IsUnique();
-
-                    b.HasIndex("CreatorId", "CreatedAt");
-
-                    b.HasIndex("PayoutId", "Type")
-                        .IsUnique()
-                        .HasFilter("\"PayoutId\" IS NOT NULL");
-
-                    b.HasIndex("OrderId", "Type", "RefundedToCents")
-                        .IsUnique()
-                        .HasFilter("\"OrderId\" IS NOT NULL");
-
-                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("OrderId", "Type", "RefundedToCents"), false);
-
-                    b.ToTable("ledger_entries", "payouts", t =>
-                        {
-                            t.HasCheckConstraint("CK_ledger_entries_AmountCents_NotZero", "\"AmountCents\" <> 0");
-
-                            t.HasCheckConstraint("CK_ledger_entries_RefundedToCents_OnRefundsOnly", "(\"Type\" IN ('RefundDebit', 'FeeRefundCredit')) = (\"RefundedToCents\" IS NOT NULL)");
-                        });
-                });
-
-            modelBuilder.Entity("CreatorPlatform.Payouts.Domain.Payouts.Payout", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AmountCents")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("BankReference")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("CreatorId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<DateTimeOffset?>("PaidAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("PublicId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatorId")
-                        .IsUnique()
-                        .HasFilter("\"Status\" = 'Pending'");
-
-                    b.HasIndex("PublicId")
-                        .IsUnique();
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("CreatorId", "CreatedAt");
-
-                    b.ToTable("payouts", "payouts", t =>
-                        {
-                            t.HasCheckConstraint("CK_payouts_AmountCents_Positive", "\"AmountCents\" > 0");
                         });
                 });
 
@@ -2378,17 +2210,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Navigation("Creator");
                 });
 
-            modelBuilder.Entity("CreatorPlatform.Creators.Domain.Creators.CreatorPayoutProfile", b =>
-                {
-                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", "Creator")
-                        .WithOne()
-                        .HasForeignKey("CreatorPlatform.Creators.Domain.Creators.CreatorPayoutProfile", "CreatorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Creator");
-                });
-
             modelBuilder.Entity("CreatorPlatform.Creators.Domain.Creators.CreatorPlanLimit", b =>
                 {
                     b.HasOne("CreatorPlatform.Creators.Domain.Creators.CreatorPlan", "Plan")
@@ -2594,34 +2415,6 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasOne("CreatorPlatform.Products.Domain.Products.Product", null)
                         .WithMany()
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("CreatorPlatform.Payouts.Domain.Payouts.LedgerEntry", b =>
-                {
-                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
-                        .WithMany()
-                        .HasForeignKey("CreatorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CreatorPlatform.Orders.Domain.Orders.Order", null)
-                        .WithMany()
-                        .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("CreatorPlatform.Payouts.Domain.Payouts.Payout", null)
-                        .WithMany()
-                        .HasForeignKey("PayoutId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("CreatorPlatform.Payouts.Domain.Payouts.Payout", b =>
-                {
-                    b.HasOne("CreatorPlatform.Creators.Domain.Creators.Creator", null)
-                        .WithMany()
-                        .HasForeignKey("CreatorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

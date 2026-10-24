@@ -90,7 +90,6 @@ public sealed class OrderCheckoutService : IOrderCheckoutService
             productInfo.Currency,
             platformFeeBasisPoints,
             platformFeeCents,
-            payoutMode: nameof(PayoutMode.StripeConnect),
             stripeCheckoutSessionId: null,
             DateTimeOffset.UtcNow);
 

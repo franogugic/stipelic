@@ -23,7 +23,7 @@ public class LandingPageProductRulesTests
     private readonly FakeLandingPageRepository _pages = new();
     private readonly FakeLandingPagesCreatorContextProvider _creators = new()
     {
-        Context = new CreatorContext(1, 5, 0) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = true },
+        Context = new CreatorContext(1, 5, 0) { Status = CreatorStatus.Active, StripeConnectPayoutsEnabled = true },
     };
     private readonly LandingPageService _service;
 

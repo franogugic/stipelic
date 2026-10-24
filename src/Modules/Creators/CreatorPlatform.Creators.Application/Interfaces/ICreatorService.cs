@@ -36,10 +36,9 @@ public interface ICreatorService
 
     Task<string> GetBillingPortalUrlAsync(int ownerUserId, CancellationToken ct);
 
-    /// <summary>Disables the owner's workspace after settling its money: 409 WORKSPACE_HAS_BALANCE while a
-    /// bank-transfer balance or pending payout remains; a paid Stripe subscription is cancelled immediately and a
-    /// pending Checkout session expired (409 when it was already paid). Any Stripe failure throws before anything
-    /// changes. Returns the internal id of the disabled workspace (for cache invalidation).</summary>
+    /// <summary>Disables the owner's workspace after settling its money: a paid Stripe subscription is cancelled
+    /// immediately and a pending Checkout session expired (409 when it was already paid). Any Stripe failure throws
+    /// before anything changes. Returns the internal id of the disabled workspace (for cache invalidation).</summary>
     Task<int> DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 
     /// <summary>The countries a creator can sell from (ISO 3166-1 alpha-2), sorted. Static registry data — no I/O, so

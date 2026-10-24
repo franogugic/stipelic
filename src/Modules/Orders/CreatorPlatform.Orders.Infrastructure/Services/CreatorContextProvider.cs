@@ -49,7 +49,6 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
                 p.PriceCents,
                 Currency = c.DefaultCurrency,
                 c.Status,
-                c.PayoutMode,
                 c.StripeConnectAccountId,
                 c.StripeConnectPayoutsEnabled,
                 fee.PlatformFeeBasisPoints
@@ -68,7 +67,6 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             result.PriceCents,
             result.Currency,
             result.Status,
-            result.PayoutMode,
             result.StripeConnectAccountId,
             result.StripeConnectPayoutsEnabled,
             result.PlatformFeeBasisPoints);

@@ -105,9 +105,6 @@ public sealed partial class CreatorService : ICreatorService
             ? CreatorStatus.PendingPayment
             : CreatorStatus.Active;
 
-        // Creators are paid only through their own connected Stripe account.
-        var payoutMode = PayoutMode.StripeConnect;
-
         var createdAt = DateTimeOffset.UtcNow;
         var creator = Creator.Create(
             ownerUserId,
@@ -116,7 +113,6 @@ public sealed partial class CreatorService : ICreatorService
             defaultCurrency,
             creatorStatus,
             countryCode,
-            payoutMode,
             createdAt);
 
         CreatorSubscription? createdSubscription = null;
@@ -807,7 +803,6 @@ public sealed partial class CreatorService : ICreatorService
             CancelAtPeriodEnd = subscription?.CancelAtPeriodEnd ?? false,
             CurrentPeriodEnd = subscription?.CurrentPeriodEnd,
             CountryCode = creator.CountryCode,
-            PayoutMode = creator.PayoutMode.ToString(),
             StripeConnectDetailsSubmitted = creator.StripeConnectDetailsSubmitted,
             StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled,
             // Payouts go only through the creator's connected Stripe account.

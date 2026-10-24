@@ -126,9 +126,9 @@ public sealed class OrderReceiptTests
         var created = createdAt ?? DateTimeOffset.UtcNow.AddMinutes(-2);
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "Name", "AmountCents", "Currency", "Status",
-                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
+                                       "PlatformFeeBasisPoints", "PlatformFeeCents", "StripeCheckoutSessionId",
                                        "CreatedAt", "PaidAt", "UpdatedAt")
-            VALUES ({publicId}, {creatorId}, {productId}, {email}, {name}, 2900, 'Eur', {status}, 0, 0, 'StripeConnect', {sessionId},
+            VALUES ({publicId}, {creatorId}, {productId}, {email}, {name}, 2900, 'Eur', {status}, 0, 0, {sessionId},
                     {created}, {paidAt}, {created})
             """);
         return (sessionId, publicId);

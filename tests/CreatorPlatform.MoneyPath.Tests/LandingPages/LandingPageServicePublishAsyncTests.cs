@@ -30,9 +30,9 @@ public class LandingPageServicePublishAsyncTests
     }
 
     [Fact]
-    public async Task PublishAsync_SalesNotPayoutReady_StripeConnect_Throws()
+    public async Task PublishAsync_SalesNotPayoutReady_Throws()
     {
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = false };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, StripeConnectPayoutsEnabled = false };
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         await Assert.ThrowsAsync<ConflictException>(
@@ -42,19 +42,9 @@ public class LandingPageServicePublishAsyncTests
     }
 
     [Fact]
-    public async Task PublishAsync_SalesNotPayoutReady_BankTransfer_Throws()
-    {
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer,};
-        var (service, repository) = BuildService(context, LandingPageType.Sales);
-
-        await Assert.ThrowsAsync<ConflictException>(
-            () => service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None));
-    }
-
-    [Fact]
     public async Task PublishAsync_SalesPayoutReady_Publishes()
     {
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = true };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, StripeConnectPayoutsEnabled = true };
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         await service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None);
@@ -65,7 +55,7 @@ public class LandingPageServicePublishAsyncTests
     [Fact]
     public async Task PublishAsync_LeadGenNotPayoutReady_Publishes()
     {
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.StripeConnect, StripeConnectPayoutsEnabled = false };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, StripeConnectPayoutsEnabled = false };
         var (service, repository) = BuildService(context, LandingPageType.LeadGen);
 
         await service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None);
@@ -92,7 +82,7 @@ public class LandingPageServicePublishAsyncTests
         var context = new CreatorContext(1, 5, 1)
         {
             Status = CreatorStatus.PendingPayment,
-            PayoutMode = PayoutMode.StripeConnect,
+           
             StripeConnectPayoutsEnabled = true,
         };
         var (service, repository) = BuildService(context, LandingPageType.Sales);
@@ -118,22 +108,9 @@ public class LandingPageServicePublishAsyncTests
     }
 
     [Fact]
-    public async Task PublishAsync_SalesOfABankTransferCreatorWithBankDetails_IsRefused()
-    {
-        // Bank details no longer make a creator payout-ready: sales are paid out only through Stripe Connect.
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer,};
-        var (service, repository) = BuildService(context, LandingPageType.Sales);
-
-        var exception = await Assert.ThrowsAsync<ConflictException>(
-            () => service.PublishAsync(CreatorSlug, repository.PageForUpdate!.PublicId, OwnerUserId, CancellationToken.None));
-
-        Assert.Equal(LandingPageService.PayoutsNotReadyCode, exception.Code);
-    }
-
-    [Fact]
     public async Task PublishAsync_SalesWithoutPayouts_HasThePayoutsNotReadyCode()
     {
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer,};
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, StripeConnectPayoutsEnabled = false };
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         var exception = await Assert.ThrowsAsync<ConflictException>(

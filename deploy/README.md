@@ -68,8 +68,8 @@ remove in a later release), because the old API serves requests until its contai
 The API only queues mail; the Worker sends it. Each pass:
 
 1. Asks the quota how much may go out now, and claims no more than that, so a claimed message never waits.
-2. Claims **transactional mail first** (order access, lead magnets, verification, password reset, email change,
-   payouts), oldest first.
+2. Claims **transactional mail first** (order access, lead magnets, verification, password reset, email change),
+   oldest first.
 3. Fills the rest of the batch with campaign mail in **fair order**. Every creator with campaign mail waiting gets an
    equal share, whatever the list size, so a 10-recipient campaign is not stuck behind a 20,000-recipient one. A
    creator's second campaign queues behind its first and does not double its share.
@@ -92,7 +92,7 @@ messages come back after `ProcessingLeaseMinutes`. On a stop, the Worker finishe
 - **Bounces after acceptance** are not seen by the outbox (ACS reports them through its delivery events, later work).
 - Logs: one Information line per pass (claimed, sent, deferred, failed); each failed attempt at Warning.
 - **A transactional email that failed for good** (3 attempts) is logged at **Error** with the event
-  `TransactionalEmailFailed` (id 7101), its purpose and the order, sign-up, user or payout it belongs to, never the
+  `TransactionalEmailFailed` (id 7101), its purpose and the order, sign-up or user it belongs to, never the
   address. Chapter 10 alerts on it: an order-access email that never arrived means a buyer without their file. A campaign
   email that failed for good is a Warning (`CampaignEmailFailed`, 7102): bounces within a list are expected.
 

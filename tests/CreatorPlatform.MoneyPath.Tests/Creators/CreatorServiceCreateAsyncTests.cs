@@ -73,13 +73,13 @@ public class CreatorServiceCreateAsyncTests
     }
 
     [Fact]
-    public async Task CreateAsync_Croatia_ResolvesToStripeConnect()
+    public async Task CreateAsync_Croatia_IsAccepted()
     {
         var service = BuildService();
 
         var response = await service.CreateAsync(1, BuildRequest("HR"), CancellationToken.None);
 
-        Assert.Equal(nameof(PayoutMode.StripeConnect), response.Creator.PayoutMode);
+        Assert.Equal("HR", response.Creator.CountryCode);
     }
 
     [Fact]

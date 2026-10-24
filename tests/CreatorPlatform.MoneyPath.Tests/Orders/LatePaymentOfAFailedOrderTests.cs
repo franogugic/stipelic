@@ -16,8 +16,7 @@ public class LatePaymentOfAFailedOrderTests
 {
     private static Order FailedOrder()
     {
-        var order = Order.Create(1, 2, 3, "buyer@example.com", null, 1000, Currency.Eur, 500, 50, nameof(PayoutMode.StripeConnect),
-            "sess_late", DateTimeOffset.UtcNow.AddDays(-2));
+        var order = Order.Create(1, 2, 3, "buyer@example.com", null, 1000, Currency.Eur, 500, 50, "sess_late", DateTimeOffset.UtcNow.AddDays(-2));
         order.MarkFailed(DateTimeOffset.UtcNow.AddDays(-1));
         return order;
     }

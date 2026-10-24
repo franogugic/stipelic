@@ -68,11 +68,6 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
             .HasMaxLength(2)
             .IsRequired();
 
-        builder.Property(creator => creator.PayoutMode)
-            .HasConversion<string>()
-            .HasMaxLength(30)
-            .IsRequired();
-
         builder.Property(creator => creator.StripeConnectAccountId)
             .HasMaxLength(255);
 

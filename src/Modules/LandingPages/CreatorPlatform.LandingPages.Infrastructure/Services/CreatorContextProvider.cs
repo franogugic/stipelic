@@ -31,7 +31,6 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             {
                 c.Id,
                 c.Status,
-                c.PayoutMode,
                 c.StripeConnectPayoutsEnabled
             })
             .FirstOrDefaultAsync(ct);
@@ -57,7 +56,6 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
         return new CreatorContext(creator.Id, maxLandingPages, activeLandingPageCount)
         {
             Status = creator.Status,
-            PayoutMode = creator.PayoutMode,
             StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled
         };
     }

@@ -58,7 +58,7 @@ public sealed class CheckoutOrderFirstTests
         public Task<LandingPageProductInfo?> GetProductInfoByLandingPageSlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct)
             => Task.FromResult<LandingPageProductInfo?>(new LandingPageProductInfo(
                 seeded.CreatorId, seeded.ProductId, seeded.LandingPageId, "Course", null, 5000, Currency.Eur, CreatorStatus.Active,
-                PayoutMode.StripeConnect, "acct_test", true, PlatformFeeBasisPoints: 500));
+                "acct_test", true, PlatformFeeBasisPoints: 500));
 
         public Task<OrderEmailContext?> GetOrderEmailContextAsync(int productId, CancellationToken ct)
             => inner.GetOrderEmailContextAsync(productId, ct);

@@ -1,3 +1,4 @@
+using CreatorPlatform.Creators.Application;
 using CreatorPlatform.Creators.Application.Services;
 using CreatorPlatform.Creators.Domain.Creators;
 using CreatorPlatform.MoneyPath.Tests.Fakes;
@@ -22,18 +23,19 @@ public class CreatorConnectServiceTests
     }
 
     [Fact]
-    public async Task StartConnectOnboarding_BankTransferCreator_Throws()
+    public async Task StartConnectOnboarding_CreatorInAnUnsupportedCountry_Throws()
     {
         var callLog = new List<string>();
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "RS", PayoutMode.BankTransfer, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "RS", Now);
         var repo = new FakeCreatorRepository(callLog) { CreatorByOwner = creator };
         var uow = new FakeCreatorsUnitOfWork(callLog);
         var connect = new FakeConnectAccountService(callLog);
         var service = BuildService(repo, uow, connect);
 
-        await Assert.ThrowsAsync<BadRequestException>(
+        var exception = await Assert.ThrowsAsync<BadRequestException>(
             () => service.StartConnectOnboardingAsync(1, "owner@test.com", CancellationToken.None));
 
+        Assert.Equal(CreatorErrorCodes.CountryNotSupported, exception.Code);
         Assert.Equal(0, connect.CreateAccountCallCount);
     }
 
@@ -41,7 +43,7 @@ public class CreatorConnectServiceTests
     public async Task StartConnectOnboarding_ExistingAccountId_DoesNotCreateNewAccount()
     {
         var callLog = new List<string>();
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         creator.SetStripeConnectAccountId("acct_existing", Now);
         var repo = new FakeCreatorRepository(callLog) { CreatorByOwner = creator };
         var uow = new FakeCreatorsUnitOfWork(callLog);
@@ -59,7 +61,7 @@ public class CreatorConnectServiceTests
     public async Task StartConnectOnboarding_NewAccount_SavesAccountIdBeforeCreatingLink()
     {
         var callLog = new List<string>();
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         var repo = new FakeCreatorRepository(callLog) { CreatorByOwner = creator };
         var uow = new FakeCreatorsUnitOfWork(callLog);
         var connect = new FakeConnectAccountService(callLog);
@@ -79,7 +81,7 @@ public class CreatorConnectServiceTests
 
     private static Creator ConnectCreator(bool detailsSubmitted, string? accountId = "acct_dash")
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         if (accountId is not null)
             creator.SetStripeConnectAccountId(accountId, Now);
         creator.UpdateStripeConnectStatus(detailsSubmitted, detailsSubmitted, detailsSubmitted, Now, Now);
@@ -118,7 +120,7 @@ public class CreatorConnectServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.CreateDashboardLoginLinkAsync(1, CancellationToken.None));
     }
 
-    public static TheoryData<string> UnavailableCases => ["bank-transfer", "no-account", "details-not-submitted"];
+    public static TheoryData<string> UnavailableCases => ["no-account", "details-not-submitted"];
 
     [Theory]
     [MemberData(nameof(UnavailableCases))]
@@ -126,7 +128,6 @@ public class CreatorConnectServiceTests
     {
         var creator = scenario switch
         {
-            "bank-transfer" => Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "RS", PayoutMode.BankTransfer, Now),
             "no-account" => ConnectCreator(detailsSubmitted: false, accountId: null),
             _ => ConnectCreator(detailsSubmitted: false),
         };

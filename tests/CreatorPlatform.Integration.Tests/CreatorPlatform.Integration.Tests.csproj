@@ -36,7 +36,6 @@
     <ProjectReference Include="..\..\src\Modules\Media\CreatorPlatform.Media.Infrastructure\CreatorPlatform.Media.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Orders\CreatorPlatform.Orders.Infrastructure\CreatorPlatform.Orders.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Payments\CreatorPlatform.Payments.Infrastructure\CreatorPlatform.Payments.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Payouts\CreatorPlatform.Payouts.Infrastructure\CreatorPlatform.Payouts.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Products\CreatorPlatform.Products.Infrastructure\CreatorPlatform.Products.Infrastructure.csproj" />
   </ItemGroup>
 

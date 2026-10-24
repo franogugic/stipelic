@@ -25,7 +25,7 @@ public sealed class CreatorConflictCodesTests
     {
         await using var db = _fixture.CreateDbContext();
         var creator = Creator.Create(
-            ownerUserId, "Racing Creator", slug, Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect,
+            ownerUserId, "Racing Creator", slug, Currency.Eur, CreatorStatus.Active, "HR",
             DateTimeOffset.UtcNow);
         await new CreatorRepository(db).AddAsync(creator, CancellationToken.None);
 

@@ -44,7 +44,7 @@ public sealed class PartialRefundTests
         Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.luma.test" }),
         NullLogger<OrderWebhookService>.Instance);
 
-    /// <summary>A paid 50.00 EUR bank-transfer order with a 2.50 fee, its link and its sale entries; returns its id.</summary>
+    /// <summary>A paid 50.00 EUR order with a 2.50 fee and its link; returns its id.</summary>
     private async Task<(int OrderId, string PaymentIntentId)> PaidOrderAsync()
     {
         var creator = await _data.CreateCreatorAsync();
@@ -60,10 +60,10 @@ public sealed class PartialRefundTests
                 """).ToListAsync()).Single();
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "Email", "AmountCents", "Currency", "Status",
-                                           "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
+                                           "PlatformFeeBasisPoints", "PlatformFeeCents", "StripeCheckoutSessionId",
                                            "CreatedAt", "UpdatedAt")
                 VALUES ({Guid.NewGuid()}, {creator.CreatorId}, {productId}, 'buyer@example.test', 5000, 'Eur', 'Pending', 500, 250,
-                        'StripeConnect', {sessionId}, now(), now())
+                        {sessionId}, now(), now())
                 """);
         }
 
@@ -96,16 +96,6 @@ public sealed class PartialRefundTests
             """).ToListAsync()).Single();
     }
 
-    private sealed record EntryRow(string Type, int AmountCents, int? RefundedToCents);
-
-    private async Task<List<EntryRow>> EntriesAsync(int orderId)
-    {
-        await using var db = _fixture.CreateDbContext();
-        return await db.Database.SqlQuery<EntryRow>($"""
-            SELECT "Type", "AmountCents", "RefundedToCents" FROM payouts.ledger_entries WHERE "OrderId" = {orderId} ORDER BY "Id"
-            """).ToListAsync();
-    }
-
     [Fact]
     public async Task APartialRefund_ThenTheRest_AppliesEachStepOnce_AndOnlyTheFullRefundRevokes()
     {
@@ -121,7 +111,6 @@ public sealed class PartialRefundTests
         var refunded = await OrderAsync(orderId);
         Assert.Equal(("Refunded", 5000), (refunded.Status, refunded.RefundedCents));
         Assert.NotNull(refunded.RevokedAt);
-        Assert.Empty(await EntriesAsync(orderId));   // no platform-held balance to book
     }
 
     [Fact]

@@ -14,8 +14,8 @@ namespace CreatorPlatform.Integration.Tests.Orders;
 /// <summary>
 /// A partly refunded order counts net of its refund in every revenue figure — order summary and its monthly trend, the
 /// period board and its buckets, the home summary (totals, trends, top product, recent orders), a page's sales, product
-/// revenue, the analytics series, product and page breakdowns — and its fee keeps only its share (as the ledger's fee
-/// refund). The orders list and CSV show the refund and what the order keeps. A fully refunded order stays out of revenue.
+/// revenue, the analytics series, product and page breakdowns — and its fee keeps only its share of what is
+/// not refunded. The orders list and CSV show the refund and what the order keeps. A fully refunded order stays out of revenue.
 /// The refund figures count partial refunds too: the refunded amount sums RefundedCents and the count is "orders with a
 /// refund", at the order's latest refund time.
 /// </summary>
@@ -74,10 +74,10 @@ public sealed class PartialRefundRevenueTests
         {
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO orders.orders ("PublicId", "CreatorId", "ProductId", "LandingPageId", "Email", "AmountCents", "Currency",
-                                           "Status", "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
+                                           "Status", "PlatformFeeBasisPoints", "PlatformFeeCents", "StripeCheckoutSessionId",
                                            "RefundedCents", "CreatedAt", "PaidAt", "UpdatedAt")
                 VALUES ({publicId}, {creator.CreatorId}, {productId}, {pageId}, 'buyer@example.test', {amount}, 'Eur', {status}, 500,
-                        {fee}, 'StripeConnect', {$"cs_test_{Guid.NewGuid():N}"}, {refunded}, {paidAt}, {paidAt}, {paidAt.AddMinutes(30)})
+                        {fee}, {$"cs_test_{Guid.NewGuid():N}"}, {refunded}, {paidAt}, {paidAt}, {paidAt.AddMinutes(30)})
                 """);
         }
 
@@ -98,7 +98,7 @@ public sealed class PartialRefundRevenueTests
             .Where(o => o.PublicId == seeded.PartlyRefundedOrder)
             .Select(o => new { o.KeptAmountCents, o.KeptPlatformFeeCents }).ToListAsync()).Single();
 
-        Assert.Equal((666, 22), (kept.KeptAmountCents, kept.KeptPlatformFeeCents));   // the ledger gives back 11 of 33
+        Assert.Equal((666, 22), (kept.KeptAmountCents, kept.KeptPlatformFeeCents));   // 11 of the 33 fee goes back
     }
 
     [Fact]

@@ -42,7 +42,7 @@ public class CreatorWebhookServiceTests
     [Fact]
     public async Task HandleAccountUpdated_KnownAccount_SetsAllThreeFlags()
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         creator.SetStripeConnectAccountId("acct_123", Now);
         var repo = new FakeCreatorRepository { CreatorByStripeConnectAccountId = creator };
         var uow = new FakeCreatorsUnitOfWork();
@@ -67,7 +67,7 @@ public class CreatorWebhookServiceTests
     [Fact]
     public async Task HandleAccountUpdated_StaleEventAfterNewer_IsNoOp()
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         creator.SetStripeConnectAccountId("acct_123", Now);
         var repo = new FakeCreatorRepository { CreatorByStripeConnectAccountId = creator };
         var uow = new FakeCreatorsUnitOfWork();
@@ -124,7 +124,7 @@ public class CreatorWebhookServiceTests
 
     private static Creator ConnectCreator()
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         creator.SetStripeConnectAccountId("acct_123", Now);
         return creator;
     }
@@ -231,7 +231,7 @@ public class CreatorWebhookServiceTests
     [Fact]
     public async Task HandleSubscriptionUpdated_KnownNewPrice_UpdatesPlan()
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var proPlan = BuildPlan("pro", "price_pro", 250);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
@@ -257,7 +257,7 @@ public class CreatorWebhookServiceTests
     [Fact]
     public async Task HandleSubscriptionUpdated_UnknownPrice_PlanUnchangedAndWebhookFailureRecorded()
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
         subscription.ActivateWithProvider(StripeSubscriptionId, Now);
@@ -287,7 +287,7 @@ public class CreatorWebhookServiceTests
     [Fact]
     public async Task HandleSubscriptionUpdated_CancelAtPeriodEndTrue_SchedulesCancel()
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
         subscription.ActivateWithProvider(StripeSubscriptionId, Now);
@@ -307,7 +307,7 @@ public class CreatorWebhookServiceTests
     [Fact]
     public async Task HandleSubscriptionUpdated_CancelAtPeriodEndFalseAfterTrue_UndoesScheduledCancel()
     {
-        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", PayoutMode.StripeConnect, Now);
+        var creator = Creator.Create(1, "Acme", "acme", Currency.Eur, CreatorStatus.Active, "HR", Now);
         var basicPlan = BuildPlan("basic", "price_basic", 500);
         var subscription = CreatorSubscription.CreateFree(creator, basicPlan, Now);
         subscription.ActivateWithProvider(StripeSubscriptionId, Now);
