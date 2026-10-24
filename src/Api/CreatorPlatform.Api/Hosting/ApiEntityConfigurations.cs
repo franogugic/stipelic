@@ -8,7 +8,7 @@ using CreatorPlatform.Marketing.Infrastructure;
 using CreatorPlatform.Media.Infrastructure;
 using CreatorPlatform.Orders.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
-using CreatorPlatform.Payouts.Infrastructure;
+using CreatorPlatform.Payouts.Infrastructure.Persistence.Configurations;
 using CreatorPlatform.Products.Infrastructure;
 
 namespace CreatorPlatform.Api.Hosting;
@@ -32,7 +32,7 @@ public static class ApiEntityConfigurations
         typeof(MediaInfrastructureServiceCollectionExtensions).Assembly,
         typeof(OrdersInfrastructureServiceCollectionExtensions).Assembly,
         typeof(PaymentsInfrastructureServiceCollectionExtensions).Assembly,
-        typeof(PayoutsInfrastructureServiceCollectionExtensions).Assembly,
+        typeof(LedgerEntryConfiguration).Assembly,
         typeof(ProductsInfrastructureServiceCollectionExtensions).Assembly,
     ];
 }

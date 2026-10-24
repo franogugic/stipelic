@@ -10,14 +10,12 @@ using CreatorPlatform.Auth.Infrastructure;
 using CreatorPlatform.Creators.Infrastructure;
 using CreatorPlatform.Email.Infrastructure;
 using CreatorPlatform.Payments.Application.Options;
-using CreatorPlatform.Payouts.Application.Options;
 using CreatorPlatform.Marketing.Application.Options;
 using CreatorPlatform.LandingPages.Infrastructure;
 using CreatorPlatform.Orders.Application.Options;
 using CreatorPlatform.Orders.Infrastructure;
 using CreatorPlatform.Access.Infrastructure;
 using CreatorPlatform.Payments.Infrastructure;
-using CreatorPlatform.Payouts.Infrastructure;
 using CreatorPlatform.Marketing.Infrastructure;
 using CreatorPlatform.Analytics.Infrastructure;
 using CreatorPlatform.Products.Infrastructure;
@@ -41,7 +39,6 @@ builder.Services.AddPlatformSecurity(builder.Configuration, builder.Environment)
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
 builder.Services.Configure<OrdersOptions>(builder.Configuration.GetSection(OrdersOptions.SectionName));
-builder.Services.Configure<PayoutsOptions>(builder.Configuration.GetSection(PayoutsOptions.SectionName));
 builder.Services.Configure<MarketingOptions>(builder.Configuration.GetSection(MarketingOptions.SectionName));
 // The unsubscribe page lives in the same web app the other emails link to.
 builder.Services.PostConfigure<MarketingOptions>(options =>
@@ -67,7 +64,6 @@ builder.Services.AddEmailInfrastructure(builder.Configuration, builder.Environme
 builder.Services.AddPaymentsInfrastructure();
 builder.Services.AddScoped<CreatorPlatform.Api.Webhooks.StripeWebhookProcessor>();
 builder.Services.AddScoped<CreatorPlatform.Api.Webhooks.WebhookFailureAdminService>();
-builder.Services.AddPayoutsInfrastructure();
 builder.Services.AddMarketingInfrastructure();
 builder.Services.AddMediaInfrastructure();
 builder.Services.AddAnalyticsInfrastructure();

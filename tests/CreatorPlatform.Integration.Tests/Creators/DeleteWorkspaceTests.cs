@@ -12,8 +12,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CreatorPlatform.Integration.Tests.Creators;
 
-/// <summary>Deleting a workspace settles its money first: open bank-transfer balances block it, paid Stripe billing
-/// is cancelled immediately, a pending Checkout is expired, and any Stripe failure leaves everything unchanged.</summary>
+/// <summary>Deleting a workspace stops its billing first: paid Stripe billing is cancelled immediately, a pending Checkout
+/// is expired, and any Stripe failure leaves everything unchanged.</summary>
 [Collection(PostgresCollection.Name)]
 public sealed class DeleteWorkspaceTests
 {
@@ -43,89 +43,15 @@ public sealed class DeleteWorkspaceTests
             new CreatorPlanRepository(db),
             new CreatorSettingsRepository(db),
             new CreatorSubscriptionRepository(db),
-            new CreatorPayoutProfileRepository(db),
             new CreatorsUnitOfWork(db),
             _checkout,
             _cancellation,
             new UnexpectedBillingPortalService(),
-            new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             new RecordingCreatorCacheInvalidator(),
             NullLogger<CreatorService>.Instance, new AnyImageAccepted());
 
         return await service.DeleteCurrentAsync(creator.OwnerUserId, CancellationToken.None);
-    }
-
-    // ---- Balances --------------------------------------------------------------------------------------------
-
-    [Theory]
-    [InlineData(1_000)]
-    [InlineData(-500)]
-    public async Task BankTransferWithABalance_Is409_AndNothingChanges(int balanceCents)
-    {
-        var creator = await CreateBankTransferCreatorAsync();
-        await AddLedgerEntryAsync(creator.CreatorId, balanceCents, "Eur");
-
-        var exception = await Assert.ThrowsAsync<ConflictException>(() => DeleteAsync(creator));
-
-        Assert.Equal(CreatorErrorCodes.WorkspaceHasBalance, exception.Code);
-        Assert.Equal("Request a payout of your remaining balance before deleting this workspace.", exception.Message);
-        await AssertUntouchedAsync(creator, "Active");
-    }
-
-    [Fact]
-    public async Task ABalanceInAnyCurrency_Blocks()
-    {
-        var creator = await CreateBankTransferCreatorAsync();
-        await AddLedgerEntryAsync(creator.CreatorId, 1_000, "Eur");
-        await AddLedgerEntryAsync(creator.CreatorId, -1_000, "Eur");
-        await AddLedgerEntryAsync(creator.CreatorId, 300, "Usd");
-
-        var exception = await Assert.ThrowsAsync<ConflictException>(() => DeleteAsync(creator));
-
-        Assert.Equal(CreatorErrorCodes.WorkspaceHasBalance, exception.Code);
-        await AssertUntouchedAsync(creator, "Active");
-    }
-
-    [Fact]
-    public async Task APendingPayout_Is409_EvenWithTheLedgerAtZero()
-    {
-        // Requesting a payout debits the ledger, so the balance reads 0 while the money is still owed.
-        var creator = await CreateBankTransferCreatorAsync();
-        await AddLedgerEntryAsync(creator.CreatorId, 2_000, "Eur");
-        await AddLedgerEntryAsync(creator.CreatorId, -2_000, "Eur");
-        await AddPayoutAsync(creator.CreatorId, 2_000, "Pending");
-
-        var exception = await Assert.ThrowsAsync<ConflictException>(() => DeleteAsync(creator));
-
-        Assert.Equal(CreatorErrorCodes.WorkspaceHasBalance, exception.Code);
-        await AssertUntouchedAsync(creator, "Active");
-    }
-
-    [Fact]
-    public async Task ASettledBankTransferWorkspace_IsDeleted()
-    {
-        var creator = await CreateBankTransferCreatorAsync();
-        await AddLedgerEntryAsync(creator.CreatorId, 2_000, "Eur");
-        await AddLedgerEntryAsync(creator.CreatorId, -2_000, "Eur");
-        await AddPayoutAsync(creator.CreatorId, 2_000, "Paid");
-
-        Assert.Equal(creator.CreatorId, await DeleteAsync(creator));
-
-        Assert.Equal("Disabled", await _data.GetCreatorStatusAsync(creator.CreatorId));
-        Assert.Equal("Cancelled", Assert.Single(await _data.GetSubscriptionsAsync(creator.CreatorId)).Status);
-    }
-
-    [Fact]
-    public async Task AStripeConnectWorkspace_IsNotCheckedForALedgerBalance()
-    {
-        // Connect sales settle in Stripe; a stray ledger row must not block a Connect workspace.
-        var creator = await _data.CreateCreatorAsync();
-        await AddLedgerEntryAsync(creator.CreatorId, 1_000, "Eur");
-
-        await DeleteAsync(creator);
-
-        Assert.Equal("Disabled", await _data.GetCreatorStatusAsync(creator.CreatorId));
     }
 
     // ---- Paid Stripe subscription --------------------------------------------------------------------------
@@ -273,16 +199,6 @@ public sealed class DeleteWorkspaceTests
         Assert.Null(subscription.CancelledAt);
     }
 
-    private async Task<TestData.SeededCreator> CreateBankTransferCreatorAsync()
-    {
-        var creator = await _data.CreateCreatorAsync();
-        await using var db = _fixture.CreateDbContext();
-        await db.Database.ExecuteSqlAsync($"""
-            UPDATE creators.creators SET "PayoutMode" = 'BankTransfer', "CountryCode" = 'RS' WHERE "Id" = {creator.CreatorId}
-            """);
-        return creator;
-    }
-
     /// <summary>A workspace on a paid plan billed by this test's Stripe subscription.</summary>
     private async Task<TestData.SeededCreator> CreatePaidStripeCreatorAsync(string status)
     {
@@ -294,25 +210,5 @@ public sealed class DeleteWorkspaceTests
             WHERE "CreatorId" = {creator.CreatorId}
             """);
         return creator;
-    }
-
-    private async Task AddLedgerEntryAsync(int creatorId, int amountCents, string currency)
-    {
-        await using var db = _fixture.CreateDbContext();
-        await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO payouts.ledger_entries ("PublicId", "CreatorId", "Type", "AmountCents", "Currency", "CreatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, 'Adjustment', {amountCents}, {currency}, {DateTimeOffset.UtcNow})
-            """);
-    }
-
-    private async Task AddPayoutAsync(int creatorId, int amountCents, string status)
-    {
-        await using var db = _fixture.CreateDbContext();
-        var now = DateTimeOffset.UtcNow;
-        DateTimeOffset? paidAt = status == "Paid" ? now : null;
-        await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO payouts.payouts ("PublicId", "CreatorId", "AmountCents", "Currency", "Status", "CreatedAt", "PaidAt", "UpdatedAt")
-            VALUES ({Guid.NewGuid()}, {creatorId}, {amountCents}, 'Eur', {status}, {now}, {paidAt}, {now})
-            """);
     }
 }

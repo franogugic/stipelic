@@ -42,15 +42,6 @@ public interface ICreatorService
     /// changes. Returns the internal id of the disabled workspace (for cache invalidation).</summary>
     Task<int> DeleteCurrentAsync(int ownerUserId, CancellationToken ct);
 
-    /// <summary>Null when the creator has not saved payout bank details yet.</summary>
-    Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct);
-
-    Task<PayoutProfileResponseDto> UpdatePayoutProfileAsync(
-        string slug,
-        int ownerUserId,
-        UpdatePayoutProfileRequestDto request,
-        CancellationToken ct);
-
     /// <summary>The countries a creator can sell from (ISO 3166-1 alpha-2), sorted. Static registry data — no I/O, so
     /// synchronous.</summary>
     List<string> GetPayoutCountries();

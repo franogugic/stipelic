@@ -62,10 +62,8 @@ public class OwnedImageWiringTests
         var plans = new FakeCreatorPlanRepository();
         plans.PlansByCode["free"] = CreatorPlan.Create("free", "Free", null, 0, Currency.Eur, BillingInterval.None, 1000, null, DateTimeOffset.UtcNow);
         var service = new CreatorService(
-            creators, new FakeCreatorMemberRepository(), plans, new FakeCreatorSettingsRepository(), new FakeCreatorSubscriptionRepository(),
-            new FakeCreatorPayoutProfileRepository(), new FakeCreatorsUnitOfWork(), new FakeSubscriptionCheckoutSessionService(),
-            new FakeSubscriptionCancellationService(), new FakeBillingPortalService(), new FakeCreatorOpenBalanceCheck(),
-            new FakeBillingCustomerService(), new FakeCreatorCacheInvalidator(), NullLogger<CreatorService>.Instance, images);
+            creators, new FakeCreatorMemberRepository(), plans, new FakeCreatorSettingsRepository(), new FakeCreatorSubscriptionRepository(), new FakeCreatorsUnitOfWork(), new FakeSubscriptionCheckoutSessionService(),
+            new FakeSubscriptionCancellationService(), new FakeBillingPortalService(),             new FakeBillingCustomerService(), new FakeCreatorCacheInvalidator(), NullLogger<CreatorService>.Instance, images);
 
         await Assert.ThrowsAsync<BadRequestException>(() => service.CreateAsync(1, new CreateCreatorRequestDto
         {

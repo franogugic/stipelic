@@ -14,14 +14,12 @@ public static class CreatorsInfrastructureServiceCollectionExtensions
         services.AddScoped<ICreatorService, CreatorService>();
         services.AddScoped<ICreatorConnectService, CreatorConnectService>();
         services.AddSingleton<IPayoutScheduleCache, PayoutScheduleCache>();
-        services.AddScoped<ICreatorOpenBalanceCheck, CreatorOpenBalanceCheck>();
         services.AddScoped<ICreatorPlanService, CreatorPlanService>();
         services.AddScoped<ICreatorWebhookService, CreatorWebhookService>();
         services.AddScoped<ICreatorRepository, CreatorRepository>();
         services.AddScoped<ICreatorMemberRepository, CreatorMemberRepository>();
         services.AddScoped<ICreatorPlanRepository, CreatorPlanRepository>();
         services.AddScoped<ICreatorSettingsRepository, CreatorSettingsRepository>();
-        services.AddScoped<ICreatorPayoutProfileRepository, CreatorPayoutProfileRepository>();
         services.AddScoped<ICreatorSubscriptionRepository, CreatorSubscriptionRepository>();
         services.AddScoped<ICreatorsUnitOfWork, CreatorsUnitOfWork>();
         services.AddScoped<ICreatorUsageService, CreatorUsageService>();

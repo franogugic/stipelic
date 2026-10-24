@@ -44,7 +44,7 @@ public class LandingPageServicePublishAsyncTests
     [Fact]
     public async Task PublishAsync_SalesNotPayoutReady_BankTransfer_Throws()
     {
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer, HasPayoutProfile = false };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer,};
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         await Assert.ThrowsAsync<ConflictException>(
@@ -121,7 +121,7 @@ public class LandingPageServicePublishAsyncTests
     public async Task PublishAsync_SalesOfABankTransferCreatorWithBankDetails_IsRefused()
     {
         // Bank details no longer make a creator payout-ready: sales are paid out only through Stripe Connect.
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer, HasPayoutProfile = true };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer,};
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         var exception = await Assert.ThrowsAsync<ConflictException>(
@@ -133,7 +133,7 @@ public class LandingPageServicePublishAsyncTests
     [Fact]
     public async Task PublishAsync_SalesWithoutPayouts_HasThePayoutsNotReadyCode()
     {
-        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer, HasPayoutProfile = false };
+        var context = new CreatorContext(1, 5, 1) { Status = CreatorStatus.Active, PayoutMode = PayoutMode.BankTransfer,};
         var (service, repository) = BuildService(context, LandingPageType.Sales);
 
         var exception = await Assert.ThrowsAsync<ConflictException>(

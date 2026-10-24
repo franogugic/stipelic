@@ -2,15 +2,15 @@ using CreatorPlatform.Auth.Application.Authorization;
 using CreatorPlatform.Auth.Application.Dtos;
 using CreatorPlatform.Shared.Application.Exceptions;
 
-namespace CreatorPlatform.MoneyPath.Tests.Payouts;
+namespace CreatorPlatform.MoneyPath.Tests.Auth;
 
 /// <summary>
-/// Exercises the exact <see cref="RoleGuard"/> call the (Api-project) AdminPayoutsController.GetPlatformAdmin()
+/// Exercises the exact <see cref="RoleGuard"/> call the (Api-project) admin controllers' GetPlatformAdmin() (e.g. AdminWebhookFailuresController)
 /// helper makes — kept out-of-process from ASP.NET controller wiring so this stays a fast, dependency-free
 /// unit test instead of pulling the whole Api project (and its transitive Infrastructure graph) into the
 /// test project.
 /// </summary>
-public class AdminPayoutsControllerTests
+public class PlatformAdminRoleGuardTests
 {
     private const string PlatformAdminRole = "platform_admin";
 

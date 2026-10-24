@@ -17,7 +17,7 @@ public class CheckoutBuyerEmailTests
     private static readonly LandingPageProductInfo Product = new(
         CreatorId: 1, ProductId: 2, LandingPageId: 3, ProductName: "Course", ThumbnailUrl: null, PriceCents: 2900,
         Currency: Currency.Eur, CreatorStatus: CreatorStatus.Active, PayoutMode: PayoutMode.StripeConnect,
-        StripeConnectAccountId: "acct_1", StripeConnectPayoutsEnabled: true, HasPayoutProfile: false, PlatformFeeBasisPoints: 500);
+        StripeConnectAccountId: "acct_1", StripeConnectPayoutsEnabled: true, PlatformFeeBasisPoints: 500);
 
     private readonly FakePaymentCheckoutSessionService _stripe = new();
     private readonly FakeOrderRepository _orders = new();

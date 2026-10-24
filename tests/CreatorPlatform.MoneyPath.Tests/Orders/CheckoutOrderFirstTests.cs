@@ -28,7 +28,7 @@ public class CheckoutOrderFirstTests
             ProductInfo = new LandingPageProductInfo(
                 CreatorId: 1, ProductId: 2, LandingPageId: 3, ProductName: "Course", ThumbnailUrl: null, PriceCents: 5000,
                 Currency: Currency.Eur, CreatorStatus: CreatorStatus.Active, PayoutMode: payoutMode,
-                StripeConnectAccountId: "acct_1", StripeConnectPayoutsEnabled: true, HasPayoutProfile: true,
+                StripeConnectAccountId: "acct_1", StripeConnectPayoutsEnabled: true,
                 PlatformFeeBasisPoints: 500)
         };
         var sessions = new FakePaymentCheckoutSessionService();

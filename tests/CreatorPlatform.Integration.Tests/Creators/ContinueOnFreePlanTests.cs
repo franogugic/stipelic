@@ -35,12 +35,10 @@ public sealed class ContinueOnFreePlanTests
         new CreatorPlanRepository(db),
         new CreatorSettingsRepository(db),
         new CreatorSubscriptionRepository(db),
-        new CreatorPayoutProfileRepository(db),
         new CreatorsUnitOfWork(db),
         checkout,
         new UnexpectedSubscriptionCancellationService(),
         new UnexpectedBillingPortalService(),
-        new CreatorOpenBalanceCheck(db),
         new UnexpectedBillingCustomerService(),
         new RecordingCreatorCacheInvalidator(),
         logger, new AnyImageAccepted());

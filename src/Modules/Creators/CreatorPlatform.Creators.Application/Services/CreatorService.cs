@@ -34,12 +34,10 @@ public sealed partial class CreatorService : ICreatorService
     private readonly ICreatorPlanRepository _creatorPlanRepository;
     private readonly ICreatorSettingsRepository _creatorSettingsRepository;
     private readonly ICreatorSubscriptionRepository _creatorSubscriptionRepository;
-    private readonly ICreatorPayoutProfileRepository _creatorPayoutProfileRepository;
     private readonly ICreatorsUnitOfWork _unitOfWork;
     private readonly ISubscriptionCheckoutSessionService _subscriptionCheckoutSessionService;
     private readonly ISubscriptionCancellationService _subscriptionCancellationService;
     private readonly IBillingPortalService _billingPortalService;
-    private readonly ICreatorOpenBalanceCheck _creatorOpenBalanceCheck;
     private readonly IBillingCustomerService _billingCustomerService;
     private readonly ICreatorCacheInvalidator _cacheInvalidator;
     private readonly IOwnedImageCheck _ownedImages;
@@ -51,12 +49,10 @@ public sealed partial class CreatorService : ICreatorService
         ICreatorPlanRepository creatorPlanRepository,
         ICreatorSettingsRepository creatorSettingsRepository,
         ICreatorSubscriptionRepository creatorSubscriptionRepository,
-        ICreatorPayoutProfileRepository creatorPayoutProfileRepository,
         ICreatorsUnitOfWork unitOfWork,
         ISubscriptionCheckoutSessionService subscriptionCheckoutSessionService,
         ISubscriptionCancellationService subscriptionCancellationService,
         IBillingPortalService billingPortalService,
-        ICreatorOpenBalanceCheck creatorOpenBalanceCheck,
         IBillingCustomerService billingCustomerService,
         ICreatorCacheInvalidator cacheInvalidator,
         ILogger<CreatorService> logger,
@@ -67,12 +63,10 @@ public sealed partial class CreatorService : ICreatorService
         _creatorPlanRepository = creatorPlanRepository;
         _creatorSettingsRepository = creatorSettingsRepository;
         _creatorSubscriptionRepository = creatorSubscriptionRepository;
-        _creatorPayoutProfileRepository = creatorPayoutProfileRepository;
         _unitOfWork = unitOfWork;
         _subscriptionCheckoutSessionService = subscriptionCheckoutSessionService;
         _subscriptionCancellationService = subscriptionCancellationService;
         _billingPortalService = billingPortalService;
-        _creatorOpenBalanceCheck = creatorOpenBalanceCheck;
         _billingCustomerService = billingCustomerService;
         _cacheInvalidator = cacheInvalidator;
         _logger = logger;
@@ -159,7 +153,7 @@ public sealed partial class CreatorService : ICreatorService
         return new CreateCreatorResponseDto
         {
             // Freshly created — a payout profile can't exist yet.
-            Creator = ToResponse(creator, createdSubscription, hasPayoutProfile: false),
+            Creator = ToResponse(creator, createdSubscription),
             RequiresPayment = requiresPayment,
             PaymentStatus = requiresPayment
                 ? CreatorSubscriptionStatus.PendingPayment.ToString()
@@ -169,13 +163,13 @@ public sealed partial class CreatorService : ICreatorService
 
     public async Task<CreatorResponseDto?> GetCurrentForOwnerAsync(int ownerUserId, CancellationToken ct)
     {
-        var (creator, hasPayoutProfile) = await _creatorRepository.GetByOwnerUserIdWithPayoutProfileAsync(ownerUserId, ct);
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
         if (creator is null)
             return null;
 
         var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
 
-        return ToResponse(creator, subscription, hasPayoutProfile);
+        return ToResponse(creator, subscription);
     }
 
     public async Task<CreatorSettingsResponseDto> GetSettingsAsync(
@@ -287,16 +281,7 @@ public sealed partial class CreatorService : ICreatorService
         var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct)
             ?? throw new NotFoundException("Creator workspace does not exist.");
 
-        // 1. Money still owed to a bank-transfer creator blocks the deletion — checked before touching Stripe.
-        if (creator.PayoutMode == PayoutMode.BankTransfer
-            && await _creatorOpenBalanceCheck.HasOpenBalanceAsync(creator.Id, ct))
-        {
-            throw new ConflictException(
-                "Request a payout of your remaining balance before deleting this workspace.",
-                CreatorErrorCodes.WorkspaceHasBalance);
-        }
-
-        // 2–3. Stop the billing in Stripe first, outside the transaction: if Stripe fails, the call throws and the
+        // 1–2. Stop the billing in Stripe first, outside the transaction: if Stripe fails, the call throws and the
         // workspace and its subscription stay exactly as they were.
         var subscription = await _creatorSubscriptionRepository.GetCurrentByCreatorIdAsync(creator.Id, ct);
         if (subscription is not null)
@@ -371,55 +356,6 @@ public sealed partial class CreatorService : ICreatorService
                 throw new ConflictException("Payment already completed.");
             }
         }
-    }
-
-    public async Task<PayoutProfileResponseDto?> GetPayoutProfileAsync(string slug, int ownerUserId, CancellationToken ct)
-    {
-        var normalizedSlug = ValidateRouteSlug(slug);
-        var creator = await _creatorRepository.GetBySlugForOwnerAsync(normalizedSlug, ownerUserId, ct);
-        if (creator is null)
-            throw new NotFoundException("Creator workspace not found.");
-
-        var profile = await _creatorPayoutProfileRepository.GetByCreatorIdAsync(creator.Id, ct);
-
-        return profile is null ? null : ToPayoutProfileResponse(profile);
-    }
-
-    public async Task<PayoutProfileResponseDto> UpdatePayoutProfileAsync(
-        string slug,
-        int ownerUserId,
-        UpdatePayoutProfileRequestDto request,
-        CancellationToken ct)
-    {
-        var normalizedSlug = ValidateRouteSlug(slug);
-        var creator = await _creatorRepository.GetForUpdateBySlugAndOwnerAsync(normalizedSlug, ownerUserId, ct);
-        if (creator is null)
-            throw new NotFoundException("Creator workspace not found.");
-
-        var accountHolderName = NormalizeOptionalText(request.AccountHolderName, 100)
-            ?? throw new BadRequestException("Account holder name is required.");
-        var bankCountryCode = NormalizeBankCountryCode(request.BankCountryCode);
-
-        var iban = IbanValidator.Normalize(request.Iban);
-        if (!IbanValidator.IsValid(iban))
-            throw new BadRequestException("IBAN is not valid.");
-
-        var now = DateTimeOffset.UtcNow;
-        var profile = await _creatorPayoutProfileRepository.GetForUpdateByCreatorIdAsync(creator.Id, ct);
-
-        if (profile is null)
-        {
-            profile = CreatorPayoutProfile.Create(creator, accountHolderName, iban, bankCountryCode, now);
-            await _creatorPayoutProfileRepository.AddAsync(profile, ct);
-        }
-        else
-        {
-            profile.Update(accountHolderName, iban, bankCountryCode, now);
-        }
-
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        return ToPayoutProfileResponse(profile);
     }
 
     public List<string> GetPayoutCountries() =>
@@ -604,7 +540,7 @@ public sealed partial class CreatorService : ICreatorService
 
     public async Task<CreatorResponseDto> ContinueOnFreePlanAsync(int ownerUserId, CancellationToken ct)
     {
-        var (creator, hasPayoutProfile) = await _creatorRepository.GetByOwnerUserIdWithPayoutProfileAsync(ownerUserId, ct);
+        var creator = await _creatorRepository.GetByOwnerUserIdAsync(ownerUserId, ct);
         if (creator is null)
             throw new NotFoundException("Creator workspace does not exist.");
 
@@ -658,7 +594,7 @@ public sealed partial class CreatorService : ICreatorService
             "Pending workspace switched to the Free plan. CreatorId: {CreatorId}, CancelledSubscriptionId: {SubscriptionId}",
             creator.Id, pendingSubscription.Id);
 
-        return ToResponse(trackedCreator!, freeSubscription, hasPayoutProfile);
+        return ToResponse(trackedCreator!, freeSubscription);
     }
 
     private static void EnsureWaitingForPayment(Creator? creator, CreatorSubscription? subscription)
@@ -754,16 +690,6 @@ public sealed partial class CreatorService : ICreatorService
         if (!PayoutCountries.IsSupported(normalized))
             throw new BadRequestException(
                 "Luma can pay creators only in countries Stripe Connect supports for us.", CreatorErrorCodes.CountryNotSupported);
-
-        return normalized;
-    }
-
-    private static string NormalizeBankCountryCode(string bankCountryCode)
-    {
-        var normalized = bankCountryCode.Trim().ToUpperInvariant();
-
-        if (!CountryCodeRegex().IsMatch(normalized))
-            throw new BadRequestException("Bank country code must be a 2-letter ISO code.");
 
         return normalized;
     }
@@ -866,12 +792,8 @@ public sealed partial class CreatorService : ICreatorService
         return normalized;
     }
 
-    private static CreatorResponseDto ToResponse(Creator creator, CreatorSubscription? subscription, bool hasPayoutProfile)
+    private static CreatorResponseDto ToResponse(Creator creator, CreatorSubscription? subscription)
     {
-        var payoutReady = creator.PayoutMode == PayoutMode.StripeConnect
-            ? creator.StripeConnectPayoutsEnabled
-            : hasPayoutProfile;
-
         return new CreatorResponseDto
         {
             PublicId = creator.PublicId,
@@ -888,8 +810,8 @@ public sealed partial class CreatorService : ICreatorService
             PayoutMode = creator.PayoutMode.ToString(),
             StripeConnectDetailsSubmitted = creator.StripeConnectDetailsSubmitted,
             StripeConnectPayoutsEnabled = creator.StripeConnectPayoutsEnabled,
-            HasPayoutProfile = hasPayoutProfile,
-            PayoutReady = payoutReady,
+            // Payouts go only through the creator's connected Stripe account.
+            PayoutReady = creator.StripeConnectPayoutsEnabled,
         };
     }
 
@@ -908,38 +830,6 @@ public sealed partial class CreatorService : ICreatorService
             Timezone = settings.Timezone,
             Language = settings.Language
         };
-    }
-
-    private static PayoutProfileResponseDto ToPayoutProfileResponse(CreatorPayoutProfile profile)
-    {
-        return new PayoutProfileResponseDto
-        {
-            AccountHolderName = profile.AccountHolderName,
-            MaskedIban = MaskIban(profile.Iban),
-            BankCountryCode = profile.BankCountryCode
-        };
-    }
-
-    // "HR12 **** **** 3456" style — first 4 + last 4 characters visible, everything between masked in
-    // groups of 4. The full IBAN is never returned by the API once saved.
-    private static string MaskIban(string iban)
-    {
-        const int visiblePrefixLength = 4;
-        const int visibleSuffixLength = 4;
-
-        if (iban.Length <= visiblePrefixLength + visibleSuffixLength)
-            return iban;
-
-        var prefix = iban[..visiblePrefixLength];
-        var suffix = iban[^visibleSuffixLength..];
-        var maskedLength = iban.Length - visiblePrefixLength - visibleSuffixLength;
-
-        var groups = new List<string> { prefix };
-        for (var i = 0; i < maskedLength; i += 4)
-            groups.Add(new string('*', Math.Min(4, maskedLength - i)));
-        groups.Add(suffix);
-
-        return string.Join(' ', groups);
     }
 
     [GeneratedRegex("[^a-z0-9]+")]

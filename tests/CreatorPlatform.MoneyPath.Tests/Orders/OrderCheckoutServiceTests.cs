@@ -21,7 +21,6 @@ public class OrderCheckoutServiceTests
         PayoutMode payoutMode = PayoutMode.StripeConnect,
         string? stripeConnectAccountId = "acct_123",
         bool stripeConnectPayoutsEnabled = true,
-        bool hasPayoutProfile = true,
         int priceCents = 1000,
         int? platformFeeBasisPoints = 500,
         string? thumbnailUrl = null) => new(
@@ -36,7 +35,6 @@ public class OrderCheckoutServiceTests
         PayoutMode: payoutMode,
         StripeConnectAccountId: stripeConnectAccountId,
         StripeConnectPayoutsEnabled: stripeConnectPayoutsEnabled,
-        HasPayoutProfile: hasPayoutProfile,
         PlatformFeeBasisPoints: platformFeeBasisPoints);
 
     private static (OrderCheckoutService Service, FakeOrdersCreatorContextProvider ContextProvider,
@@ -126,7 +124,7 @@ public class OrderCheckoutServiceTests
     {
         // Payouts go only through Stripe Connect: a creator still marked bank transfer has no connected account.
         var productInfo = BuildProductInfo(payoutMode: PayoutMode.BankTransfer, stripeConnectAccountId: null,
-            stripeConnectPayoutsEnabled: false, hasPayoutProfile: true);
+            stripeConnectPayoutsEnabled: false);
         var (service, _, checkoutSessionService, _) = BuildService(productInfo);
 
         var exception = await Assert.ThrowsAsync<ConflictException>(

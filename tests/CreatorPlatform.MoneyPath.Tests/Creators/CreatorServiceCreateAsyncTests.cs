@@ -27,12 +27,10 @@ public class CreatorServiceCreateAsyncTests
             planRepository,
             new FakeCreatorSettingsRepository(),
             new FakeCreatorSubscriptionRepository(),
-            new FakeCreatorPayoutProfileRepository(),
             new FakeCreatorsUnitOfWork(),
             new FakeSubscriptionCheckoutSessionService(),
             new FakeSubscriptionCancellationService(),
             new FakeBillingPortalService(),
-            new FakeCreatorOpenBalanceCheck(),
             new FakeBillingCustomerService(),
             new FakeCreatorCacheInvalidator(),
             NullLogger<CreatorService>.Instance, new FakeOwnedImageCheck());

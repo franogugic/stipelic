@@ -83,13 +83,6 @@ public sealed class EmailOutboxService : IEmailOutboxService
         await AddAsync(EmailOutboxMessagePurpose.LeadMagnetDelivery, correlationKey, toEmail, email, ct, replyTo);
     }
 
-    public async Task QueuePayoutRequestedAsync(
-        string toEmail, string payoutPublicId, PayoutRequestedEmail payout, CancellationToken ct)
-    {
-        var email = PayoutRequestedTemplate.Render(Branding, payout, $"{FrontendBaseUrl}/admin/payouts");
-        await AddAsync(EmailOutboxMessagePurpose.PayoutRequested, payoutPublicId, toEmail, email, ct);
-    }
-
     public async Task QueueCampaignAsync(
         int creatorId,
         string toEmail,

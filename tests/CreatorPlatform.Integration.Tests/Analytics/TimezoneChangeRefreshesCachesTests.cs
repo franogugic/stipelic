@@ -56,12 +56,10 @@ public sealed class TimezoneChangeRefreshesCachesTests : IAsyncLifetime
             new CreatorPlanRepository(db),
             new CreatorSettingsRepository(db),
             new CreatorSubscriptionRepository(db),
-            new CreatorPayoutProfileRepository(db),
             new CreatorsUnitOfWork(db),
             new FakeCheckoutSessionService(),
             new UnexpectedSubscriptionCancellationService(),
             new UnexpectedBillingPortalService(),
-            new CreatorOpenBalanceCheck(db),
             new UnexpectedBillingCustomerService(),
             invalidator,
             NullLogger<CreatorService>.Instance, new AnyImageAccepted());

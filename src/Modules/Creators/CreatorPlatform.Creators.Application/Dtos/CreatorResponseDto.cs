@@ -34,8 +34,6 @@ public sealed class CreatorResponseDto
 
     public bool StripeConnectPayoutsEnabled { get; init; }
 
-    public bool HasPayoutProfile { get; init; }
-
     /// <summary>Connect creators: ready once Stripe reports payouts enabled. BankTransfer creators: ready once an IBAN profile exists.</summary>
     public bool PayoutReady { get; init; }
 }

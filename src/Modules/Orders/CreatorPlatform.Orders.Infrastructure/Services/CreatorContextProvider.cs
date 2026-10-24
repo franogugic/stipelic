@@ -52,7 +52,6 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
                 c.PayoutMode,
                 c.StripeConnectAccountId,
                 c.StripeConnectPayoutsEnabled,
-                HasPayoutProfile = _context.Set<CreatorPayoutProfile>().Any(pp => pp.CreatorId == c.Id),
                 fee.PlatformFeeBasisPoints
             }
         ).FirstOrDefaultAsync(ct);
@@ -72,7 +71,6 @@ public sealed class CreatorContextProvider : ICreatorContextProvider
             result.PayoutMode,
             result.StripeConnectAccountId,
             result.StripeConnectPayoutsEnabled,
-            result.HasPayoutProfile,
             result.PlatformFeeBasisPoints);
     }
 

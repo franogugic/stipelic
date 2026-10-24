@@ -142,14 +142,6 @@ public sealed class FakeSubscriptionCancellationService : ISubscriptionCancellat
     }
 }
 
-public sealed class FakeCreatorOpenBalanceCheck : ICreatorOpenBalanceCheck
-{
-    public Task<bool> HasOpenBalanceAsync(int creatorId, CancellationToken ct)
-    {
-        throw new InvalidOperationException("Not expected to be called in this scenario.");
-    }
-}
-
 public sealed class FakeBillingPortalService : IBillingPortalService
 {
     public Task<string> CreateSessionAsync(string stripeCustomerId, string returnUrl, CancellationToken ct)
