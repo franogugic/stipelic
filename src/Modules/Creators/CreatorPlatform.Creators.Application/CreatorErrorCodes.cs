@@ -11,4 +11,7 @@ public static class CreatorErrorCodes
 
     /// <summary>409 on DELETE /api/creators/current: a bank-transfer workspace still has a balance or a pending payout.</summary>
     public const string WorkspaceHasBalance = "WORKSPACE_HAS_BALANCE";
+
+    /// <summary>A workspace country outside the Stripe Connect countries (PayoutCountries) — 400.</summary>
+    public const string CountryNotSupported = "COUNTRY_NOT_SUPPORTED";
 }

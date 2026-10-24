@@ -1,3 +1,4 @@
+using CreatorPlatform.Creators.Application;
 using Microsoft.Extensions.Logging.Abstractions;
 using CreatorPlatform.Creators.Application.Dtos;
 using CreatorPlatform.Creators.Application.Services;
@@ -46,23 +47,31 @@ public class CreatorServiceCreateAsyncTests
         CountryCode = countryCode,
     };
 
-    [Fact]
-    public async Task CreateAsync_UnsupportedCountry_Throws()
+    [Theory]
+    [InlineData("XX")]
+    [InlineData("RS")]   // formerly a bank-transfer country
+    [InlineData("BA")]
+    [InlineData("AU")]   // a Stripe country our EEA platform cannot transfer to
+    [InlineData("JP")]
+    [InlineData("IS")]   // EEA, but not a Stripe account country
+    public async Task CreateAsync_ACountryOutsideTheConnectList_Is400CountryNotSupported(string country)
     {
         var service = BuildService();
 
-        await Assert.ThrowsAsync<BadRequestException>(
-            () => service.CreateAsync(1, BuildRequest("XX"), CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<BadRequestException>(
+            () => service.CreateAsync(1, BuildRequest(country), CancellationToken.None));
+
+        Assert.Equal(CreatorErrorCodes.CountryNotSupported, exception.Code);
     }
 
     [Fact]
-    public async Task CreateAsync_Serbia_ResolvesToBankTransfer()
+    public void TheConnectCountries_AreExactlyTheThirtyThreeOurPlatformCanTransferTo()
     {
-        var service = BuildService();
-
-        var response = await service.CreateAsync(1, BuildRequest("RS"), CancellationToken.None);
-
-        Assert.Equal(nameof(PayoutMode.BankTransfer), response.Creator.PayoutMode);
+        // EEA (without Iceland, not a Stripe account country) + GB, CH, US, CA — see PayoutCountries.
+        Assert.Equal(
+            ["AT", "BE", "BG", "CA", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IT",
+             "LI", "LT", "LU", "LV", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK", "US"],
+            BuildService().GetPayoutCountries());
     }
 
     [Fact]

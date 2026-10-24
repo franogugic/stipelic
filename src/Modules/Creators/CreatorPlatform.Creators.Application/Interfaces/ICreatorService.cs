@@ -51,6 +51,7 @@ public interface ICreatorService
         UpdatePayoutProfileRequestDto request,
         CancellationToken ct);
 
-    /// <summary>Static registry data — no I/O, so synchronous (same style as other section-template style lookups).</summary>
-    List<PayoutCountryDto> GetPayoutCountries();
+    /// <summary>The countries a creator can sell from (ISO 3166-1 alpha-2), sorted. Static registry data — no I/O, so
+    /// synchronous.</summary>
+    List<string> GetPayoutCountries();
 }

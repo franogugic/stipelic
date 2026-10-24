@@ -111,7 +111,8 @@ public sealed partial class CreatorService : ICreatorService
             ? CreatorStatus.PendingPayment
             : CreatorStatus.Active;
 
-        var payoutMode = PayoutCountries.ResolveMode(countryCode);
+        // Creators are paid only through their own connected Stripe account.
+        var payoutMode = PayoutMode.StripeConnect;
 
         var createdAt = DateTimeOffset.UtcNow;
         var creator = Creator.Create(
@@ -421,15 +422,8 @@ public sealed partial class CreatorService : ICreatorService
         return ToPayoutProfileResponse(profile);
     }
 
-    public List<PayoutCountryDto> GetPayoutCountries()
-    {
-        var connect = PayoutCountries.ConnectCountries
-            .Select(code => new PayoutCountryDto(code, PayoutMode.StripeConnect.ToString()));
-        var bankTransfer = PayoutCountries.BankTransferCountries
-            .Select(code => new PayoutCountryDto(code, PayoutMode.BankTransfer.ToString()));
-
-        return connect.Concat(bankTransfer).OrderBy(c => c.Code, StringComparer.Ordinal).ToList();
-    }
+    public List<string> GetPayoutCountries() =>
+        PayoutCountries.ConnectCountries.Order(StringComparer.Ordinal).ToList();
 
     public async Task<StartCreatorSubscriptionCheckoutResponseDto> StartSubscriptionCheckoutAsync(
         int ownerUserId,
@@ -758,7 +752,8 @@ public sealed partial class CreatorService : ICreatorService
         var normalized = countryCode.Trim().ToUpperInvariant();
 
         if (!PayoutCountries.IsSupported(normalized))
-            throw new BadRequestException("Country is not supported yet.");
+            throw new BadRequestException(
+                "Luma can pay creators only in countries Stripe Connect supports for us.", CreatorErrorCodes.CountryNotSupported);
 
         return normalized;
     }
