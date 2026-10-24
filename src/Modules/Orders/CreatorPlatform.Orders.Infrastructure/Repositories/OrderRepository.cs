@@ -55,14 +55,15 @@ public sealed class OrderRepository : IOrderRepository
 
     public async Task<Order?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
     {
-        return await _context
+        // PublicId is unique. ToList + SingleOrDefault: EF cannot see the SQL's filter (warning 10103).
+        return (await _context
             .Set<Order>()
             .FromSqlInterpolated($"""
                 SELECT * FROM orders.orders
                 WHERE "PublicId" = {publicId}
                 FOR UPDATE
                 """)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
     }
 
     public async Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
@@ -74,7 +75,8 @@ public sealed class OrderRepository : IOrderRepository
 
     public async Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct)
     {
-        return await _context
+        // ToList + SingleOrDefault over the SQL's LIMIT 1: EF cannot see the SQL's filter (warning 10103).
+        return (await _context
             .Set<Order>()
             .FromSqlInterpolated($"""
                 SELECT * FROM orders.orders
@@ -82,7 +84,7 @@ public sealed class OrderRepository : IOrderRepository
                 LIMIT 1
                 FOR UPDATE
                 """)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
     }
 
     public async Task<List<OrderDto>> GetByCreatorSlugAsync(
