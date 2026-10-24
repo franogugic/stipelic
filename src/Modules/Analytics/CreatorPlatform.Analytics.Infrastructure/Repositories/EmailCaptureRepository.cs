@@ -31,7 +31,8 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
     public async Task<CapturesByPeriodRow> GetCaptureCountsByPeriodAsync(
         int landingPageId, StatsPeriods periods, CancellationToken ct)
     {
-        return await _context.Database.SqlQuery<CapturesByPeriodRow>($"""
+        // One aggregate row. ToList + Single: EF cannot see the SQL's filter (warning 10103).
+        return (await _context.Database.SqlQuery<CapturesByPeriodRow>($"""
             SELECT
                 COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.StartOfToday})   AS "Today",
                 COUNT(*) FILTER (WHERE "CapturedAt" >= {periods.Last7DaysFrom})  AS "Last7Days",
@@ -41,7 +42,7 @@ public sealed class EmailCaptureRepository : IEmailCaptureRepository
             WHERE "LandingPageId" = {landingPageId}
             """)
             .AsNoTracking()
-            .FirstAsync(ct);
+            .ToListAsync(ct)).Single();
     }
 
     public async Task<Dictionary<int, int>> GetCaptureCountsAsync(IReadOnlyCollection<int> landingPageIds, CancellationToken ct)

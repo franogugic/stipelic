@@ -41,7 +41,8 @@ public sealed class OrderRepository : IOrderRepository
     public async Task<Order?> GetByStripeCheckoutSessionIdForUpdateAsync(string stripeCheckoutSessionId, CancellationToken ct)
     {
         // Load without AsNoTracking so EF tracks the entity for update; PostgreSQL FOR UPDATE is handled at DB level via the transaction
-        return await _context
+        // ToList + SingleOrDefault over the SQL's LIMIT 1: EF cannot see the SQL's filter (warning 10103).
+        return (await _context
             .Set<Order>()
             .FromSqlInterpolated($"""
                 SELECT * FROM orders.orders
@@ -49,7 +50,7 @@ public sealed class OrderRepository : IOrderRepository
                 LIMIT 1
                 FOR UPDATE
                 """)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
     }
 
     public async Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
@@ -534,7 +535,8 @@ public sealed class OrderRepository : IOrderRepository
         var thisLocalMonth = new DateTime(local.Year, local.Month, 1);
         var monthStart = CreatorTimeZone.ToInstant(thisLocalMonth, timezone);
 
-        var orderStats = await _context.Set<Order>()
+        // One group or none. ToList + SingleOrDefault: the filter sits before the GroupBy, so EF would warn on First (10103).
+        var orderStats = (await _context.Set<Order>()
             .AsNoTracking()
             .Where(o => o.CreatorId == creator.Id)
             .GroupBy(_ => 1)
@@ -545,7 +547,7 @@ public sealed class OrderRepository : IOrderRepository
                 ThisMonthRevenueCents = g.Sum(o => o.Status == OrderStatus.Paid && o.PaidAt >= monthStart ? o.AmountCents : 0),
                 TotalPlatformFeeCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.PlatformFeeCents : 0),
             })
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
 
         // Four independent scalar counts (products, landing pages, all-time views, active subscribers) —
         // EF Core's DbContext isn't thread-safe for concurrent queries (Task.WhenAll on the same _context
@@ -554,7 +556,7 @@ public sealed class OrderRepository : IOrderRepository
         // queries used (Product/LandingPage: (CreatorId, Status); ContactSummary/Unsubscribe: (CreatorId,
         // Email); CreatorViewTotal: PK). Status is stored as the enum's string name (HasConversion<string>),
         // matching the != 'Archived' literal below exactly.
-        var counts = await _context.Database.SqlQuery<SummaryCountsRow>($"""
+        var counts = (await _context.Database.SqlQuery<SummaryCountsRow>($"""
             SELECT
                 (SELECT COUNT(*) FROM products.products
                     WHERE "CreatorId" = {creator.Id} AND "Status" != 'Archived')      AS "ProductCount",
@@ -568,7 +570,7 @@ public sealed class OrderRepository : IOrderRepository
                             SELECT 1 FROM marketing.unsubscribes u
                             WHERE u."CreatorId" = {creator.Id} AND u."Email" = cs."Email"
                         ))                                                            AS "SubscriberCount"
-            """).AsNoTracking().FirstAsync(ct);
+            """).AsNoTracking().ToListAsync(ct)).Single();
 
         var recentOrders = await (
             from o in _context.Set<Order>().AsNoTracking()
