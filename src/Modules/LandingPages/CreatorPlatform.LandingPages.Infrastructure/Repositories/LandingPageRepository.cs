@@ -41,7 +41,8 @@ public sealed class LandingPageRepository : ILandingPageRepository
 
     public async Task<LandingPage?> GetPublishedBySlugAsync(string creatorSlug, string landingPageSlug, CancellationToken ct)
     {
-        return await _context.Database
+        // ToList + SingleOrDefault, not FirstOrDefault: EF cannot see the SQL's own filter and would warn (10103).
+        var ids = await _context.Database
             .SqlQuery<LandingPageIdRow>($"""
                 SELECT lp."Id"
                 FROM landing_pages.landing_pages lp
@@ -54,9 +55,11 @@ public sealed class LandingPageRepository : ILandingPageRepository
                 """)
             .AsNoTracking()
             .Select(r => r.Id)
-            .FirstOrDefaultAsync(ct) is int id
-                ? await _context.Set<LandingPage>().AsNoTracking().FirstOrDefaultAsync(lp => lp.Id == id, ct)
-                : null;
+            .ToListAsync(ct);
+
+        return ids.Count == 1
+            ? await _context.Set<LandingPage>().AsNoTracking().FirstOrDefaultAsync(lp => lp.Id == ids[0], ct)
+            : null;
     }
 
     public async Task<List<LandingPage>> ListPublishedByCreatorIdAsync(int creatorId, int limit, CancellationToken ct)

@@ -270,7 +270,7 @@ public class AuthServiceTests
     }
 
     [Fact]
-    public async Task VerifyEmailAsync_ExpiredToken_ReturnsExpiredWithEmailAndWritesNothing()
+    public async Task VerifyEmailAsync_ExpiredToken_Is400Expired_AndWritesNothing()
     {
         var tokens = new FakeEmailVerificationTokenRepository();
         var unitOfWork = new FakeUnitOfWork();
@@ -278,30 +278,82 @@ public class AuthServiceTests
         var user = CreateUser(userRepository);
         var token = AddVerificationToken(tokens, user, "expired-token", DateTimeOffset.UtcNow.AddMinutes(-1));
 
-        var response = await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "expired-token" }, CancellationToken.None);
+        var rejected = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "expired-token" }, CancellationToken.None));
 
-        Assert.Equal(VerifyEmailOutcome.Expired, response.Outcome);
-        Assert.Equal(user.Email, response.Email);
-        Assert.Null(response.FirstName);
+        Assert.Equal(AuthService.VerificationLinkExpiredCode, rejected.Code);
         Assert.False(user.IsEmailVerified);
         Assert.False(token.IsUsed);
         Assert.Equal(0, unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
-    public async Task VerifyEmailAsync_UsedTokenForUnverifiedUser_ReturnsExpired()
+    public async Task VerifyEmailAsync_ALinkReplacedByAResend_Is400Replaced_EvenWhileStillFresh()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens, unitOfWork);
+        var user = CreateUser(userRepository);
+        var first = AddVerificationToken(tokens, user, "first-token", DateTimeOffset.UtcNow.AddHours(23));
+        first.Invalidate(DateTimeOffset.UtcNow.AddMinutes(-2));   // what a resend does to every earlier link
+
+        var rejected = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "first-token" }, CancellationToken.None));
+
+        Assert.Equal(AuthService.VerificationLinkReplacedCode, rejected.Code);
+        Assert.False(user.IsEmailVerified);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_AReplacedLinkThatAlsoExpired_SaysReplaced()
     {
         var tokens = new FakeEmailVerificationTokenRepository();
         var (service, userRepository, _, _, _, _) = BuildService(tokens);
         var user = CreateUser(userRepository);
-        var token = AddVerificationToken(tokens, user, "used-token", DateTimeOffset.UtcNow.AddHours(1));
-        token.MarkAsUsed(DateTimeOffset.UtcNow.AddMinutes(-5));
+        var first = AddVerificationToken(tokens, user, "old-token", DateTimeOffset.UtcNow.AddMinutes(-1));
+        first.Invalidate(DateTimeOffset.UtcNow.AddHours(-3));
 
-        var response = await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "used-token" }, CancellationToken.None);
+        var rejected = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "old-token" }, CancellationToken.None));
 
-        Assert.Equal(VerifyEmailOutcome.Expired, response.Outcome);
-        Assert.Equal(user.Email, response.Email);
-        Assert.False(user.IsEmailVerified);
+        Assert.Equal(AuthService.VerificationLinkReplacedCode, rejected.Code);
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_ALinkUsedAgain_Is400Used_WithoutTheName()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens, unitOfWork);
+        var user = CreateUser(userRepository);
+        AddVerificationToken(tokens, user, "valid-token", DateTimeOffset.UtcNow.AddHours(1));
+        await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "valid-token" }, CancellationToken.None);
+        var saves = unitOfWork.SaveChangesCallCount;
+
+        var rejected = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "valid-token" }, CancellationToken.None));
+
+        Assert.Equal(AuthService.VerificationLinkUsedCode, rejected.Code);
+        Assert.DoesNotContain(user.FirstName, rejected.Message);
+        Assert.Equal(saves, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_AnOldLinkAfterTheEmailWasVerified_IsUsedNotReplaced()
+    {
+        var tokens = new FakeEmailVerificationTokenRepository();
+        var (service, userRepository, _, _, _, _) = BuildService(tokens);
+        var user = CreateUser(userRepository);
+        var first = AddVerificationToken(tokens, user, "first-token", DateTimeOffset.UtcNow.AddHours(1));
+        first.Invalidate(DateTimeOffset.UtcNow.AddMinutes(-10));
+        AddVerificationToken(tokens, user, "second-token", DateTimeOffset.UtcNow.AddHours(23));
+        await service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "second-token" }, CancellationToken.None);
+
+        var rejected = await Assert.ThrowsAsync<BadRequestException>(() =>
+            service.VerifyEmailAsync(new VerifyEmailRequestDto { Token = "first-token" }, CancellationToken.None));
+
+        Assert.Equal(AuthService.VerificationLinkUsedCode, rejected.Code);
     }
 
     [Fact]
@@ -325,7 +377,6 @@ public class AuthServiceTests
 
         Assert.Equal(VerifyEmailOutcome.Verified, response.Outcome);
         Assert.Equal(user.FirstName, response.FirstName);
-        Assert.Null(response.Email);
         Assert.True(user.IsEmailVerified);
         Assert.True(token.IsUsed);
     }

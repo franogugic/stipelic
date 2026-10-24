@@ -19,6 +19,8 @@ public sealed class OrderRepository : IOrderRepository
 {
     private readonly CreatorPlatformDbContext _context;
 
+    private const string EmailSendsLimitKey = "max_email_sends_per_month";
+
     public OrderRepository(CreatorPlatformDbContext context)
     {
         _context = context;
@@ -39,7 +41,8 @@ public sealed class OrderRepository : IOrderRepository
     public async Task<Order?> GetByStripeCheckoutSessionIdForUpdateAsync(string stripeCheckoutSessionId, CancellationToken ct)
     {
         // Load without AsNoTracking so EF tracks the entity for update; PostgreSQL FOR UPDATE is handled at DB level via the transaction
-        return await _context
+        // ToList + SingleOrDefault over the SQL's LIMIT 1: EF cannot see the SQL's filter (warning 10103).
+        return (await _context
             .Set<Order>()
             .FromSqlInterpolated($"""
                 SELECT * FROM orders.orders
@@ -47,19 +50,20 @@ public sealed class OrderRepository : IOrderRepository
                 LIMIT 1
                 FOR UPDATE
                 """)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
     }
 
     public async Task<Order?> GetByPublicIdForUpdateAsync(Guid publicId, CancellationToken ct)
     {
-        return await _context
+        // PublicId is unique. ToList + SingleOrDefault: EF cannot see the SQL's filter (warning 10103).
+        return (await _context
             .Set<Order>()
             .FromSqlInterpolated($"""
                 SELECT * FROM orders.orders
                 WHERE "PublicId" = {publicId}
                 FOR UPDATE
                 """)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
     }
 
     public async Task<Order?> GetByStripePaymentIntentIdAsync(string stripePaymentIntentId, CancellationToken ct)
@@ -71,7 +75,8 @@ public sealed class OrderRepository : IOrderRepository
 
     public async Task<Order?> GetByStripePaymentIntentIdForUpdateAsync(string stripePaymentIntentId, CancellationToken ct)
     {
-        return await _context
+        // ToList + SingleOrDefault over the SQL's LIMIT 1: EF cannot see the SQL's filter (warning 10103).
+        return (await _context
             .Set<Order>()
             .FromSqlInterpolated($"""
                 SELECT * FROM orders.orders
@@ -79,7 +84,7 @@ public sealed class OrderRepository : IOrderRepository
                 LIMIT 1
                 FOR UPDATE
                 """)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
     }
 
     public async Task<List<OrderDto>> GetByCreatorSlugAsync(
@@ -531,6 +536,19 @@ public sealed class OrderRepository : IOrderRepository
             .ToList();
     }
 
+    public async Task<int> GetEmailsSentThisMonthAsync(int creatorId, CancellationToken ct)
+    {
+        // Same calendar-month boundary as UsagePeriodResolver.Resolve(CalendarMonth, now) (UTC) — so this reads the
+        // same counter row ICreatorUsageService writes to.
+        var now = DateTimeOffset.UtcNow;
+        var usageMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
+        return await _context.Set<CreatorUsageCounter>()
+            .AsNoTracking()
+            .Where(c => c.CreatorId == creatorId && c.UsageKey == EmailSendsLimitKey && c.PeriodStart == usageMonthStart)
+            .Select(c => (int?)c.UsedValue)
+            .FirstOrDefaultAsync(ct) ?? 0;
+    }
+
     public async Task<HomeSummaryDto> GetHomeSummaryByCreatorIdAsync(int creatorId, CancellationToken ct)
     {
         var creator = await _context.Set<Creator>()
@@ -553,9 +571,9 @@ public sealed class OrderRepository : IOrderRepository
         var trendStart = CreatorTimeZone.ToInstant(firstTrendDay, timezone);
         var thisLocalMonth = new DateTime(local.Year, local.Month, 1);
         var monthStart = CreatorTimeZone.ToInstant(thisLocalMonth, timezone);
-        var usageMonthStart = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero);
 
-        var orderStats = await _context.Set<Order>()
+        // One group or none. ToList + SingleOrDefault: the filter sits before the GroupBy, so EF would warn on First (10103).
+        var orderStats = (await _context.Set<Order>()
             .AsNoTracking()
             .Where(o => o.CreatorId == creator.Id)
             .GroupBy(_ => 1)
@@ -566,7 +584,7 @@ public sealed class OrderRepository : IOrderRepository
                 ThisMonthRevenueCents = g.Sum(o => o.Status == OrderStatus.Paid && o.PaidAt >= monthStart ? o.KeptAmountCents : 0),
                 TotalPlatformFeeCents = g.Sum(o => o.Status == OrderStatus.Paid ? o.KeptPlatformFeeCents : 0),
             })
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
 
         // Four independent scalar counts (products, landing pages, all-time views, active subscribers) —
         // EF Core's DbContext isn't thread-safe for concurrent queries (Task.WhenAll on the same _context
@@ -575,7 +593,7 @@ public sealed class OrderRepository : IOrderRepository
         // queries used (Product/LandingPage: (CreatorId, Status); ContactSummary/Unsubscribe: (CreatorId,
         // Email); CreatorViewTotal: PK). Status is stored as the enum's string name (HasConversion<string>),
         // matching the != 'Archived' literal below exactly.
-        var counts = await _context.Database.SqlQuery<SummaryCountsRow>($"""
+        var counts = (await _context.Database.SqlQuery<SummaryCountsRow>($"""
             SELECT
                 (SELECT COUNT(*) FROM products.products
                     WHERE "CreatorId" = {creator.Id} AND "Status" != 'Archived')      AS "ProductCount",
@@ -589,7 +607,7 @@ public sealed class OrderRepository : IOrderRepository
                             SELECT 1 FROM marketing.unsubscribes u
                             WHERE u."CreatorId" = {creator.Id} AND u."Email" = cs."Email"
                         ))                                                            AS "SubscriberCount"
-            """).AsNoTracking().FirstAsync(ct);
+            """).AsNoTracking().ToListAsync(ct)).Single();
 
         var recentOrders = await (
             from o in _context.Set<Order>().AsNoTracking()
@@ -627,7 +645,6 @@ public sealed class OrderRepository : IOrderRepository
 
         var topProduct = topRow is null ? null : new TopProductDto(topRow.Name, topRow.Total);
 
-        const string emailSendsLimitKey = "max_email_sends_per_month";
 
         var emailsMonthlyLimit = await (
             from cs in _context.Set<CreatorSubscription>().AsNoTracking()
@@ -635,17 +652,11 @@ public sealed class OrderRepository : IOrderRepository
                 on cs.PlanId equals limit.PlanId
             where cs.CreatorId == creator.Id
                 && cs.Status == CreatorSubscriptionStatus.Active
-                && limit.LimitKey == emailSendsLimitKey
+                && limit.LimitKey == EmailSendsLimitKey
             select (int?)limit.LimitValue
         ).FirstOrDefaultAsync(ct) ?? 0;
 
-        // Same calendar-month boundary as UsagePeriodResolver.Resolve(CalendarMonth, now) (UTC) — so this reads the
-        // same counter row ICreatorUsageService writes to.
-        var emailsSentThisMonth = await _context.Set<CreatorUsageCounter>()
-            .AsNoTracking()
-            .Where(c => c.CreatorId == creator.Id && c.UsageKey == emailSendsLimitKey && c.PeriodStart == usageMonthStart)
-            .Select(c => (int?)c.UsedValue)
-            .FirstOrDefaultAsync(ct) ?? 0;
+        var emailsSentThisMonth = await GetEmailsSentThisMonthAsync(creator.Id, ct);
 
         // Daily revenue for the last TrendDays days. Bounded window (7 days of one creator's paid orders),
         // so we pull the rows and bucket in memory rather than doing SQL date bucketing.

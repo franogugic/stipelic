@@ -1,6 +1,7 @@
 using CreatorPlatform.Api.Hosting;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Testcontainers.PostgreSql;
 
 namespace CreatorPlatform.Integration.Tests.Infrastructure;
@@ -40,6 +41,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         var options = new DbContextOptionsBuilder<CreatorPlatformDbContext>()
             .UseNpgsql(_container.GetConnectionString())
             .UseEntityConfigurationsFrom(ApiEntityConfigurations.Assemblies)
+            .ConfigureWarnings(warnings => warnings.Throw(CoreEventId.FirstWithoutOrderByAndFilterWarning))
             .Options;
 
         return new CreatorPlatformDbContext(options);

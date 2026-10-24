@@ -21,13 +21,14 @@ public sealed class EmailChangeTokenRepository : IEmailChangeTokenRepository
 
     public async Task<EmailChangeToken?> GetByTokenHashForUpdateAsync(string tokenHash, CancellationToken ct)
     {
-        return await _context.Set<EmailChangeToken>()
+        // The token hash is unique. ToList + SingleOrDefault: EF cannot see the SQL's filter (warning 10103).
+        return (await _context.Set<EmailChangeToken>()
             .FromSqlInterpolated($"""
                 SELECT * FROM auth.email_change_tokens
                 WHERE "TokenHash" = {tokenHash}
                 FOR UPDATE
                 """)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct)).SingleOrDefault();
     }
 
     public async Task<IReadOnlyList<EmailChangeToken>> GetUnusedByUserIdAsync(int userId, CancellationToken ct)

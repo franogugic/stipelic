@@ -40,12 +40,8 @@ public sealed class AnalyticsSeriesTests
     }
 
     /// <summary>Noon, <paramref name="days"/> local days from today (negative = past). Noon keeps a DST change inside the
-    /// range from moving the event to another local day.</summary>
-    private static DateTimeOffset LocalNoon(int days)
-    {
-        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date.AddDays(days).AddHours(12);
-        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, Zone), TimeSpan.Zero);
-    }
+    /// range from moving the event to another local day; for today, a moment already passed (<see cref="LocalClock"/>).</summary>
+    private static DateTimeOffset LocalNoon(int days) => LocalClock.Noon(Zone, days);
 
     private static string LocalDay(DateTimeOffset at) => TimeZoneInfo.ConvertTime(at, Zone).ToString("yyyy-MM-dd'T'00:00");
 

@@ -47,7 +47,8 @@ public sealed class PageViewRepository : IPageViewRepository
         var sevenDaysAgo = periods.Last7DaysFrom;
         var thirtyDaysAgo = periods.Last30DaysFrom;
 
-        var result = await _context.Database
+        // One aggregate row. ToList + Single: EF cannot see the SQL's filter (warning 10103).
+        var result = (await _context.Database
             .SqlQuery<PageViewStatsRow>($"""
                 SELECT
                     COUNT(*)                                                                         AS "TotalViews",
@@ -62,7 +63,7 @@ public sealed class PageViewRepository : IPageViewRepository
                 WHERE "LandingPageId" = {landingPageId}
                 """)
             .AsNoTracking()
-            .FirstAsync(ct);
+            .ToListAsync(ct)).Single();
 
         return result;
     }

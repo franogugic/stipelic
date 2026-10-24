@@ -237,8 +237,10 @@ public sealed class OrderService : IOrderService
         var creatorId = await _orderRepository.GetCreatorIdForOwnerAsync(creatorSlug, ownerUserId, ct)
             ?? throw new NotFoundException("Creator workspace not found.");
 
+        // The email usage counter changes with every send (API) and every failed send (Worker), so it is never served
+        // from the cache: the cached summary gets the live figure.
         if (await _homeSummaryCache.GetAsync(creatorId, ct) is { } cached)
-            return cached;
+            return cached with { EmailsSentThisMonth = await _orderRepository.GetEmailsSentThisMonthAsync(creatorId, ct) };
 
         var result = await _orderRepository.GetHomeSummaryByCreatorIdAsync(creatorId, ct);
 

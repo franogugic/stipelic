@@ -23,11 +23,7 @@ public sealed class SeriesExtrasTests
         _data = new TestData(fixture);
     }
 
-    private static DateTimeOffset LocalNoon(int days)
-    {
-        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, Zone).Date.AddDays(days).AddHours(12);
-        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, Zone), TimeSpan.Zero);
-    }
+    private static DateTimeOffset LocalNoon(int days) => LocalClock.Noon(Zone, days);
 
     private async Task<AnalyticsSeriesDto> SeriesAsync(TestData.SeededCreator creator, string scope, Guid id, string period)
     {
