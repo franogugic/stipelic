@@ -7,6 +7,9 @@ public sealed class MaintenanceOptionsValidator : IValidateOptions<MaintenanceOp
 {
     public const int MinStalePendingOrderHours = 24;
 
+    /// <summary>Past Stripe's dispute window (about 120 days after a charge).</summary>
+    public const int MinDeletedConnectAccountRetentionDays = 120;
+
     public ValidateOptionsResult Validate(string? name, MaintenanceOptions options)
     {
         var failures = new List<string>();
@@ -26,6 +29,9 @@ public sealed class MaintenanceOptionsValidator : IValidateOptions<MaintenanceOp
         if (options.StalePendingOrderHours is < MinStalePendingOrderHours or > 720)
             failures.Add($"Maintenance:StalePendingOrderHours must be between {MinStalePendingOrderHours} (a Stripe Checkout " +
                          "session can be paid until it expires, 24 h after creation by default) and 720.");
+        if (options.DeletedConnectAccountRetentionDays is < MinDeletedConnectAccountRetentionDays or > 3650)
+            failures.Add($"Maintenance:DeletedConnectAccountRetentionDays must be between {MinDeletedConnectAccountRetentionDays} " +
+                         "(disputes can come up to about 120 days after a charge) and 3650.");
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

@@ -18,12 +18,13 @@ public interface IEmailOutboxService
     Task QueueEmailChangedNotificationAsync(
         string toEmail, string? firstName, string userPublicId, string newEmail, DateTimeOffset changedAt, CancellationToken ct);
 
-    /// <summary>The buyer's creator-branded order email; replies go to the creator's support address when set.</summary>
-    Task QueueOrderAccessAsync(string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct);
+    /// <summary>The buyer's creator-branded order email; replies go to the creator's support address when set. The row
+    /// carries <paramref name="creatorId"/>, so it goes when the workspace is deleted.</summary>
+    Task QueueOrderAccessAsync(int creatorId, string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct);
 
     /// <summary>The "your free download" email for a lead-page sign-up (transactional: sent even to an unsubscribed
-    /// email); replies go to the creator's support address when set.</summary>
-    Task QueueLeadMagnetAsync(string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct);
+    /// email); replies go to the creator's support address when set. The row carries <paramref name="creatorId"/>.</summary>
+    Task QueueLeadMagnetAsync(int creatorId, string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct);
 
     /// <summary>Queues one pre-rendered campaign broadcast message for a single recipient. Subject/html/
     /// plainText are expected to already have <c>{{UNSUBSCRIBE_URL}}</c> substituted with

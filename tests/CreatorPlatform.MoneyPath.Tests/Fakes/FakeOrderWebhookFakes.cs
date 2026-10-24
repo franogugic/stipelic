@@ -115,20 +115,22 @@ public sealed class FakeEmailOutboxService : IEmailOutboxService
 
     public OrderAccessEmail? LastOrderAccess { get; private set; }
     public string? LastOrderAccessTo { get; private set; }
+    public int? LastOrderAccessCreatorId { get; private set; }
 
-    public Task QueueOrderAccessAsync(string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct)
+    public Task QueueOrderAccessAsync(int creatorId, string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct)
     {
         OrderAccessQueuedCount++;
+        LastOrderAccessCreatorId = creatorId;
         LastOrderAccess = order;
         LastOrderAccessTo = toEmail;
         return Task.CompletedTask;
     }
 
-    public List<(string ToEmail, string CorrelationKey, LeadMagnetEmail Lead)> QueuedLeadMagnets { get; } = new();
+    public List<(int CreatorId, string ToEmail, string CorrelationKey, LeadMagnetEmail Lead)> QueuedLeadMagnets { get; } = new();
 
-    public Task QueueLeadMagnetAsync(string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct)
+    public Task QueueLeadMagnetAsync(int creatorId, string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct)
     {
-        QueuedLeadMagnets.Add((toEmail, correlationKey, lead));
+        QueuedLeadMagnets.Add((creatorId, toEmail, correlationKey, lead));
         return Task.CompletedTask;
     }
 

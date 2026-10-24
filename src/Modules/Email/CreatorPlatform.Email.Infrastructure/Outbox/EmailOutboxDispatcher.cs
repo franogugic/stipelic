@@ -301,12 +301,13 @@ public sealed class EmailOutboxDispatcher(
         return Outcome.Skipped;
     }
 
+    /// <summary>Cancelled, or gone: the workspace it was sent for was deleted meanwhile.</summary>
     private static async Task<bool> IsCancelledAsync(CreatorPlatformDbContext db, Guid messageId) =>
         await db.Set<EmailOutboxMessage>()
             .AsNoTracking()
             .Where(message => message.Id == messageId)
-            .Select(message => message.Status)
-            .SingleAsync(CancellationToken.None) == EmailOutboxMessageStatus.Cancelled;
+            .Select(message => (EmailOutboxMessageStatus?)message.Status)
+            .SingleOrDefaultAsync(CancellationToken.None) is null or EmailOutboxMessageStatus.Cancelled;
 
     private static TimeSpan GetRetryDelay(int retryCount) => retryCount switch
     {

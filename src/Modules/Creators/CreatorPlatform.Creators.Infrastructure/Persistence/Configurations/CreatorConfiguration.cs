@@ -23,8 +23,8 @@ public sealed class CreatorConfiguration : IEntityTypeConfiguration<Creator>
         builder.HasIndex(creator => creator.PublicId)
             .IsUnique();
 
-        builder.Property(creator => creator.OwnerUserId)
-            .IsRequired();
+        // Null on a deleted workspace's tombstone.
+        builder.Property(creator => creator.OwnerUserId);
 
         builder.HasIndex(creator => creator.OwnerUserId)
             .IsUnique()

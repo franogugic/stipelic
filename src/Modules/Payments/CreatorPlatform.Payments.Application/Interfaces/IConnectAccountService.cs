@@ -17,4 +17,19 @@ public interface IConnectAccountService
     /// <summary>A single-use, short-lived link that signs the account holder into their Stripe Express dashboard.
     /// Stripe failures throw.</summary>
     Task<string> CreateDashboardLoginLinkAsync(string accountId, CancellationToken ct);
+
+    /// <summary>Deletes the connected account once nothing is left on it: its available and pending balances are zero in
+    /// every currency. Stripe failures throw (the caller retries).</summary>
+    Task<ConnectAccountDeletionOutcome> DeleteIfBalanceIsZeroAsync(string accountId, CancellationToken ct);
+}
+
+public enum ConnectAccountDeletionOutcome
+{
+    Deleted,
+
+    /// <summary>Stripe no longer knows the account (deleted before, or never there).</summary>
+    AlreadyGone,
+
+    /// <summary>Money is still on it, or owed by it: kept, and tried again later.</summary>
+    BalanceNotZero
 }

@@ -40,6 +40,8 @@ public sealed class CheckoutSessionCompletedData
     public string? CustomerEmail { get; init; }
     /// <summary><c>customer_details.name</c>.</summary>
     public string? CustomerName { get; init; }
+    /// <summary><c>customer_details.address.country</c>: the buyer's billing country (two letters).</summary>
+    public string? CustomerCountry { get; init; }
     public required IReadOnlyDictionary<string, string> Metadata { get; init; }
 }
 

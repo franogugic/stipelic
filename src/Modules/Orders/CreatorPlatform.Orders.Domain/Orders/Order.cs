@@ -88,7 +88,10 @@ public sealed class Order
 
     /// <summary>Stripe Checkout collects the buyer's email when the page didn't ask for it, so it arrives here.
     /// An email given at checkout (passed to Stripe as a locked prefill) is kept. A paid order always has one.</summary>
-    public void MarkPaid(string stripePaymentIntentId, DateTimeOffset paidAt, string? buyerEmail, string? buyerName)
+    /// <param name="buyerCountryCode">Stripe's <c>customer_details.address.country</c>; anything but a two-letter code is
+    /// not recorded.</param>
+    public void MarkPaid(
+        string stripePaymentIntentId, DateTimeOffset paidAt, string? buyerEmail, string? buyerName, string? buyerCountryCode)
     {
         var email = Email ?? (string.IsNullOrWhiteSpace(buyerEmail) ? null : buyerEmail.Trim());
         if (email is null)
@@ -101,10 +104,18 @@ public sealed class Order
             Name = name.Length > NameMaxLength ? name[..NameMaxLength] : name;
         }
 
+        BuyerCountryCode ??= NormalizeCountryCode(buyerCountryCode);
+
         Status = OrderStatus.Paid;
         StripePaymentIntentId = stripePaymentIntentId;
         PaidAt = paidAt;
         UpdatedAt = paidAt;
+    }
+
+    private static string? NormalizeCountryCode(string? countryCode)
+    {
+        var code = countryCode?.Trim().ToUpperInvariant();
+        return code is { Length: 2 } && code.All(char.IsAsciiLetterUpper) ? code : null;
     }
 
     /// <summary>A Pending order that can no longer be paid: its session expired, or creating the session failed.</summary>
@@ -156,6 +167,11 @@ public sealed class Order
     public string? Email { get; private set; }
 
     public string? Name { get; private set; }
+
+    /// <summary>ISO 3166-1 alpha-2 country of the buyer's billing address, as Stripe Checkout collected it (null for
+    /// orders paid before it was recorded). Kept when the workspace is deleted: the sale's evidence of where the buyer
+    /// was.</summary>
+    public string? BuyerCountryCode { get; private set; }
 
     public int AmountCents { get; private set; }
 

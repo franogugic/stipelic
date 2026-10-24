@@ -355,6 +355,9 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTimeOffset?>("ConnectAccountDeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("CountryCode")
                         .IsRequired()
                         .HasMaxLength(2)
@@ -368,12 +371,18 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                         .HasMaxLength(5)
                         .HasColumnType("character varying(5)");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("FilesDeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<int>("OwnerUserId")
+                    b.Property<int?>("OwnerUserId")
                         .HasColumnType("integer");
 
                     b.Property<Guid>("PublicId")
@@ -1075,6 +1084,8 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatorId");
+
                     b.HasIndex("SentAt")
                         .HasDatabaseName("IX_email_outbox_messages_SentAt_WithBodies")
                         .HasFilter("\"Status\" = 'Sent' AND \"HtmlBody\" IS NOT NULL");
@@ -1714,6 +1725,10 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.Property<int>("AmountCents")
                         .HasColumnType("integer");
 
+                    b.Property<string>("BuyerCountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2189,8 +2204,7 @@ namespace CreatorPlatform.Shared.Infrastructure.Persistence.Migrations
                     b.HasOne("CreatorPlatform.Auth.Domain.Users.User", null)
                         .WithMany()
                         .HasForeignKey("OwnerUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("CreatorPlatform.Creators.Domain.Creators.CreatorMember", b =>

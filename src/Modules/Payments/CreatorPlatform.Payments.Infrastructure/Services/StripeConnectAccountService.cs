@@ -95,6 +95,33 @@ public sealed class StripeConnectAccountService : IConnectAccountService
         return link.Url;
     }
 
+    public async Task<ConnectAccountDeletionOutcome> DeleteIfBalanceIsZeroAsync(string accountId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+            throw new InvalidOperationException("Stripe secret key is not configured.");
+
+        try
+        {
+            // The connected account's own balance (Stripe-Account header). A negative amount is money it owes.
+            var balance = await new BalanceService(_stripeClient).GetAsync(
+                new RequestOptions { StripeAccount = accountId }, ct);
+            if (balance.Available.Concat(balance.Pending).Any(amount => amount.Amount != 0))
+                return ConnectAccountDeletionOutcome.BalanceNotZero;
+
+            await new AccountService(_stripeClient).DeleteAsync(accountId, options: null, requestOptions: null, ct);
+            return ConnectAccountDeletionOutcome.Deleted;
+        }
+        catch (StripeException exception) when (IsUnknownAccount(exception))
+        {
+            return ConnectAccountDeletionOutcome.AlreadyGone;
+        }
+    }
+
+    /// <summary>Stripe's answers for an account that does not exist (any more) on this platform.</summary>
+    private static bool IsUnknownAccount(StripeException exception) =>
+        exception.StripeError?.Code is "account_invalid" or "resource_missing"
+        || exception.HttpStatusCode == System.Net.HttpStatusCode.NotFound;
+
     public async Task<PayoutScheduleDto?> GetPayoutScheduleAsync(string accountId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey))

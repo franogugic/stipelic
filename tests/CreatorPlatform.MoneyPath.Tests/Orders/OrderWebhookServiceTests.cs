@@ -74,6 +74,24 @@ public class OrderWebhookServiceTests
         Assert.Equal(OrderStatus.Paid, orderRepository.Order!.Status);
     }
 
+    [Theory]
+    [InlineData("HR", "HR")]
+    [InlineData(" de ", "DE")]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("Croatia", null)]
+    [InlineData("H1", null)]
+    public async Task APaidOrder_RecordsTheBuyersCountry_OnlyAsATwoLetterCode(string? stripeCountry, string? recorded)
+    {
+        var order = BuildOrder();
+        var (service, _) = BuildService(order);
+
+        await service.HandleCheckoutSessionCompletedAsync(
+            new OrderCheckoutCompletedDto(order.StripeCheckoutSessionId!, "pi_1", CustomerCountry: stripeCountry), CancellationToken.None);
+
+        Assert.Equal(recorded, order.BuyerCountryCode);
+    }
+
     [Fact]
     public async Task HandleCheckoutSessionCompleted_CalledTwice_RemainsIdempotent()
     {
@@ -92,7 +110,7 @@ public class OrderWebhookServiceTests
     public async Task HandleChargeRefunded_InFull_RefundsTheWholeOrder()
     {
         var order = BuildOrder();
-        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null, buyerCountryCode: null);
         var (service, orderRepository) = BuildService(order);
 
         await service.HandleChargeRefundedAsync(FullRefund(), CancellationToken.None);
@@ -104,7 +122,7 @@ public class OrderWebhookServiceTests
     public async Task HandleChargeRefunded_CalledTwice_RemainsIdempotent()
     {
         var order = BuildOrder();
-        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null, buyerCountryCode: null);
         var (service, _) = BuildService(order);
         var data = FullRefund();
 
@@ -131,6 +149,7 @@ public class OrderWebhookServiceTests
         Assert.Equal("buyer@example.com", grant.Email);
         Assert.Null(grant.RevokedAt);
         Assert.Equal(1, outbox.OrderAccessQueuedCount);
+        Assert.Equal(order.CreatorId, outbox.LastOrderAccessCreatorId);
         Assert.Equal($"https://app.example.com/d/{grant.Token}", outbox.LastOrderAccess!.DownloadUrl);
         Assert.Equal("ZIP · 17.5 MB", outbox.LastOrderAccess.FileLabel);
     }
@@ -324,7 +343,7 @@ public class OrderWebhookServiceTests
     public async Task AnExpiredSession_LeavesAPaidOrderAlone()
     {
         var order = BuildOrder();
-        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null, buyerCountryCode: null);
         var (service, _) = BuildService(order);
 
         await service.HandleCheckoutSessionExpiredAsync(new OrderCheckoutExpiredDto(order.StripeCheckoutSessionId!, SaleMetadata(order.PublicId)), CancellationToken.None);
@@ -361,7 +380,7 @@ public class OrderWebhookServiceTests
     public void OnlyAPendingOrder_CanFail()
     {
         var order = BuildOrder();
-        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null);
+        order.MarkPaid("pi_1", DateTimeOffset.UtcNow, buyerEmail: null, buyerName: null, buyerCountryCode: null);
 
         Assert.Throws<InvalidOperationException>(() => order.MarkFailed(DateTimeOffset.UtcNow));
     }

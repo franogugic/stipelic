@@ -38,6 +38,9 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(o => o.Name)
             .HasMaxLength(Order.NameMaxLength);
 
+        builder.Property(o => o.BuyerCountryCode)
+            .HasMaxLength(2);
+
         builder.Property(o => o.AmountCents)
             .IsRequired();
 

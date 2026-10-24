@@ -69,18 +69,20 @@ public sealed class EmailOutboxService : IEmailOutboxService
         await AddAsync(EmailOutboxMessagePurpose.EmailChanged, userPublicId, toEmail, email, ct);
     }
 
-    public async Task QueueOrderAccessAsync(string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct)
+    public async Task QueueOrderAccessAsync(
+        int creatorId, string toEmail, string orderPublicId, OrderAccessEmail order, CancellationToken ct)
     {
         var email = OrderAccessTemplate.Render(order);
         var replyTo = string.IsNullOrWhiteSpace(order.SupportEmail) ? null : order.SupportEmail;
-        await AddAsync(EmailOutboxMessagePurpose.OrderAccess, orderPublicId, toEmail, email, ct, replyTo);
+        await AddAsync(EmailOutboxMessagePurpose.OrderAccess, orderPublicId, toEmail, email, ct, replyTo, creatorId);
     }
 
-    public async Task QueueLeadMagnetAsync(string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct)
+    public async Task QueueLeadMagnetAsync(
+        int creatorId, string toEmail, string correlationKey, LeadMagnetEmail lead, CancellationToken ct)
     {
         var email = LeadMagnetTemplate.Render(lead);
         var replyTo = string.IsNullOrWhiteSpace(lead.SupportEmail) ? null : lead.SupportEmail;
-        await AddAsync(EmailOutboxMessagePurpose.LeadMagnetDelivery, correlationKey, toEmail, email, ct, replyTo);
+        await AddAsync(EmailOutboxMessagePurpose.LeadMagnetDelivery, correlationKey, toEmail, email, ct, replyTo, creatorId);
     }
 
     public async Task QueueCampaignAsync(
@@ -136,10 +138,11 @@ public sealed class EmailOutboxService : IEmailOutboxService
 
     private async Task AddAsync(
         EmailOutboxMessagePurpose purpose, string correlationKey, string toEmail, RenderedEmail email, CancellationToken ct,
-        string? replyTo = null)
+        string? replyTo = null, int? creatorId = null)
     {
         var message = EmailOutboxMessage.Create(
-            purpose, correlationKey, toEmail, email.Subject, email.Html, email.PlainText, DateTimeOffset.UtcNow, replyTo);
+            purpose, correlationKey, toEmail, email.Subject, email.Html, email.PlainText, DateTimeOffset.UtcNow, replyTo,
+            creatorId: creatorId);
 
         await _context.Set<EmailOutboxMessage>().AddAsync(message, ct);
     }

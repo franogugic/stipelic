@@ -82,6 +82,9 @@ public sealed class EmailOutboxMessageConfiguration : IEntityTypeConfiguration<E
 
         builder.Property(message => message.QueuePosition);
 
+        // Deleting a workspace deletes its mail by creator.
+        builder.HasIndex(message => message.CreatorId);
+
         builder.HasIndex(message => new { message.Status, message.NextAttemptAt });
         builder.HasIndex(message => new { message.Status, message.ProcessingExpiresAt });
         builder.HasIndex(message => new { message.Purpose, message.CorrelationKey, message.Status });

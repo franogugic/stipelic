@@ -44,4 +44,12 @@ public sealed class FakeConnectAccountService : IConnectAccountService
 
     public Task<PayoutScheduleDto?> GetPayoutScheduleAsync(string accountId, CancellationToken ct)
         => Task.FromResult(ScheduleToReturn);
+
+    public List<string> DeletionRequestsFor { get; } = [];
+
+    public Task<ConnectAccountDeletionOutcome> DeleteIfBalanceIsZeroAsync(string accountId, CancellationToken ct)
+    {
+        DeletionRequestsFor.Add(accountId);
+        return Task.FromResult(ConnectAccountDeletionOutcome.Deleted);
+    }
 }

@@ -197,7 +197,8 @@ public sealed class StripeWebhookProcessor
                             webhookEvent.CheckoutSessionCompleted.StripePaymentIntentId,
                             webhookEvent.CheckoutSessionCompleted.CustomerEmail,
                             webhookEvent.CheckoutSessionCompleted.CustomerName,
-                            webhookEvent.CheckoutSessionCompleted.Metadata),
+                            webhookEvent.CheckoutSessionCompleted.Metadata,
+                            webhookEvent.CheckoutSessionCompleted.CustomerCountry),
                         ct);
                 break;
 
