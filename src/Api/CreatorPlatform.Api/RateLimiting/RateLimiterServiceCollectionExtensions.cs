@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Threading.RateLimiting;
 using CreatorPlatform.Api.Responses;
 using Microsoft.AspNetCore.RateLimiting;
@@ -20,6 +19,7 @@ public static class RateLimiterServiceCollectionExtensions
         var globalPolicy = global ?? RateLimitPolicies.Global;
 
         services.AddSingleton<RedisRateLimiters>();
+        services.AddSingleton<CaptureEmailRateLimiter>();
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -40,17 +40,6 @@ public static class RateLimiterServiceCollectionExtensions
         response.StatusCode = StatusCodes.Status429TooManyRequests;
         response.ContentType = "application/json";
 
-        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
-        {
-            var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
-            response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
-        }
-
-        await response.WriteAsJsonAsync(new ApiErrorResponse
-        {
-            StatusCode = StatusCodes.Status429TooManyRequests,
-            Message = "Too many requests. Please try again later.",
-            Code = "RATE_LIMITED"
-        }, ct);
+        await response.WriteAsJsonAsync(RateLimitRejection.Body(response, context.Lease), ct);
     }
 }

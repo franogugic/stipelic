@@ -24,7 +24,7 @@ public class LandingPageServicePublishAsyncTests
             contextProvider.Product = new ProductInfo(Guid.Empty, "Guide", 0, null, IsActive: true);
         var unitOfWork = new FakeLandingPagesUnitOfWork();
 
-        var service = new LandingPageService(repository, sectionRepository, contextProvider, unitOfWork);
+        var service = new LandingPageService(repository, sectionRepository, contextProvider, unitOfWork, new FakeOwnedImageCheck());
 
         return (service, repository);
     }

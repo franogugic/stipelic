@@ -30,7 +30,7 @@ public sealed class ProductPublishGuardAndTrendTests
         new ProductsUnitOfWork(db),
         new OrderContextProvider(db),
         new LandingPageContextProvider(db),
-        new ProductFiles(db, new InMemoryProductFileStorage()));
+        new ProductFiles(db, new InMemoryProductFileStorage()), new AnyImageAccepted());
 
     private static DateTimeOffset MonthStart()
     {

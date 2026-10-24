@@ -296,7 +296,7 @@ public sealed class ProductAccessTests
         new ProductsUnitOfWork(db),
         new OrderContextProvider(db),
         new LandingPageContextProvider(db),
-        new ProductFiles(db, _storage));
+        new ProductFiles(db, _storage), new AnyImageAccepted());
 
     /// <summary>A confirmed product-file upload of the creator (the Media confirm step's result), its blob stored.</summary>
     private async Task<Guid> ConfirmedUploadAsync(int creatorId, string blobPath, string fileName)

@@ -20,6 +20,7 @@ public static class MediaInfrastructureServiceCollectionExtensions
         services.AddScoped<IProductFileStorage, AzureProductFileStorage>();
         services.AddSingleton<IValidateOptions<MediaOptions>, MediaOptionsValidator>();
         services.AddScoped<IMediaUploadService, MediaUploadService>();
+        services.AddScoped<CreatorPlatform.Shared.Application.Media.IOwnedImageCheck, OwnedImageCheck>();
 
         return services;
     }
