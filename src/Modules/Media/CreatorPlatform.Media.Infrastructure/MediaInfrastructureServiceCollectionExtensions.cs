@@ -24,7 +24,6 @@ public static class MediaInfrastructureServiceCollectionExtensions
         services.AddScoped<IMediaUploadService, MediaUploadService>();
         services.AddScoped<CreatorPlatform.Shared.Application.Media.IOwnedImageCheck, OwnedImageCheck>();
 
-        services.AddScoped<IWorkspaceDataPurger, MediaWorkspaceDataPurger>();
         services.AddScoped<IWorkspaceFiles, AzureWorkspaceFiles>();
 
         return services;

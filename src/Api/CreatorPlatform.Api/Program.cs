@@ -23,6 +23,7 @@ using CreatorPlatform.Media.Application.Options;
 using CreatorPlatform.Media.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using CreatorPlatform.Shared.Infrastructure.Redis;
+using CreatorPlatform.Shared.Infrastructure.Workspaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
@@ -70,6 +71,8 @@ builder.Services.AddAnalyticsInfrastructure();
 builder.Services.AddSingleton<CreatorPlatform.Creators.Application.Interfaces.ICreatorCacheInvalidator, CreatorPlatform.Api.Caching.CreatorCacheInvalidator>();
 builder.Services.AddOrdersInfrastructure();
 builder.Services.AddAccessInfrastructure();
+// Deleting a workspace: every module with tables erases its own rows of it.
+builder.Services.AddWorkspaceDataPurgers(ApiEntityConfigurations.Assemblies);
 builder.Services.AddOptions<LoginAttemptLimiterOptions>();
 builder.Services.AddSingleton<InMemoryLoginAttemptLimiter>();
 builder.Services.AddSingleton<ILoginAttemptLimiter, RedisLoginAttemptLimiter>();

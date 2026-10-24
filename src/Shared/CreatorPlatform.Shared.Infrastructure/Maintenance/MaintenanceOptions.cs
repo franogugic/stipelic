@@ -32,6 +32,10 @@ public sealed class MaintenanceOptions
     /// can be created a moment before its session.</summary>
     public int StalePendingOrderHours { get; set; } = 25;
 
+    /// <summary>How long a deleted workspace's Stripe connected account is kept before it is deleted (once its balance is
+    /// zero): refunds and disputes of its sales still need it. Disputes can come up to about 120 days after a charge.</summary>
+    public int DeletedConnectAccountRetentionDays { get; set; } = 180;
+
     public TimeSpan Interval => TimeSpan.FromMinutes(IntervalMinutes);
 
     public TimeSpan StartDelay => TimeSpan.FromSeconds(StartDelaySeconds);

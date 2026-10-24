@@ -3,8 +3,6 @@ using CreatorPlatform.Products.Application.Services;
 using CreatorPlatform.Products.Infrastructure.Persistence;
 using CreatorPlatform.Products.Infrastructure.Repositories;
 using CreatorPlatform.Products.Infrastructure.Services;
-using CreatorPlatform.Products.Infrastructure.Workspaces;
-using CreatorPlatform.Shared.Application.Workspaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CreatorPlatform.Products.Infrastructure;
@@ -20,9 +18,6 @@ public static class ProductsInfrastructureServiceCollectionExtensions
         services.AddScoped<ILandingPageContextProvider, LandingPageContextProvider>();
         services.AddScoped<IProductsUnitOfWork, ProductsUnitOfWork>();
         services.AddScoped<IProductFiles, ProductFiles>();
-
-        services.AddScoped<IWorkspaceDataPurger, AccessLinksWorkspaceDataPurger>();
-        services.AddScoped<IWorkspaceDataPurger, ProductsWorkspaceDataPurger>();
 
         return services;
     }

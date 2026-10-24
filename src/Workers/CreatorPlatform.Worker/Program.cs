@@ -14,8 +14,11 @@ using CreatorPlatform.Email.Infrastructure.Maintenance;
 using CreatorPlatform.Email.Infrastructure.Outbox;
 using CreatorPlatform.Media.Infrastructure.Maintenance;
 using CreatorPlatform.Orders.Infrastructure.Maintenance;
+using CreatorPlatform.Creators.Infrastructure.Maintenance;
+using CreatorPlatform.Payments.Infrastructure;
 using CreatorPlatform.Shared.Infrastructure.Maintenance;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
+using CreatorPlatform.Shared.Infrastructure.Workspaces;
 using Microsoft.EntityFrameworkCore;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -72,6 +75,11 @@ builder.Services.AddEmailMaintenanceTasks();
 builder.Services.AddAuthMaintenanceTasks();
 builder.Services.AddMediaMaintenanceTasks(builder.Configuration);
 builder.Services.AddOrdersMaintenanceTasks();
+// Finishing deleted workspaces: every module's purger (the same assemblies as the model), and Stripe for their sale
+// sessions and connected accounts (Stripe__SecretKey from the shared luma.env).
+builder.Services.AddWorkspaceDataPurgers(WorkerEntityConfigurations.Assemblies);
+builder.Services.AddStripeForWorkspaceDeletion(builder.Configuration);
+builder.Services.AddCreatorsMaintenanceTasks();
 
 builder.Services.AddHostedService<ScheduledCampaignDispatchWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();

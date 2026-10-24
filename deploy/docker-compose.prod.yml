@@ -139,7 +139,7 @@ services:
         condition: service_healthy
     # Lets an in-flight outbox batch finish on a deploy or restart (the host's own shutdown timeout is 30 s).
     stop_grace_period: 45s
-    # data: Postgres. outbound: the email provider (the data network has no internet access).
+    # data: Postgres. outbound: the email provider, Blob storage and Stripe (the data network has no internet access).
     networks: [data, outbound]
 
   # Built from the frontend checkout with deploy/frontend/Dockerfile (README: "Build the images"); compose does not
@@ -181,7 +181,8 @@ networks:
   # Postgres and Redis: reachable only from the backend containers, no internet access, no published ports.
   data:
     internal: true
-  # The Worker's way out (email provider). The API reaches Stripe, ACS and Blob storage through the edge network.
+  # The Worker's way out (email provider, Blob storage, Stripe). The API reaches Stripe, ACS and Blob storage through the
+  # edge network.
   outbound: {}
 
 volumes:

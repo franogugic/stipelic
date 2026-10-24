@@ -2,8 +2,6 @@ using Azure.Communication.Email;
 using CreatorPlatform.Email.Application.Interfaces;
 using CreatorPlatform.Email.Infrastructure.Options;
 using CreatorPlatform.Email.Infrastructure.Services;
-using CreatorPlatform.Email.Infrastructure.Workspaces;
-using CreatorPlatform.Shared.Application.Workspaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -53,8 +51,6 @@ public static class EmailInfrastructureServiceCollectionExtensions
         }
 
         services.AddScoped<IEmailOutboxService, EmailOutboxService>();
-
-        services.AddScoped<IWorkspaceDataPurger, EmailWorkspaceDataPurger>();
 
         return services;
     }

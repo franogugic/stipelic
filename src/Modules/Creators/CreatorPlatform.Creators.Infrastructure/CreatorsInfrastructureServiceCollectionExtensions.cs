@@ -4,7 +4,6 @@ using CreatorPlatform.Creators.Infrastructure.Persistence;
 using CreatorPlatform.Creators.Infrastructure.Repositories;
 using CreatorPlatform.Creators.Infrastructure.Services;
 using CreatorPlatform.Creators.Infrastructure.Workspaces;
-using CreatorPlatform.Shared.Application.Workspaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CreatorPlatform.Creators.Infrastructure;
@@ -26,7 +25,6 @@ public static class CreatorsInfrastructureServiceCollectionExtensions
         services.AddScoped<ICreatorsUnitOfWork, CreatorsUnitOfWork>();
         services.AddScoped<ICreatorUsageService, CreatorUsageService>();
 
-        services.AddScoped<IWorkspaceDataPurger, CreatorWorkspaceDataPurger>();
         services.AddScoped<IWorkspaceErasure, WorkspaceErasure>();
 
         return services;

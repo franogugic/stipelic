@@ -184,4 +184,8 @@ public sealed class Creator
 
     /// <summary>When the deleted workspace's files were gone from storage; null until then (the maintenance worker retries).</summary>
     public DateTimeOffset? FilesDeletedAt { get; private set; }
+
+    /// <summary>When the deleted workspace's Stripe connected account was deleted (or found gone), after its retention; the
+    /// id stays on the tombstone for the record.</summary>
+    public DateTimeOffset? ConnectAccountDeletedAt { get; private set; }
 }
