@@ -103,38 +103,37 @@ public class OrderCheckoutServiceTests
         Assert.Equal(nameof(PayoutMode.StripeConnect), orderRepository.AddedOrder!.PayoutMode);
     }
 
-    [Fact]
-    public async Task CreateCheckoutAsync_BankTransfer_CallsSessionWithoutFeeOrDestination()
+    [Theory]
+    [InlineData("acct_999", false)]   // onboarding not finished
+    [InlineData(null, true)]          // no connected account at all
+    [InlineData(null, false)]
+    public async Task CreateCheckoutAsync_WithoutAConnectAccountReadyForPayouts_Is409PayoutsNotReady_AndCreatesNothing(
+        string? accountId, bool payoutsEnabled)
     {
-        var productInfo = BuildProductInfo(payoutMode: PayoutMode.BankTransfer, hasPayoutProfile: true);
+        var productInfo = BuildProductInfo(stripeConnectAccountId: accountId, stripeConnectPayoutsEnabled: payoutsEnabled);
         var (service, _, checkoutSessionService, orderRepository) = BuildService(productInfo);
 
-        await service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None);
+        var exception = await Assert.ThrowsAsync<ConflictException>(
+            () => service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None));
 
-        Assert.Equal(1, checkoutSessionService.CallCount);
-        Assert.Null(checkoutSessionService.LastApplicationFeeAmountCents);
-        Assert.Null(checkoutSessionService.LastDestinationAccountId);
-        Assert.Equal(nameof(PayoutMode.BankTransfer), orderRepository.AddedOrder!.PayoutMode);
+        Assert.Equal(OrderCheckoutService.PayoutsNotReadyCode, exception.Code);
+        Assert.Equal(0, checkoutSessionService.CallCount);
+        Assert.Null(orderRepository.AddedOrder);
     }
 
     [Fact]
-    public async Task CreateCheckoutAsync_StripeConnectNotPayoutsEnabled_Throws()
+    public async Task CreateCheckoutAsync_ALegacyBankTransferCreator_CannotSell()
     {
-        var productInfo = BuildProductInfo(payoutMode: PayoutMode.StripeConnect, stripeConnectPayoutsEnabled: false);
-        var (service, _, _, _) = BuildService(productInfo);
+        // Payouts go only through Stripe Connect: a creator still marked bank transfer has no connected account.
+        var productInfo = BuildProductInfo(payoutMode: PayoutMode.BankTransfer, stripeConnectAccountId: null,
+            stripeConnectPayoutsEnabled: false, hasPayoutProfile: true);
+        var (service, _, checkoutSessionService, _) = BuildService(productInfo);
 
-        await Assert.ThrowsAsync<ConflictException>(
+        var exception = await Assert.ThrowsAsync<ConflictException>(
             () => service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None));
-    }
 
-    [Fact]
-    public async Task CreateCheckoutAsync_BankTransferNoPayoutProfile_Throws()
-    {
-        var productInfo = BuildProductInfo(payoutMode: PayoutMode.BankTransfer, hasPayoutProfile: false);
-        var (service, _, _, _) = BuildService(productInfo);
-
-        await Assert.ThrowsAsync<ConflictException>(
-            () => service.CreateCheckoutAsync(CreatorSlug, LandingPageSlug, Email, CancellationToken.None));
+        Assert.Equal(OrderCheckoutService.PayoutsNotReadyCode, exception.Code);
+        Assert.Equal(0, checkoutSessionService.CallCount);
     }
 
     [Fact]

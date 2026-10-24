@@ -12,8 +12,6 @@ using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Orders.Infrastructure.Persistence;
 using CreatorPlatform.Orders.Infrastructure.Repositories;
 using CreatorPlatform.Orders.Infrastructure.Services;
-using CreatorPlatform.Payouts.Application.Services;
-using CreatorPlatform.Payouts.Infrastructure.Repositories;
 using CreatorPlatform.Products.Application.Dtos;
 using CreatorPlatform.Products.Application.Services;
 using CreatorPlatform.Products.Infrastructure.Persistence;
@@ -102,7 +100,6 @@ public sealed class ProductAccessTests
         new OrdersCreatorContextProvider(db),
         new EmailOutboxService(db, Options.Create(new EmailOptions { FrontendBaseUrl = "https://app.luma.test" })),
         new NoHomeSummaryCache(),
-        new PayoutLedgerService(new LedgerEntryRepository(db), NullLogger<PayoutLedgerService>.Instance),
         new OrderAccessGrants(db),
         Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.luma.test" }),
         NullLogger<OrderWebhookService>.Instance);

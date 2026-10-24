@@ -25,9 +25,9 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
         string cancelUrl,
         string idempotencyKey,
         IReadOnlyDictionary<string, string> metadata,
+        int applicationFeeAmountCents,
+        string destinationAccountId,
         CancellationToken ct,
-        int? applicationFeeAmountCents = null,
-        string? destinationAccountId = null,
         string? thumbnailUrl = null)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey))
@@ -35,17 +35,13 @@ public sealed class StripePaymentCheckoutSessionService : IPaymentCheckoutSessio
 
         var paymentIntentData = new SessionPaymentIntentDataOptions
         {
-            Metadata = new Dictionary<string, string>(metadata)
-        };
-
-        if (applicationFeeAmountCents is not null && destinationAccountId is not null)
-        {
-            paymentIntentData.ApplicationFeeAmount = applicationFeeAmountCents;
-            paymentIntentData.TransferData = new SessionPaymentIntentDataTransferDataOptions
+            Metadata = new Dictionary<string, string>(metadata),
+            ApplicationFeeAmount = applicationFeeAmountCents,
+            TransferData = new SessionPaymentIntentDataTransferDataOptions
             {
                 Destination = destinationAccountId
-            };
-        }
+            }
+        };
 
         var productData = new SessionLineItemPriceDataProductDataOptions
         {

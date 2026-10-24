@@ -8,8 +8,6 @@ using CreatorPlatform.Orders.Application.Services;
 using CreatorPlatform.Orders.Infrastructure.Persistence;
 using CreatorPlatform.Orders.Infrastructure.Repositories;
 using CreatorPlatform.Orders.Infrastructure.Services;
-using CreatorPlatform.Payouts.Application.Services;
-using CreatorPlatform.Payouts.Infrastructure.Repositories;
 using CreatorPlatform.Shared.Infrastructure.Persistence;
 using CreatorPlatform.Shared.Infrastructure.Persistence.Migrations;
 using Microsoft.EntityFrameworkCore;
@@ -19,9 +17,9 @@ using Npgsql;
 
 namespace CreatorPlatform.Integration.Tests.Orders;
 
-/// <summary>B3 against the real database: a partial refund keeps the order Paid and the link on, books its share in the
-/// ledger, and the rest of the refund reverses the whole sale; the (OrderId, Type, RefundedToCents) key and the checks;
-/// the migration's backfill of orders and ledger entries refunded before partial refunds existed.</summary>
+/// <summary>B3 against the real database: a partial refund keeps the order Paid and the link on, the rest of the refund
+/// refunds the order and turns the link off, and nothing is booked (creators are paid through Stripe Connect); the
+/// refunded-amount check; the migration's backfill of orders refunded before partial refunds existed.</summary>
 [Collection(PostgresCollection.Name)]
 public sealed class PartialRefundTests
 {
@@ -42,7 +40,6 @@ public sealed class PartialRefundTests
         new CreatorContextProvider(db),
         new EmailOutboxService(db, Options.Create(new EmailOptions { FrontendBaseUrl = "https://app.luma.test" })),
         new NoHomeSummaryCache(),
-        new PayoutLedgerService(new LedgerEntryRepository(db), NullLogger<PayoutLedgerService>.Instance),
         new OrderAccessGrants(db),
         Options.Create(new OrdersOptions { FrontendBaseUrl = "https://app.luma.test" }),
         NullLogger<OrderWebhookService>.Instance);
@@ -66,7 +63,7 @@ public sealed class PartialRefundTests
                                            "PlatformFeeBasisPoints", "PlatformFeeCents", "PayoutMode", "StripeCheckoutSessionId",
                                            "CreatedAt", "UpdatedAt")
                 VALUES ({Guid.NewGuid()}, {creator.CreatorId}, {productId}, 'buyer@example.test', 5000, 'Eur', 'Pending', 500, 250,
-                        'BankTransfer', {sessionId}, now(), now())
+                        'StripeConnect', {sessionId}, now(), now())
                 """);
         }
 
@@ -110,7 +107,7 @@ public sealed class PartialRefundTests
     }
 
     [Fact]
-    public async Task APartialRefund_ThenTheRest_BooksEachStepOnce_AndOnlyTheFullRefundRevokes()
+    public async Task APartialRefund_ThenTheRest_AppliesEachStepOnce_AndOnlyTheFullRefundRevokes()
     {
         var (orderId, paymentIntentId) = await PaidOrderAsync();
 
@@ -118,44 +115,21 @@ public sealed class PartialRefundTests
         await RefundAsync(paymentIntentId, 1000);   // Stripe redelivers the same event
 
         Assert.Equal(new OrderRow("Paid", 1000, null), await OrderAsync(orderId));
-        Assert.Equal(
-            [new("SaleCredit", 5000, null), new("FeeDebit", -250, null), new("RefundDebit", -1000, 1000), new("FeeRefundCredit", 50, 1000)],
-            await EntriesAsync(orderId));
 
         await RefundAsync(paymentIntentId, 5000, full: true);
 
         var refunded = await OrderAsync(orderId);
         Assert.Equal(("Refunded", 5000), (refunded.Status, refunded.RefundedCents));
         Assert.NotNull(refunded.RevokedAt);
-        var entries = await EntriesAsync(orderId);
-        Assert.Equal([new("RefundDebit", -4000, 5000), new("FeeRefundCredit", 200, 5000)], entries.Skip(4));
-        Assert.Equal(0, entries.Sum(e => e.AmountCents));
+        Assert.Empty(await EntriesAsync(orderId));   // no platform-held balance to book
     }
 
     [Fact]
-    public async Task TheDatabase_RefusesASecondRefundEntryForTheSameStep_AndARefundAboveTheAmount()
+    public async Task TheDatabase_RefusesARefundAboveTheAmount()
     {
         var (orderId, paymentIntentId) = await PaidOrderAsync();
         await RefundAsync(paymentIntentId, 1000);
         await using var db = _fixture.CreateDbContext();
-
-        var duplicate = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlAsync($"""
-            INSERT INTO payouts.ledger_entries ("PublicId", "CreatorId", "OrderId", "Type", "AmountCents", "Currency", "CreatedAt", "RefundedToCents")
-            SELECT {Guid.NewGuid()}, "CreatorId", "Id", 'RefundDebit', -1000, 'Eur', now(), 1000 FROM orders.orders WHERE "Id" = {orderId}
-            """));
-        Assert.Equal("IX_ledger_entries_OrderId_Type_RefundedToCents", duplicate.ConstraintName);
-
-        var secondSale = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlAsync($"""
-            INSERT INTO payouts.ledger_entries ("PublicId", "CreatorId", "OrderId", "Type", "AmountCents", "Currency", "CreatedAt")
-            SELECT {Guid.NewGuid()}, "CreatorId", "Id", 'SaleCredit', 5000, 'Eur', now() FROM orders.orders WHERE "Id" = {orderId}
-            """));
-        Assert.Equal("IX_ledger_entries_OrderId_Type_RefundedToCents", secondSale.ConstraintName);
-
-        var unkeyedRefund = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlAsync($"""
-            INSERT INTO payouts.ledger_entries ("PublicId", "CreatorId", "OrderId", "Type", "AmountCents", "Currency", "CreatedAt")
-            SELECT {Guid.NewGuid()}, "CreatorId", "Id", 'RefundDebit', -10, 'Eur', now() FROM orders.orders WHERE "Id" = {orderId}
-            """));
-        Assert.Equal("CK_ledger_entries_RefundedToCents_OnRefundsOnly", unkeyedRefund.ConstraintName);
 
         var overRefund = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlAsync($"""
             UPDATE orders.orders SET "RefundedCents" = 5001 WHERE "Id" = {orderId}
@@ -174,24 +148,15 @@ public sealed class PartialRefundTests
         // The state before the migration: no refunded amount anywhere. Rolled back with the transaction.
         await db.Database.ExecuteSqlRawAsync("""ALTER TABLE orders.orders DROP CONSTRAINT "CK_orders_RefundedCents_WithinAmount" """);
         await db.Database.ExecuteSqlRawAsync("""ALTER TABLE orders.orders DROP CONSTRAINT "CK_orders_RefundedCents_MatchStatus" """);
-        await db.Database.ExecuteSqlRawAsync("""ALTER TABLE payouts.ledger_entries DROP CONSTRAINT "CK_ledger_entries_RefundedToCents_OnRefundsOnly" """);
         await db.Database.ExecuteSqlAsync($"""UPDATE orders.orders SET "RefundedCents" = 0 WHERE "Id" = {orderId}""");
-        await db.Database.ExecuteSqlAsync($"""UPDATE payouts.ledger_entries SET "RefundedToCents" = NULL WHERE "OrderId" = {orderId}""");
 
         for (var run = 0; run < 2; run++)
-        {
             await db.Database.ExecuteSqlRawAsync(RecordPartialRefunds.BackfillRefundedOrdersSql);
-            await db.Database.ExecuteSqlRawAsync(RecordPartialRefunds.BackfillRefundEntriesSql);
-        }
 
         var refundedCents = (await db.Database.SqlQuery<int>($"""
             SELECT "RefundedCents" AS "Value" FROM orders.orders WHERE "Id" = {orderId}
             """).ToListAsync()).Single();
         Assert.Equal(5000, refundedCents);
-        var keys = await db.Database.SqlQuery<int?>($"""
-            SELECT "RefundedToCents" AS "Value" FROM payouts.ledger_entries WHERE "OrderId" = {orderId} ORDER BY "Id"
-            """).ToListAsync();
-        Assert.Equal([null, null, 5000, 5000], keys);
 
         await transaction.RollbackAsync();
     }
